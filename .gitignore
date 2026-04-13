@@ -1,5 +1,7 @@
 /bin
 /experiments
+/.worktrees
+/.codex
 
 # ignore Intellij IDEA/vscode cruft
 /.idea
