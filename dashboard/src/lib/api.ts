@@ -30,7 +30,7 @@ import type {
   SensitivityExperimentLogsPayload,
   SensitivityExperimentResultsPayload,
   SensitivityExperimentSubmitResponse,
-  ValidationTrendPayload
+  ValidationOverviewPayload
 } from '../../shared/types';
 
 interface VersionsResponse {
@@ -191,8 +191,14 @@ export async function fetchVersions(): Promise<VersionsPayload> {
   };
 }
 
-export async function fetchValidationTrend(): Promise<ValidationTrendPayload> {
-  return requestJson<ValidationTrendPayload>(buildApiUrl('/api/validation-trend'), 'Failed to fetch validation trend');
+export async function fetchValidationOverview(version?: string): Promise<ValidationOverviewPayload> {
+  const params = new URLSearchParams();
+  if (version) {
+    params.set('version', version);
+  }
+  const query = params.toString();
+  const url = query ? `${buildApiUrl('/api/validation-overview')}?${query}` : buildApiUrl('/api/validation-overview');
+  return requestJson<ValidationOverviewPayload>(url, 'Failed to fetch validation overview');
 }
 
 export async function fetchCatalog(): Promise<ParameterCardMeta[]> {

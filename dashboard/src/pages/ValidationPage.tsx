@@ -1,117 +1,136 @@
 // Author: Max Stoddard
 import { useEffect, useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
-import type { ValidationTrendPayload } from '../../shared/types';
+import type {
+  ValidationFamilySummary,
+  ValidationMetricSummary,
+  ValidationOverviewPayload
+} from '../../shared/types';
 import { EChart } from '../components/EChart';
 import {
   API_RETRY_DELAY_MS,
-  fetchValidationTrend,
+  fetchValidationOverview,
   isRetryableApiError
 } from '../lib/api';
 
-const ORIGINAL_MODEL_LOSS = 11.83;
-
-function formatPercent(value: number): string {
-  return `${value.toLocaleString('en-GB', { maximumFractionDigits: 2 })}%`;
+function formatNumber(value: number | null, digits = 3): string {
+  if (value === null) {
+    return 'Unsupported';
+  }
+  return value.toLocaleString('en-GB', {
+    maximumFractionDigits: digits,
+    minimumFractionDigits: digits > 0 ? Math.min(1, digits) : 0
+  });
 }
 
-function buildChartOption(payload: ValidationTrendPayload): EChartsOption {
-  const pointByVersion = new Map(payload.points.map((point) => [point.version, point]));
-  const versions = payload.points.map((point) => point.version);
-  const averageValues = payload.points.map((point) => point.averageAbsDiffPct);
-  const inProgressValues = payload.points
-    .filter((point) => point.status === 'in_progress')
-    .map((point) => ({
-      name: point.version,
-      value: [point.version, point.averageAbsDiffPct]
-    }));
+function formatTargetBand(metric: ValidationMetricSummary): string {
+  if (!metric.targetBand) {
+    return 'Unsupported';
+  }
+  return `${formatNumber(metric.targetBand.lower, 2)} to ${formatNumber(metric.targetBand.upper, 2)}`;
+}
 
-  const averageReferenceMarkLine = {
-    symbol: 'none',
-    silent: true,
-    data: [
-      {
-        yAxis: 0,
-        lineStyle: { type: 'dashed' as const, width: 1.4, color: '#868e96' },
-        label: { formatter: '0%', color: '#6c757d' }
-      },
-      {
-        yAxis: ORIGINAL_MODEL_LOSS,
-        lineStyle: { type: 'dotted' as const, width: 1.8, color: '#5f6b76' },
-        label: { show: false }
-      }
-    ]
-  };
+function formatInsideRate(value: number | null): string {
+  if (value === null) {
+    return 'Unsupported';
+  }
+  return `${(value * 100).toLocaleString('en-GB', { maximumFractionDigits: 1 })}%`;
+}
 
-  const tooltipFormatter = (rawParams: unknown) => {
-    const rows = Array.isArray(rawParams) ? rawParams : [rawParams];
-    const axisValue = String((rows[0] as { axisValueLabel?: string; axisValue?: string })?.axisValueLabel ?? (rows[0] as { axisValue?: string })?.axisValue ?? '');
-    const point = pointByVersion.get(axisValue);
-    if (!point) {
-      return axisValue;
-    }
-
-    const detail = [
-      `Average absolute diff: ${formatPercent(point.averageAbsDiffPct)}`,
-      `Status: ${point.status === 'in_progress' ? 'In progress' : 'Complete'}`
-    ];
-    if (point.note) {
-      detail.push(point.note);
-    }
-    return `${axisValue}<br/>${detail.join('<br/>')}`;
-  };
-
+function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
+  const selectedIndex = overview.trend.points.findIndex((point) => point.version === overview.selectedVersion);
   return {
-    tooltip: { trigger: 'axis', formatter: tooltipFormatter },
-    grid: { left: 84, right: 34, top: 18, bottom: 86, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (rawParams: unknown) => {
+        const rows = Array.isArray(rawParams) ? rawParams : [rawParams];
+        const point = rows[0] as { axisValue?: string; data?: number };
+        if (!point) {
+          return '';
+        }
+        return `${String(point.axisValue ?? '')}<br/>Composite loss: ${formatNumber(point.data ?? null, 4)}`;
+      }
+    },
+    grid: { left: 64, right: 28, top: 22, bottom: 56, containLabel: true },
     xAxis: {
       type: 'category',
-      data: versions,
-      name: 'Version',
-      nameLocation: 'middle',
-      nameGap: 54,
-      nameTextStyle: { fontSize: 12, fontWeight: 600, color: '#495057' }
+      data: overview.trend.points.map((point) => point.version),
+      axisLabel: { color: '#50625a' }
     },
     yAxis: {
       type: 'value',
-      name: 'Diff percentile (%)',
+      name: 'Composite loss',
       nameLocation: 'middle',
-      nameGap: 64,
-      nameTextStyle: { fontSize: 12, fontWeight: 600, color: '#495057' },
-      axisLabel: {
-        formatter: (rawValue: number) => `${Number(rawValue).toLocaleString('en-GB', { maximumFractionDigits: 2 })}%`
-      },
-      min: (extent: { min: number }) => Math.min(0, extent.min),
-      max: (extent: { max: number }) => Math.max(0, extent.max)
+      nameGap: 52,
+      axisLabel: { color: '#50625a' }
     },
     series: [
       {
-        name: 'Average absolute diff',
         type: 'line',
+        name: 'Composite loss',
         smooth: true,
-        showSymbol: true,
-        symbolSize: 6,
-        data: averageValues,
-        lineStyle: { color: '#0b7285', width: 2.2 },
+        data: overview.trend.points.map((point) => point.overallCompositeLoss),
+        lineStyle: { color: '#0b7285', width: 2.4 },
         itemStyle: { color: '#0b7285' },
-        markLine: averageReferenceMarkLine
-      },
-      {
-        name: 'In progress',
-        type: 'scatter',
-        data: inProgressValues,
-        symbol: 'diamond',
-        symbolSize: 11,
-        itemStyle: { color: '#f08c00', borderColor: '#fff4e6', borderWidth: 1.2 },
-        emphasis: { scale: true },
-        z: 4
+        markPoint:
+          selectedIndex >= 0
+            ? {
+                symbol: 'circle',
+                symbolSize: 18,
+                itemStyle: {
+                  color: '#d9480f',
+                  borderColor: '#fff4e6',
+                  borderWidth: 3
+                },
+                label: {
+                  show: true,
+                  formatter: overview.selectedVersion,
+                  position: 'top',
+                  distance: 10,
+                  color: '#8f3b13',
+                  backgroundColor: '#fff4e6',
+                  borderColor: '#ffd8a8',
+                  borderWidth: 1,
+                  borderRadius: 999,
+                  padding: [4, 8],
+                  fontWeight: 700
+                },
+                data: [
+                  {
+                    name: overview.selectedVersion,
+                    xAxis: overview.trend.points[selectedIndex]?.version,
+                    yAxis: overview.trend.points[selectedIndex]?.overallCompositeLoss
+                  }
+                ]
+              }
+            : undefined
       }
     ]
   };
 }
 
+function familyStatusTone(family: ValidationFamilySummary): 'pass' | 'warn' | 'fail' {
+  if (family.statusCounts.fail > 0) {
+    return 'fail';
+  }
+  if (family.statusCounts.warn > 0) {
+    return 'warn';
+  }
+  return 'pass';
+}
+
+function sortMetrics(metrics: ValidationMetricSummary[]): ValidationMetricSummary[] {
+  return [...metrics].sort((left, right) => {
+    if (left.familyId !== right.familyId) {
+      return left.familyId.localeCompare(right.familyId);
+    }
+    return left.label.localeCompare(right.label);
+  });
+}
+
 export function ValidationPage() {
-  const [payload, setPayload] = useState<ValidationTrendPayload | null>(null);
+  const [overview, setOverview] = useState<ValidationOverviewPayload | null>(null);
+  const [selectedVersion, setSelectedVersion] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isWaitingForApi, setIsWaitingForApi] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -126,11 +145,12 @@ export function ValidationPage() {
       setError('');
 
       try {
-        const response = await fetchValidationTrend();
+        const response = await fetchValidationOverview(selectedVersion || undefined);
         if (cancelled) {
           return;
         }
-        setPayload(response);
+        setOverview(response);
+        setSelectedVersion(response.selectedVersion);
       } catch (loadError) {
         if (cancelled) {
           return;
@@ -158,23 +178,25 @@ export function ValidationPage() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, []);
+  }, [selectedVersion]);
 
-  const option = useMemo(() => {
-    if (!payload || payload.points.length === 0) {
+  const chartOption = useMemo(() => {
+    if (!overview || overview.trend.points.length === 0) {
       return null;
     }
-    return buildChartOption(payload);
-  }, [payload]);
+    return buildChartOption(overview);
+  }, [overview]);
+
+  const summary = overview?.selectedSummary ?? null;
+  const sortedMetrics = useMemo(() => (summary ? sortMetrics(summary.metrics) : []), [summary]);
 
   return (
-    <section className="validation-layout">
+    <section className="validation-layout validation-framework-layout">
       <article className="results-card">
         <h2>Validation</h2>
         <p>
-          This view tracks validation performance across successive calibration versions. Lower loss indicates closer
-          agreement with observed data, providing clear evidence that the calibration process is improving model fit over
-          time.
+          The 2024 framework scores each version against tracked multi-seed summaries. The trend is a compact ranking
+          aid, while the family cards and metric table remain the primary evidence.
         </p>
       </article>
 
@@ -184,25 +206,88 @@ export function ValidationPage() {
       )}
 
       <article className="results-card">
-        <div className="validation-reference-row" aria-label="Validation benchmark reference">
-          <span className="validation-reference-item">
-            <span className="validation-reference-line validation-reference-line-original" aria-hidden="true" />
-            <span>Original model loss</span>
-            <strong>{formatPercent(ORIGINAL_MODEL_LOSS)}</strong>
-          </span>
-          <span className="validation-reference-item">
-            <span className="validation-reference-dot validation-reference-dot-in-progress" aria-hidden="true" />
-            <span>In progress version</span>
-          </span>
+        <div className="validation-overview-header">
+          <div>
+            <h3>Overall composite trend</h3>
+            <p>Lower composite loss is better. The selected point drives the family and metric drill-down below.</p>
+          </div>
+          <label className="validation-selector">
+            <span>Version</span>
+            <select value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)}>
+              {overview?.availableVersions.map((version) => (
+                <option key={version} value={version}>
+                  {version}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-
         {isLoading ? (
-          <p className="loading-banner">Loading validation trend...</p>
-        ) : option ? (
-          <EChart option={option} className="chart validation-chart" />
+          <p className="loading-banner">Loading validation overview...</p>
+        ) : chartOption ? (
+          <EChart option={chartOption} className="chart validation-chart" />
         ) : (
-          <p className="info-banner">No numeric R8 validation points are available to plot.</p>
+          <p className="info-banner">No tracked validation summaries are available.</p>
         )}
+      </article>
+
+      <article className="results-card">
+        <h3>Family summary</h3>
+        <div className="validation-family-grid">
+          {summary?.familySummaries.map((family) => (
+            <section
+              key={family.familyId}
+              className={`validation-family-card validation-family-card-${familyStatusTone(family)}`}
+            >
+              <p className="validation-family-eyebrow">{family.familyId}</p>
+              <h4>{family.label}</h4>
+              <p className="validation-family-loss">Loss {formatNumber(family.loss, 4)}</p>
+              <p className="validation-family-counts">
+                Pass {family.statusCounts.pass} · Warn {family.statusCounts.warn} · Fail {family.statusCounts.fail} ·
+                Unsupported {family.statusCounts.unsupported}
+              </p>
+            </section>
+          ))}
+        </div>
+      </article>
+
+      <article className="results-card">
+        <h3>Metric scorecard for {summary?.version ?? selectedVersion}</h3>
+        <div className="validation-table-wrap">
+          <table className="validation-metrics-table">
+            <thead>
+              <tr>
+                <th>Metric</th>
+                <th>Family</th>
+                <th>Target band</th>
+                <th>Mean</th>
+                <th>p25-p75</th>
+                <th>Seeds inside band</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedMetrics.map((metric) => (
+                <tr key={metric.metricId}>
+                  <td>
+                    <strong>{metric.label}</strong>
+                    <div className="validation-metric-meta">{metric.metricId}</div>
+                  </td>
+                  <td>{metric.familyId}</td>
+                  <td>{formatTargetBand(metric)}</td>
+                  <td>{formatNumber(metric.seedMean, 3)}</td>
+                  <td>
+                    {formatNumber(metric.p25, 3)} to {formatNumber(metric.p75, 3)}
+                  </td>
+                  <td>{formatInsideRate(metric.insideRate)}</td>
+                  <td>
+                    <span className={`validation-status-pill validation-status-${metric.status}`}>{metric.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </article>
     </section>
   );

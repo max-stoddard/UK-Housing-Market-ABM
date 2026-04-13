@@ -13,7 +13,7 @@ import type {
   JointPayload,
   ParameterCardMeta,
   ScalarDatum,
-  ValidationTrendPayload,
+  ValidationOverviewPayload,
   VersionChangeOrigin,
   VisualPayload
 } from '../../shared/types';
@@ -27,6 +27,7 @@ import {
 } from './io';
 import { compareVersions, listVersions } from './versioning';
 import { loadVersionNotes, type VersionNoteEntry } from './versionNotes';
+import { getValidationOverview as getTrackedValidationOverview } from './validationSummaries';
 import {
   buildLatestSourceTagsByKey,
   parseConfigWithComments,
@@ -1037,47 +1038,8 @@ export function getInProgressVersions(repoRoot: string): string[] {
   return versions.filter((version) => inProgress.has(version));
 }
 
-function isFiniteNumber(value: number | null): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-export function getValidationTrend(repoRoot: string): ValidationTrendPayload {
-  const versions = getVersions(repoRoot);
-  const versionSet = new Set(versions);
-  const notes = loadVersionNotes(repoRoot);
-
-  const pointsByVersion = new Map<string, ValidationTrendPayload['points'][number]>();
-  for (const entry of notes) {
-    if (!versionSet.has(entry.snapshot_folder)) {
-      continue;
-    }
-    if (entry.validation_dataset.toLowerCase() !== 'r8') {
-      continue;
-    }
-
-    const income = entry.validation.income_diff_pct;
-    const housing = entry.validation.housing_wealth_diff_pct;
-    const financial = entry.validation.financial_wealth_diff_pct;
-    if (!isFiniteNumber(income) || !isFiniteNumber(housing) || !isFiniteNumber(financial)) {
-      continue;
-    }
-
-    pointsByVersion.set(entry.snapshot_folder, {
-      version: entry.snapshot_folder,
-      status: entry.validation.status,
-      incomeDiffPct: income,
-      housingWealthDiffPct: housing,
-      financialWealthDiffPct: financial,
-      averageAbsDiffPct: (Math.abs(income) + Math.abs(housing) + Math.abs(financial)) / 3,
-      note: entry.validation.note
-    });
-  }
-
-  const points = [...pointsByVersion.values()].sort((left, right) => compareVersions(left.version, right.version));
-  return {
-    dataset: 'r8',
-    points
-  };
+export function getValidationOverview(repoRoot: string, version?: string): ValidationOverviewPayload {
+  return getTrackedValidationOverview(repoRoot, version);
 }
 
 export function getParameterCatalog() {

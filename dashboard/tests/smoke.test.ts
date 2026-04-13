@@ -12,7 +12,7 @@ import {
   getHomePreview,
   getInProgressVersions,
   getParameterCatalog,
-  getValidationTrend,
+  getValidationOverview,
   getVersions
 } from '../server/lib/service.js';
 import {
@@ -1213,76 +1213,65 @@ assert.equal(v38Note?.validation.income_diff_pct, 7.192856, 'v4.0 income diff sh
 assert.equal(v38Note?.validation.housing_wealth_diff_pct, 12.534289, 'v4.0 housing diff should match released value');
 assert.equal(v38Note?.validation.financial_wealth_diff_pct, 13.438086, 'v4.0 financial diff should match released value');
 
-const validationTrend = getValidationTrend(repoRoot);
-assert.equal(validationTrend.dataset, 'r8', 'Validation trend should be scoped to r8');
-assert.ok(validationTrend.points.length > 0, 'Validation trend should include points');
-assert.equal(validationTrend.points[0]?.version, 'v0', 'Validation trend should start at v0');
+const validationOverview = getValidationOverview(repoRoot, 'v4.1');
+assert.equal(validationOverview.selectedVersion, 'v4.1');
+assert.ok(validationOverview.trend.points.length > 0);
+assert.ok(validationOverview.selectedSummary.metrics.some((metric) => metric.metricId === 'core_mortgageApprovals'));
+assert.ok(
+  validationOverview.selectedSummary.familySummaries.some(
+    (family) => family.familyId === 'household_distribution_realism'
+  )
+);
 assert.equal(
-  validationTrend.points[validationTrend.points.length - 1]?.version,
+  validationOverview.trend.points[validationOverview.trend.points.length - 1]?.version,
   'v4.1',
-  'Validation trend should end at v4.1 when in-progress validation metrics are numeric'
+  'Validation overview trend should end at v4.1 when tracked summaries exist through v4.1'
 );
 
 const versionOrder = new Map(versions.map((version, index) => [version, index]));
-for (let index = 1; index < validationTrend.points.length; index += 1) {
-  const previousVersion = validationTrend.points[index - 1]?.version ?? '';
-  const currentVersion = validationTrend.points[index]?.version ?? '';
+for (let index = 1; index < validationOverview.trend.points.length; index += 1) {
+  const previousVersion = validationOverview.trend.points[index - 1]?.version ?? '';
+  const currentVersion = validationOverview.trend.points[index]?.version ?? '';
   const previousRank = versionOrder.get(previousVersion);
   const currentRank = versionOrder.get(currentVersion);
   assert.ok(previousRank !== undefined && currentRank !== undefined, 'Validation trend points should map to known versions');
   assert.ok(previousRank < currentRank, 'Validation trend points should be sorted by version');
 }
 
-const expectedTrendCount = new Set(
-  notes
-    .filter(
-      (entry) =>
-        entry.validation_dataset.toLowerCase() === 'r8' &&
-        typeof entry.validation.income_diff_pct === 'number' &&
-        Number.isFinite(entry.validation.income_diff_pct) &&
-        typeof entry.validation.housing_wealth_diff_pct === 'number' &&
-        Number.isFinite(entry.validation.housing_wealth_diff_pct) &&
-        typeof entry.validation.financial_wealth_diff_pct === 'number' &&
-        Number.isFinite(entry.validation.financial_wealth_diff_pct) &&
-        versionOrder.has(entry.snapshot_folder)
-    )
-    .map((entry) => entry.snapshot_folder)
-).size;
+const validationSummaryDir = path.join(repoRoot, 'input-data-versions', 'validation');
+const expectedTrendCount = fs
+  .readdirSync(validationSummaryDir, { withFileTypes: true })
+  .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
+  .map((entry) => entry.name.replace(/\.json$/u, ''))
+  .filter((version) => versionOrder.has(version)).length;
 assert.equal(
-  validationTrend.points.length,
+  validationOverview.trend.points.length,
   expectedTrendCount,
-  'Validation trend point count should match complete r8 snapshots'
+  'Validation overview trend point count should match tracked validation summaries'
 );
 
-const v40Point = validationTrend.points.find((point) => point.version === 'v4.0');
-assert.ok(v40Point, 'Validation trend should include v4.0 point');
-assert.equal(v40Point?.status, 'complete', 'v4.0 trend point should remain complete');
-assert.equal(v40Point?.incomeDiffPct, 7.192856, 'v4.0 trend point should match income diff');
-assert.equal(v40Point?.housingWealthDiffPct, 12.534289, 'v4.0 trend point should match housing wealth diff');
-assert.equal(v40Point?.financialWealthDiffPct, 13.438086, 'v4.0 trend point should match financial wealth diff');
-assertClose(
-  Number(v40Point?.averageAbsDiffPct),
-  (Math.abs(7.192856) + Math.abs(12.534289) + Math.abs(13.438086)) / 3,
-  1e-12,
-  'v4.0 trend point should compute average absolute diff correctly'
+assert.ok(
+  validationOverview.trend.points.every(
+    (point) => typeof point.overallCompositeLoss === 'number' && Number.isFinite(point.overallCompositeLoss)
+  ),
+  'Validation overview trend should expose numeric composite losses for every tracked summary'
 );
 
-const v41Point = validationTrend.points.find((point) => point.version === 'v4.1');
-assert.ok(v41Point, 'Validation trend should include v4.1 point when validation is in progress with numeric values');
-assert.equal(v41Point?.status, 'in_progress', 'v4.1 trend point should preserve the in-progress status');
-assert.equal(v41Point?.incomeDiffPct, 6.526575, 'v4.1 trend point should match income diff');
-assert.equal(v41Point?.housingWealthDiffPct, 14.523047, 'v4.1 trend point should match housing wealth diff');
-assert.equal(v41Point?.financialWealthDiffPct, 12.933264, 'v4.1 trend point should match financial wealth diff');
-assert.equal(
-  v41Point?.note,
-  'Forked from v4.0 with bank and central-bank hard LTV caps aligned by default: FTB 0.95, HM 0.95, BTL 0.85.',
-  'v4.1 trend point should expose the in-progress validation note'
+const approvalsMetric = validationOverview.selectedSummary.metrics.find(
+  (metric) => metric.metricId === 'core_mortgageApprovals'
 );
-assertClose(
-  Number(v41Point?.averageAbsDiffPct),
-  (Math.abs(6.526575) + Math.abs(14.523047) + Math.abs(12.933264)) / 3,
-  1e-12,
-  'v4.1 trend point should compute average absolute diff correctly'
+assert.ok(approvalsMetric, 'Validation overview should include the mortgage approvals metric');
+assert.ok(
+  approvalsMetric?.targetBand && approvalsMetric.targetBand.lower < approvalsMetric.targetBand.upper,
+  'Mortgage approvals should expose a valid target band'
+);
+assert.ok(
+  approvalsMetric?.insideRate !== null && approvalsMetric.insideRate !== undefined,
+  'Mortgage approvals should expose an inside-rate summary'
+);
+assert.ok(
+  validationOverview.selectedSummary.familySummaries.some((family) => family.statusCounts.pass >= 0),
+  'Validation overview should expose family status counts'
 );
 
 const rangeAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'range');
@@ -2832,6 +2821,9 @@ assert.ok(
 );
 
 const validationPageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/ValidationPage.tsx'), 'utf-8');
+const publicRoutesSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/routes/publicRoutes.ts'), 'utf-8');
+const serviceSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/lib/service.ts'), 'utf-8');
+const apiSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/lib/api.ts'), 'utf-8');
 assert.ok(
   !validationPageSource.includes('three_lines'),
   'Validation page should no longer support the three-line mode'
@@ -2841,28 +2833,44 @@ assert.ok(
   'Validation page should no longer render the validation mode toggle'
 );
 assert.ok(
-  validationPageSource.includes("name: 'Average absolute diff'"),
-  'Validation page should render the average absolute diff series'
+  validationPageSource.includes('Overall composite trend'),
+  'Validation page should render the overall composite trend heading'
 );
 assert.ok(
-  validationPageSource.includes('Original model loss'),
-  'Validation page should keep the original model loss reference badge'
+  validationPageSource.includes('Family summary'),
+  'Validation page should render the family summary section'
 );
 assert.ok(
-  validationPageSource.includes("name: 'In progress'"),
-  'Validation page should render a dedicated in-progress marker overlay'
+  validationPageSource.includes('Seeds inside band'),
+  'Validation page should render inside-band uncertainty copy'
 );
 assert.ok(
-  validationPageSource.includes("Status: ${point.status === 'in_progress' ? 'In progress' : 'Complete'}"),
-  'Validation page tooltip should show the validation status'
+  validationPageSource.includes('p25-p75'),
+  'Validation page should render p25-p75 uncertainty labels'
 );
 assert.ok(
-  validationPageSource.includes('if (point.note)'),
-  'Validation page tooltip should append the validation note when present'
+  validationPageSource.includes('selectedVersion'),
+  'Validation page should track the selected version'
 );
 assert.ok(
-  validationPageSource.includes('In progress version'),
-  'Validation page should explain the in-progress marker in the reference row'
+  !validationPageSource.includes("formatter: 'Selected'"),
+  'Validation page should not render the selected chart label inside the marker icon'
+);
+assert.ok(
+  validationPageSource.includes("position: 'top'"),
+  'Validation page should position the selected chart label above the marker'
+);
+assert.ok(
+  apiSource.includes("/api/validation-overview"),
+  'API client should fetch the validation overview payload'
+);
+assert.ok(
+  publicRoutesSource.includes("/api/validation-overview"),
+  'Public routes should expose the validation overview endpoint'
+);
+assert.ok(
+  !serviceSource.includes('entry.validation.income_diff_pct'),
+  'Validation overview should not derive page data from legacy version-notes diffs'
 );
 
 const comparePageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/ComparePage.tsx'), 'utf-8');
@@ -2930,7 +2938,6 @@ assert.ok(
   'Server should support optional request-level memory logging'
 );
 
-const publicRoutesSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/routes/publicRoutes.ts'), 'utf-8');
 assert.ok(
   publicRoutesSource.includes("app.get('/api/home-preview'"),
   'Public routes should expose the lightweight home preview endpoint'
@@ -2958,7 +2965,6 @@ assert.ok(
   'Dev routes should still guard experiments behind the experiments feature flag'
 );
 
-const apiSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/lib/api.ts'), 'utf-8');
 assert.ok(
   !apiSource.includes('fetchGitStats'),
   'Client API should no longer expose fetchGitStats'
