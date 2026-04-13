@@ -227,19 +227,74 @@ export interface HomePreviewPayload {
   items: HomePreviewItem[];
 }
 
-export interface ValidationTrendPoint {
-  version: string;
-  status: ValidationStatus;
-  incomeDiffPct: number;
-  housingWealthDiffPct: number;
-  financialWealthDiffPct: number;
-  averageAbsDiffPct: number;
-  note?: string;
+export type ValidationMetricStatus = 'pass' | 'warn' | 'fail' | 'unsupported';
+export type ValidationMetricRequirement = 'required' | 'diagnostic';
+
+export interface ValidationTargetBand {
+  lower: number;
+  upper: number;
 }
 
-export interface ValidationTrendPayload {
-  dataset: 'r8';
-  points: ValidationTrendPoint[];
+export interface ValidationStatusCounts {
+  pass: number;
+  warn: number;
+  fail: number;
+  unsupported: number;
+}
+
+export interface ValidationFamilySummary {
+  familyId: string;
+  label: string;
+  loss: number;
+  statusCounts: ValidationStatusCounts;
+}
+
+export interface ValidationMetricSummary {
+  metricId: string;
+  familyId: string;
+  label: string;
+  status: ValidationMetricStatus;
+  requirement: ValidationMetricRequirement;
+  units: string;
+  sourceLabel: string;
+  targetBand: ValidationTargetBand | null;
+  seedMean: number;
+  p25: number;
+  p75: number;
+  insideRate: number | null;
+  normalizedDistance: number | null;
+  normalizedIqr: number | null;
+  metricLoss: number | null;
+}
+
+export interface ValidationVersionSummary {
+  schemaVersion: number;
+  version: string;
+  generatedAt: string;
+  seeds: number[];
+  window: {
+    startIndex: number;
+    endIndex: number;
+  };
+  overallCompositeLoss: number;
+  familySummaries: ValidationFamilySummary[];
+  metrics: ValidationMetricSummary[];
+}
+
+export interface ValidationCompositeTrendPoint {
+  version: string;
+  overallCompositeLoss: number;
+}
+
+export interface ValidationCompositeTrendPayload {
+  points: ValidationCompositeTrendPoint[];
+}
+
+export interface ValidationOverviewPayload {
+  availableVersions: string[];
+  selectedVersion: string;
+  trend: ValidationCompositeTrendPayload;
+  selectedSummary: ValidationVersionSummary;
 }
 
 export type ResultsRunStatus = 'complete' | 'partial' | 'invalid';

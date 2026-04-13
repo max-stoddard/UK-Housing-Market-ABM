@@ -1013,62 +1013,172 @@ code {
 }
 
 .validation-layout {
-  max-width: 1080px;
+  max-width: 1180px;
   margin: 0 auto;
   display: grid;
   gap: 0.8rem;
 }
 
-.validation-reference-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.35rem;
-}
-
-.validation-reference-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.28rem 0.7rem;
-  border-radius: 999px;
-  background: #f1f3f5;
-  border: 1px solid rgba(95, 107, 118, 0.2);
-  color: #44515c;
-  font-size: 0.84rem;
-}
-
-.validation-reference-item strong {
-  color: #2f3a44;
-  font-size: 0.8rem;
-}
-
-.validation-reference-line {
-  display: inline-block;
-  width: 1.65rem;
-  border-top: 2px dotted transparent;
-}
-
-.validation-reference-line-original {
-  border-top-color: #5f6b76;
-}
-
-.validation-reference-dot {
-  width: 0.75rem;
-  height: 0.75rem;
-  display: inline-block;
-  flex: 0 0 auto;
-  transform: rotate(45deg);
-}
-
-.validation-reference-dot-in-progress {
-  background: #f08c00;
-  border: 1px solid #fff4e6;
-  border-radius: 0.1rem;
-}
-
 .validation-chart {
   height: 420px;
+}
+
+.validation-overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.validation-overview-header h3,
+.validation-layout h3 {
+  margin: 0 0 0.3rem;
+}
+
+.validation-overview-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.validation-selector {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 180px;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.validation-selector select {
+  appearance: none;
+  border: 1px solid rgba(17, 32, 24, 0.14);
+  border-radius: 0.85rem;
+  background: #f7f8f3;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.96rem;
+  letter-spacing: normal;
+  text-transform: none;
+  padding: 0.72rem 0.9rem;
+}
+
+.validation-family-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.8rem;
+}
+
+.validation-family-card {
+  border-radius: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(17, 32, 24, 0.08);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(238, 241, 234, 0.92)),
+    linear-gradient(135deg, rgba(11, 114, 133, 0.06), transparent 60%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.validation-family-card-pass {
+  border-color: rgba(47, 158, 68, 0.24);
+}
+
+.validation-family-card-warn {
+  border-color: rgba(217, 72, 15, 0.24);
+}
+
+.validation-family-card-fail {
+  border-color: rgba(193, 59, 40, 0.28);
+}
+
+.validation-family-eyebrow {
+  margin: 0 0 0.45rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.validation-family-card h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1rem;
+}
+
+.validation-family-loss,
+.validation-family-counts {
+  margin: 0;
+}
+
+.validation-family-counts {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.validation-table-wrap {
+  overflow-x: auto;
+}
+
+.validation-metrics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.validation-metrics-table th,
+.validation-metrics-table td {
+  padding: 0.78rem 0.7rem;
+  border-bottom: 1px solid rgba(17, 32, 24, 0.08);
+  text-align: left;
+  vertical-align: top;
+}
+
+.validation-metrics-table th {
+  color: var(--muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.validation-metric-meta {
+  margin-top: 0.22rem;
+  color: var(--muted);
+  font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Consolas', monospace;
+  font-size: 0.78rem;
+}
+
+.validation-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 5.6rem;
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.validation-status-pass {
+  background: rgba(47, 158, 68, 0.14);
+  color: #2f9e44;
+}
+
+.validation-status-warn {
+  background: rgba(217, 72, 15, 0.12);
+  color: #d9480f;
+}
+
+.validation-status-fail {
+  background: rgba(193, 59, 40, 0.12);
+  color: #c13b28;
+}
+
+.validation-status-unsupported {
+  background: rgba(108, 117, 125, 0.14);
+  color: #5c636a;
 }
 
 .login-layout {

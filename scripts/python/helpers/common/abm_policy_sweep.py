@@ -184,6 +184,30 @@ POLICY_INDICATORS: dict[str, IndicatorDefinition] = {
         units="count/month",
         file_name="coreIndicator-advancesToBTL.csv",
     ),
+    "core_housingTransactions": IndicatorDefinition(
+        id="core_housingTransactions",
+        title="Housing Transactions",
+        units="count/month",
+        file_name="coreIndicator-housingTransactions.csv",
+    ),
+    "core_ooDebtToIncome": IndicatorDefinition(
+        id="core_ooDebtToIncome",
+        title="Owner-Occupier Debt to Income",
+        units="%",
+        file_name="coreIndicator-ooDebtToIncome.csv",
+    ),
+    "core_rentalYield": IndicatorDefinition(
+        id="core_rentalYield",
+        title="Rental Yield",
+        units="%",
+        file_name="coreIndicator-rentalYield.csv",
+    ),
+    "core_interestRateSpread": IndicatorDefinition(
+        id="core_interestRateSpread",
+        title="Interest Rate Spread",
+        units="%",
+        file_name="coreIndicator-interestRateSpread.csv",
+    ),
 }
 
 SLIM_RECORDING_OVERRIDES = {

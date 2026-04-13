@@ -6,68 +6,52 @@ set -euo pipefail
 
 print_usage() {
   cat <<EOF
-Usage: $(basename "$0") <subfolder> <w3|r8> [--graphs|--no-graphs]
+Usage: $(basename "$0") <version> [--output-dir <path>]
 
 Arguments:
-  <subfolder>  Input-data version folder name (for example: v0, v1.0, v4.0).
-  <w3|r8>      WAS dataset selector.
+  <version>               Input-data version folder name (for example: v0, v1.0, v4.1).
 
 Options:
-  --graphs     Enable matplotlib plots during validation.
-  --no-graphs  Disable matplotlib plots during validation (default).
+  --output-dir <path>     Transient output directory. Defaults to tmp/validation/<version>.
 EOF
 }
 
-if [[ $# -lt 2 || $# -gt 3 ]]; then
+if [[ $# -lt 1 ]]; then
   print_usage
   exit 1
 fi
 
 input_version="$1"
-dataset_key="$2"
-graphs_flag="${3:---no-graphs}"
+shift
 
-case "${graphs_flag}" in
-  --graphs)
-    show_graphs="1"
-    ;;
-  --no-graphs)
-    show_graphs="0"
-    ;;
-  *)
-    echo "Unknown graph option: ${graphs_flag}" >&2
-    print_usage
-    exit 1
-    ;;
-esac
-
-case "${dataset_key,,}" in
-  w3)
-    dataset_const="WAVE_3_DATA"
-    expected_dataset="W3"
-    expected_file="private-datasets/was/was_wave_3_hhold_eul_final.dta"
-    ;;
-  r8)
-    dataset_const="ROUND_8_DATA"
-    expected_dataset="R8"
-    expected_file="private-datasets/was/was_round_8_hhold_eul_may_2025.privdata"
-    ;;
-  *)
-    echo "Unsupported dataset: ${dataset_key} (expected w3 or r8)." >&2
-    print_usage
-    exit 1
-    ;;
-esac
+output_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir)
+      if [[ $# -lt 2 ]]; then
+        echo "--output-dir requires a path argument." >&2
+        exit 1
+      fi
+      output_dir="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      print_usage
+      exit 1
+      ;;
+  esac
+done
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
 cd "${repo_root}"
 
-export WAS_VALIDATION_PLOTS="${show_graphs}"
+if [[ -z "${output_dir}" ]]; then
+  output_dir="tmp/validation/${input_version}"
+fi
 
-bash scripts/demos/run-validation-step.sh \
-  "${input_version}" \
-  "Results/${input_version}-output" \
-  "${dataset_const}" \
-  "${expected_dataset}" \
-  "${expected_file}"
+python3 -m scripts.python.validation.model.validate_input_data_version \
+  --version "${input_version}" \
+  --seeds 1,2,3,4,5,6,7,8 \
+  --output-dir "${output_dir}"

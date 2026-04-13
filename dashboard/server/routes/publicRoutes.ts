@@ -1,5 +1,5 @@
 import type express from 'express';
-import { compareParameters, getHomePreview, getInProgressVersions, getParameterCatalog, getValidationTrend, getVersions } from '../lib/service';
+import { compareParameters, getHomePreview, getInProgressVersions, getParameterCatalog, getValidationOverview, getVersions } from '../lib/service';
 import { resolveDashboardWriteAccess } from '../lib/writeAuth';
 import type { RouteContext } from './routeContext';
 
@@ -60,9 +60,10 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     }
   }));
 
-  app.get('/api/validation-trend', context.withMemoryLogging('validation-trend', (_req, res) => {
+  app.get('/api/validation-overview', context.withMemoryLogging('validation-overview', (req, res) => {
     try {
-      res.json(getValidationTrend(context.repoRoot));
+      const version = String(req.query.version ?? '').trim();
+      res.json(getValidationOverview(context.repoRoot, version || undefined));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
