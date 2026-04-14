@@ -188,6 +188,62 @@ python3 -m scripts.python.calibration.nmg.nmg_btl_strategy_probabilities private
 - Version(s) affected:
   - `v3.3`
 
+### `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
+- Outputs/keys produced:
+  - `HPA_EXPECTATION_FACTOR`
+  - `HPA_EXPECTATION_CONST`
+- Command:
+```bash
+python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search \
+  private-datasets/nmg/nmg-2014.csv \
+  private-datasets/nmg/nmg-2016.csv \
+  private-datasets/nmg/nmg-2024.csv \
+  private-datasets/ppd/pp-2011.csv \
+  private-datasets/ppd/pp.2012.csv \
+  private-datasets/ppd/pp-2018.csv \
+  private-datasets/ppd/pp-2022.csv \
+  private-datasets/ppd/pp-2023.csv \
+  private-datasets/ppd/pp-2024.csv \
+  private-datasets/ppd/pp-2025.csv \
+  --config-path src/main/resources/config.properties \
+  --top-k 15
+
+python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit \
+  private-datasets/nmg/nmg-2014.csv \
+  private-datasets/nmg/nmg-2024.csv \
+  private-datasets/ppd/pp-2011.csv \
+  private-datasets/ppd/pp.2012.csv \
+  private-datasets/ppd/pp-2022.csv \
+  private-datasets/ppd/pp-2023.csv \
+  private-datasets/ppd/pp-2024.csv \
+  private-datasets/ppd/pp-2025.csv \
+  --target-year 2024
+```
+- Expected-result snippet:
+  - reproduction winner:
+    - `pairing-rule: previous_available`
+    - `survey-method: midpoint_rounded`
+    - `signal-method: annual_mean_annualised`
+    - `factor ~= 0.2613031701`
+    - `const ~= 0.0326229784`
+    - `distance-to-legacy ~= 0.1830369838`
+    - `holdout-abs-error ~= 0.0264283035`
+  - production fit:
+    - `HPA_EXPECTATION_FACTOR = 0.2613031701`
+    - `HPA_EXPECTATION_CONST = 0.0326229784`
+- Method chosen:
+  - `previous_available` pairing rule + `midpoint_rounded` survey mapping + `annual_mean_annualised` PPD signal
+- Method-selection decision logic:
+  - `Objective=target reproduction; Why=within the approved small national search space this family tied for the closest legacy distance and improved the 2016 holdout versus the nearest-available pairing while avoiding future-looking pairings; Tradeoff=the recovered coefficients remain materially far from legacy 0.44 / -0.007 because anchor-pairing compromises and missing historical PPD years dominate the error.`
+- Rationale category:
+  - alteration-vs-legacy evidence and justification
+- Evidence links:
+  - `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
+  - `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
+  - `docs/superpowers/specs/2026-04-14-hpa-expectation-recalibration-design.md`
+- Version(s) affected:
+  - `future v4.2 production recalibration (method locked; config snapshot not updated in this change)`
+
 ### `scripts/python/calibration/ppd/house_price_lognormal_fit.py`
 - Outputs/keys produced:
   - `HOUSE_PRICES_SCALE`
@@ -546,3 +602,32 @@ python3 -m scripts.python.experiments.was.personal_allowance
   - `AGENT_BUY_CALIBRATION_PLAN.md`
 - Version(s) affected:
   - `v4.0`
+
+### HPA Expectation Method Lock (Pre-`v4.2`)
+- Script path: `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
+- Companion experiment path: `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
+- Helper paths:
+  - `scripts/python/helpers/nmg/hpa_expectation.py`
+  - `scripts/python/helpers/ppd/hpa_signal_methods.py`
+- Outputs/keys produced: `HPA_EXPECTATION_FACTOR`, `HPA_EXPECTATION_CONST`
+- Exact run command:
+  - `python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search private-datasets/nmg/nmg-2014.csv private-datasets/nmg/nmg-2016.csv private-datasets/nmg/nmg-2024.csv private-datasets/ppd/pp-2011.csv private-datasets/ppd/pp.2012.csv private-datasets/ppd/pp-2018.csv private-datasets/ppd/pp-2022.csv private-datasets/ppd/pp-2023.csv private-datasets/ppd/pp-2024.csv private-datasets/ppd/pp-2025.csv --config-path src/main/resources/config.properties --top-k 15`
+  - `python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit private-datasets/nmg/nmg-2014.csv private-datasets/nmg/nmg-2024.csv private-datasets/ppd/pp-2011.csv private-datasets/ppd/pp.2012.csv private-datasets/ppd/pp-2022.csv private-datasets/ppd/pp-2023.csv private-datasets/ppd/pp-2024.csv private-datasets/ppd/pp-2025.csv --target-year 2024`
+- Expected result snippet:
+  - `pairing-rule: previous_available`
+  - `survey-method: midpoint_rounded`
+  - `signal-method: annual_mean_annualised`
+  - `HPA_EXPECTATION_FACTOR = 0.2613031701`
+  - `HPA_EXPECTATION_CONST = 0.0326229784`
+- Method chosen:
+  - `previous_available` pairing rule + `midpoint_rounded` + `annual_mean_annualised`
+- Method-selection decision logic:
+  - `Objective=target reproduction; Why=the chosen family tied for the smallest legacy distance in the approved constrained search and improved holdout behavior without future-looking pairings; Tradeoff=legacy recovery remains materially imperfect because 2010/2016-style historical PPD anchors are unavailable and the surviving compromises shift the fitted line.`
+- Rationale category:
+  - alteration-vs-legacy evidence and justification
+- Evidence links:
+  - `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
+  - `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
+  - `docs/superpowers/specs/2026-04-14-hpa-expectation-recalibration-design.md`
+- Version(s) affected:
+  - `future v4.2 production recalibration`

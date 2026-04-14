@@ -56,6 +56,7 @@ Usable NMG expectation files currently available:
 - `private-datasets/nmg/nmg-2024.csv`
 
 Available PPD files currently available:
+- `private-datasets/ppd/pp-2011.csv`
 - `private-datasets/ppd/pp.2012.csv`
 - `private-datasets/ppd/pp-2018.csv`
 - `private-datasets/ppd/pp-2022.csv`
@@ -67,6 +68,9 @@ Important constraint:
 - `nmg-2012.csv` is not usable for this task because the `boe39` expectation field is blank throughout the file
 
 This means the production-quality survey anchors are `2014`, `2016`, and `2024`.
+
+Additional data-reality note:
+- `private-datasets/ppd/pp-2011.csv` is also present locally and is required as the nearest available prior PPD base year when the experiment/calibration pairs the `2014` survey anchor to PPD `2012`.
 
 ## Design Summary
 
