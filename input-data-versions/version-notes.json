@@ -760,7 +760,7 @@
       "version_id": "v4.2",
       "snapshot_folder": "v4.2",
       "validation_dataset": "r8",
-      "description": "Updated HPA_EXPECTATION_FACTOR and HPA_EXPECTATION_CONST via revised Category A NMG/PPD expectation calibration",
+      "description": "Promoted the preferred Huber-based 2024 HPA expectation recalibration for v4.2 and republished validation",
       "updated_data_sources": [
         "nmg",
         "ppd"
@@ -785,10 +785,10 @@
       ],
       "validation": {
         "status": "complete",
-        "income_diff_pct": 6.977021,
-        "housing_wealth_diff_pct": 18.616584,
-        "financial_wealth_diff_pct": 13.620395,
-        "note": "2024 validation complete; overallCompositeLoss=0.188565. Household-realism families pass, while mortgage approvals and housing transactions remain outside their target bands. Versus the canonical v4.1 run, v4.2 raises mean house prices by 2.73%, housing transactions by 7.96%, mortgage approvals by 7.89%, and mortgage debt-to-income by 2.86%."
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "2024 validation republished on 2026-04-14 after promoting the Huber HPA expectation default; overallCompositeLoss=0.217151. Family losses: Macro Credit and Market Activity=0.830142, Macro Prices/Leverage/Affordability=0.031886, Household Distribution Realism=0.003287. Required metric status: mortgage approvals fail, while housing transactions, household debt-to-income, price-to-income, house price growth, and all three household-realism metrics pass. The current tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -800,6 +800,16 @@
           "why_changed": "To avoid shipping the negative-factor all-transactions fit while keeping the production expectation rule simple, reproducible, and aligned with the approved v4.2 design.",
           "method_chosen": "Category A only + annual_mean_annualised + midpoint_exact over the 2018-2024 NMG window, yielding HPA_EXPECTATION_FACTOR=0.1150752545 and HPA_EXPECTATION_CONST=0.0034084162; the all-transactions comparison was rejected at factor=-0.0919792144 and const=0.0104582814; strict 2020-2024 sensitivity remained admissible at factor=0.0535966141 and const=0.0092043687.",
           "decision_logic": "Objective=direct method justification; Why=rank admissible before inadmissible, then preferred-band status, in-window RMSE, and simplicity under the fixed Category A annual_mean_annualised production surface; Tradeoff=the winning fit is admissible but outside the preferred factor band, early anchors still rely on fallback bases (2018->2012, 2019->2018), and 2025 PPD remains excluded to avoid future leakage."
+        },
+        {
+          "config_parameters": [
+            "HPA_EXPECTATION_FACTOR",
+            "HPA_EXPECTATION_CONST"
+          ],
+          "improvement_summary": "Promoted the preferred-band Huber default and replaced the earlier v4.2 Category-A OLS pair with the stronger national midpoint_exact fit.",
+          "why_changed": "To make the defended 2024 recalibration method the repo default rather than keeping the earlier simpler OLS fallback, while preserving a transparent history of the superseded v4.2 values.",
+          "method_chosen": "BoE NMG Survey waves 2018-2024, diagnostic NMG waves 2015-2017 and 2025-pt1/2025-pt2, and Land Registry Price Paid Data 2011, 2012, and 2018-2025; national_cross_section + midpoint_exact + annual_mean_annualised + Category A + Huber, yielding HPA_EXPECTATION_FACTOR=0.2887897073 and HPA_EXPECTATION_CONST=-0.0059593352. This replaced the earlier v4.2 OLS values HPA_EXPECTATION_FACTOR=0.1150752545 and HPA_EXPECTATION_CONST=0.0034084162.",
+          "decision_logic": "Objective=defensible 2024 recalibration; Why=the narrowed production search now defaults to the national midpoint_exact Category-A annualised Huber fit because it lands in the preferred plausibility band and is more robust to unstable survey years than the earlier OLS default; Tradeoff=the live v4.2 coefficients move materially away from the superseded simpler OLS pair and the current linkage workbook still does not support matched-panel production fits across 2018-2024."
         }
       ]
     }
