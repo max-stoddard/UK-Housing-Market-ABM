@@ -3,6 +3,10 @@ Author: Max Stoddard
 
 Local React dashboard for visualizing `input-data-versions/` model parameters, with optional version comparison and provenance tracking.
 
+## Toolchain
+
+Use Node 22 for dashboard work. `dashboard/.nvmrc` and `dashboard/package.json` `engines.node` are the source of truth for local development, CI, and the Render static build.
+
 ## Run
 
 From repository root:
@@ -161,9 +165,12 @@ Repository root includes `render.yaml` with:
 The public Render API is intentionally lightweight:
 
 - Dockerfile: `dashboard/Dockerfile.api`
+- base image: Node 22 slim, aligned with dashboard CI
 - ships only the public dashboard server plus `input-data-versions`
 - does not include git, Java, Maven, or baseline `Results/` outputs
 - uses compiled server output (`dist-server`) instead of running through `tsx`
+
+The Render static service builds only the client bundle with `npm run build:client`. Server compilation remains part of local/CI full builds and the API container validation job.
 
 Render production defaults to `DASHBOARD_ENABLE_MODEL_RUNS=false`, which removes experiments from the live website and disables the related API surface.
 
@@ -177,9 +184,18 @@ Local development remains the supported way to use experiments. If you still wan
 
 Deploys are configured from `master` and gated by passing GitHub checks.
 
+GitHub Actions validates:
+
+- `npm run lint`
+- `npm run build`
+- `npm run test:smoke`
+- `docker build -f dashboard/Dockerfile.api .` whenever API deployment inputs change (`dashboard/server/**`, `dashboard/shared/**`, `dashboard/Dockerfile.api`, `dashboard/tsconfig.server.json`, `input-data-versions/**`, `.dockerignore`, or dashboard package manifests)
+
 If Render stops showing commit events (for example, "No event for this commit"), first re-link the service repository in Render to the current GitHub repo identity (`max-stoddard/UK-Housing-Market-ABM`) and re-sync the Blueprint.
+
+Changes to `render.yaml` still require a Render Blueprint sync. The optional GitHub deploy-hook fallback does not apply Blueprint config updates on its own.
 
 Optional resilience fallback:
 
 - add `RENDER_STATIC_DEPLOY_HOOK` and `RENDER_API_DEPLOY_HOOK` as GitHub repository secrets
-- `.github/workflows/dashboard-ci.yml` will call these hooks after checks pass on `master`, only when matching service paths changed
+- `.github/workflows/dashboard-ci.yml` will call these hooks after checks pass on `master`, only when matching service inputs changed
