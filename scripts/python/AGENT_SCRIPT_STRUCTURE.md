@@ -29,30 +29,32 @@ Locked June 2024 FPC source snapshot used to validate the macro target catalog. 
 
 ### `scripts/python/helpers/nmg/hpa_expectation.py`
 
-Owns `boe39` band mappings, weighted expectation aggregation, and the linear-fit helper used by both the reproduction experiment and the production calibration entrypoint.
+Owns `boe39` band mappings, weighted expectation aggregation, linear-fit helper, and the shared plausibility/RMSE helpers used by both the reproduction experiment and the production calibration entrypoint.
 
 ### `scripts/python/helpers/ppd/hpa_signal_methods.py`
 
-Owns PPD row parsing for year/month-aware HPA work, explicit base-year resolution, and the small approved national HPA signal family:
+Owns PPD row parsing for year/month-aware HPA work, explicit `Category A` filtering for the revised production path, base-year resolution, yearly signal assembly, and the small approved national HPA signal family:
 - `java_like_annualised`
 - `annual_mean_annualised`
 - `annual_mean_cumulative`
 
 ### `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
 
-Authoritative reproduction experiment for `HPA_EXPECTATION_FACTOR` and `HPA_EXPECTATION_CONST`. It searches the approved national method space, including explicit pairing rules, ranks candidates by legacy distance then 2016 holdout error then simplicity, and records the locked default family for production reuse.
+Authoritative method-selection surface for the revised `v4.2` HPA expectation calibration. It fits the production window `2018` to `2024`, holds the PPD predictor fixed to `Category A` plus `annual_mean_annualised`, ranks `midpoint_rounded` versus `midpoint_exact` by admissibility then preferred-band status then in-window RMSE then simplicity, and reports the rejected all-transactions comparison plus the strict `2020` to `2024` sensitivity fit.
 
 Current locked default family:
-- pairing rule: `previous_available`
-- survey mapping: `midpoint_rounded`
+- category filter: `Category A`
+- survey mapping: `midpoint_exact`
 - PPD signal: `annual_mean_annualised`
 
 ### `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
 
-Thin production calibration entrypoint that reuses the locked method family from the reproduction experiment without a silent methodology switch. It currently targets the 2014 + 2024 survey anchors and emits production-ready `HPA_EXPECTATION_FACTOR` / `HPA_EXPECTATION_CONST` plus anchor diagnostics.
+Thin production calibration entrypoint that imports the locked revised method family from the experiment module without a silent methodology switch. It targets the `2018` to `2024` survey anchors, enforces `Category A` plus `annual_mean_annualised`, hard-fails inadmissible fits, and emits production-ready `HPA_EXPECTATION_FACTOR` / `HPA_EXPECTATION_CONST` plus anchor diagnostics.
 
 ### Contract
 
 - The reproduction experiment is the method-selection surface.
 - The production calibration entrypoint must import the locked default family from the experiment module rather than duplicating string literals independently.
-- `private-datasets/ppd/pp-2011.csv` is required for the current reproduction/production commands because the `2014 -> 2012` pairing falls back to `2011` as the nearest available prior PPD base year.
+- The revised `v4.2` production fit is `Category A` only + `annual_mean_annualised` + `midpoint_exact`, yielding `HPA_EXPECTATION_FACTOR = 0.1150752545` and `HPA_EXPECTATION_CONST = 0.0034084162` on the approved private datasets.
+- The rejected all-transactions comparison remains a required diagnostic and was inadmissible on the real run (`factor = -0.0919792144`, `const = 0.0104582814`).
+- `private-datasets/ppd/pp-2011.csv` and `private-datasets/ppd/pp.2012.csv` remain part of the canonical rerun commands because the early modern anchors still require historical fallback context when the preferred `t - 2` base is unavailable.
