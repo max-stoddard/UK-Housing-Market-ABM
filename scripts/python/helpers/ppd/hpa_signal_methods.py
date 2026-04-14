@@ -24,6 +24,7 @@ class PpdSaleRow:
     price: float
     transfer_year: int
     transfer_month: int
+    category_type: str = "A"
 
 
 @dataclass
@@ -43,6 +44,15 @@ class HpaSignal:
     base_year: int
     value: float
     diagnostics: dict[str, object]
+
+
+@dataclass(frozen=True)
+class PpdSignalIndex:
+    category_key: str
+    annual_means: dict[int, float]
+    monthly_means: dict[tuple[int, int], float]
+    available_years: tuple[int, ...]
+    rows_used: int
 
 
 def _parse_transfer_year_month(raw_transfer_date: str) -> tuple[int, int] | None:
@@ -115,6 +125,7 @@ def load_ppd_rows(
                         price=price,
                         transfer_year=year_month[0],
                         transfer_month=year_month[1],
+                        category_type=row[category_type_index].strip() if len(row) > category_type_index else "",
                     )
                 )
                 stats.rows_loaded += 1
@@ -165,8 +176,37 @@ def resolve_base_year(
     return years[-1]
 
 
-def build_hpa_signal(
+def build_ppd_signal_index(
     rows: Sequence[PpdSaleRow],
+    *,
+    category_key: str,
+    category_types: set[str] | None = None,
+) -> PpdSignalIndex:
+    normalized_category_types = (
+        {str(category_type).strip() for category_type in category_types}
+        if category_types is not None
+        else None
+    )
+    filtered_rows = [
+        row
+        for row in rows
+        if normalized_category_types is None or row.category_type in normalized_category_types
+    ]
+    if not filtered_rows:
+        raise ValueError(f"No PPD rows were available for category key {category_key}.")
+    annual_means = _annual_means(filtered_rows)
+    monthly_means = _monthly_means(filtered_rows)
+    return PpdSignalIndex(
+        category_key=category_key,
+        annual_means=annual_means,
+        monthly_means=monthly_means,
+        available_years=tuple(sorted(annual_means)),
+        rows_used=len(filtered_rows),
+    )
+
+
+def build_hpa_signal_from_index(
+    index: PpdSignalIndex,
     *,
     anchor_year: int,
     base_year: int,
@@ -177,43 +217,42 @@ def build_hpa_signal(
         raise ValueError("anchor_year must be later than base_year.")
 
     if method_name == "annual_mean_annualised":
-        annual_means = _annual_means(rows)
-        if anchor_year not in annual_means or base_year not in annual_means:
+        if anchor_year not in index.annual_means or base_year not in index.annual_means:
             raise ValueError("Annual-mean signal requires both anchor and base years.")
-        signal_value = _annualised_growth(annual_means[anchor_year], annual_means[base_year], year_gap)
+        signal_value = _annualised_growth(index.annual_means[anchor_year], index.annual_means[base_year], year_gap)
         diagnostics = {
             "anchor_year": anchor_year,
             "base_year": base_year,
-            "anchor_mean": annual_means[anchor_year],
-            "base_mean": annual_means[base_year],
+            "anchor_mean": index.annual_means[anchor_year],
+            "base_mean": index.annual_means[base_year],
             "years_used": [base_year, anchor_year],
+            "category_key": index.category_key,
         }
     elif method_name == "annual_mean_cumulative":
-        annual_means = _annual_means(rows)
-        if anchor_year not in annual_means or base_year not in annual_means:
+        if anchor_year not in index.annual_means or base_year not in index.annual_means:
             raise ValueError("Annual-mean signal requires both anchor and base years.")
-        signal_value = (annual_means[anchor_year] / annual_means[base_year]) - 1.0
+        signal_value = (index.annual_means[anchor_year] / index.annual_means[base_year]) - 1.0
         diagnostics = {
             "anchor_year": anchor_year,
             "base_year": base_year,
-            "anchor_mean": annual_means[anchor_year],
-            "base_mean": annual_means[base_year],
+            "anchor_mean": index.annual_means[anchor_year],
+            "base_mean": index.annual_means[base_year],
             "years_used": [base_year, anchor_year],
+            "category_key": index.category_key,
         }
     elif method_name == "java_like_annualised":
-        monthly_means = _monthly_means(rows)
         recent_months = [10, 11, 12]
         missing_pairs = [
             (year, month)
             for year in (base_year, anchor_year)
             for month in recent_months
-            if (year, month) not in monthly_means
+            if (year, month) not in index.monthly_means
         ]
         if missing_pairs:
             missing_text = ", ".join(f"{year}-{month:02d}" for year, month in missing_pairs)
             raise ValueError(f"java_like_annualised requires data for months: {missing_text}")
-        recent = sum(monthly_means[(anchor_year, month)] for month in recent_months)
-        base = sum(monthly_means[(base_year, month)] for month in recent_months)
+        recent = sum(index.monthly_means[(anchor_year, month)] for month in recent_months)
+        base = sum(index.monthly_means[(base_year, month)] for month in recent_months)
         signal_value = _annualised_growth(recent, base, year_gap)
         diagnostics = {
             "anchor_year": anchor_year,
@@ -222,6 +261,7 @@ def build_hpa_signal(
             "base_sum": base,
             "months_used_recent": recent_months,
             "months_used_base": recent_months,
+            "category_key": index.category_key,
         }
     else:
         raise ValueError(f"Unsupported HPA signal method: {method_name}")
@@ -235,6 +275,46 @@ def build_hpa_signal(
     )
 
 
+def build_hpa_signal(
+    rows: Sequence[PpdSaleRow],
+    *,
+    anchor_year: int,
+    base_year: int,
+    method_name: str,
+) -> HpaSignal:
+    index = build_ppd_signal_index(rows, category_key="direct_rows")
+    return build_hpa_signal_from_index(
+        index,
+        anchor_year=anchor_year,
+        base_year=base_year,
+        method_name=method_name,
+    )
+
+
+def build_signal_lookup_from_index(
+    index: PpdSignalIndex,
+    *,
+    anchor_years: Sequence[int],
+    method_names: Sequence[str],
+    preferred_gap: int = 2,
+) -> dict[str, dict[int, HpaSignal]]:
+    signal_lookup: dict[str, dict[int, HpaSignal]] = {method_name: {} for method_name in method_names}
+    for anchor_year in anchor_years:
+        base_year = resolve_base_year(
+            index.available_years,
+            anchor_year=anchor_year,
+            preferred_gap=preferred_gap,
+        )
+        for method_name in method_names:
+            signal_lookup[method_name][int(anchor_year)] = build_hpa_signal_from_index(
+                index,
+                anchor_year=int(anchor_year),
+                base_year=base_year,
+                method_name=method_name,
+            )
+    return signal_lookup
+
+
 def build_yearly_hpa_signals(
     rows: Sequence[PpdSaleRow],
     *,
@@ -242,28 +322,24 @@ def build_yearly_hpa_signals(
     method_name: str,
     preferred_gap: int = 2,
 ) -> dict[int, HpaSignal]:
-    available_years = {row.transfer_year for row in rows}
-    signals: dict[int, HpaSignal] = {}
-    for anchor_year in anchor_years:
-        base_year = resolve_base_year(
-            available_years,
-            anchor_year=anchor_year,
-            preferred_gap=preferred_gap,
-        )
-        signals[int(anchor_year)] = build_hpa_signal(
-            rows,
-            anchor_year=int(anchor_year),
-            base_year=base_year,
-            method_name=method_name,
-        )
-    return signals
+    index = build_ppd_signal_index(rows, category_key="direct_rows")
+    return build_signal_lookup_from_index(
+        index,
+        anchor_years=anchor_years,
+        method_names=[method_name],
+        preferred_gap=preferred_gap,
+    )[method_name]
 
 
 __all__ = [
     "HpaSignal",
+    "PpdSignalIndex",
     "PpdLoadStats",
     "PpdSaleRow",
     "build_hpa_signal",
+    "build_hpa_signal_from_index",
+    "build_ppd_signal_index",
+    "build_signal_lookup_from_index",
     "build_yearly_hpa_signals",
     "load_ppd_rows",
     "resolve_base_year",

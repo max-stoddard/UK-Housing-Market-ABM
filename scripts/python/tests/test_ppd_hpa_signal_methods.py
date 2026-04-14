@@ -8,6 +8,8 @@ from pathlib import Path
 from scripts.python.helpers.ppd.hpa_signal_methods import (
     PpdSaleRow,
     build_hpa_signal,
+    build_ppd_signal_index,
+    build_signal_lookup_from_index,
     build_yearly_hpa_signals,
     load_ppd_rows,
     resolve_base_year,
@@ -196,6 +198,42 @@ class TestPpdHpaSignalMethods(unittest.TestCase):
 
         self.assertEqual(signals[2020].anchor_year, 2020)
         self.assertAlmostEqual(signals[2020].value, 0.10, places=12)
+
+    def test_build_ppd_signal_index_can_cache_category_a_rows(self) -> None:
+        rows = [
+            PpdSaleRow(price=100.0, transfer_year=2018, transfer_month=10, category_type="A"),
+            PpdSaleRow(price=400.0, transfer_year=2018, transfer_month=10, category_type="B"),
+            PpdSaleRow(price=121.0, transfer_year=2020, transfer_month=10, category_type="A"),
+            PpdSaleRow(price=324.0, transfer_year=2020, transfer_month=10, category_type="B"),
+        ]
+
+        index = build_ppd_signal_index(rows, category_key="A", category_types={"A"})
+
+        self.assertEqual(index.category_key, "A")
+        self.assertEqual(index.rows_used, 2)
+        self.assertEqual(index.available_years, (2018, 2020))
+        self.assertAlmostEqual(index.annual_means[2018], 100.0, places=12)
+
+    def test_build_signal_lookup_from_index_reuses_cached_means(self) -> None:
+        rows = [
+            PpdSaleRow(price=100.0, transfer_year=2018, transfer_month=10),
+            PpdSaleRow(price=100.0, transfer_year=2018, transfer_month=11),
+            PpdSaleRow(price=100.0, transfer_year=2018, transfer_month=12),
+            PpdSaleRow(price=121.0, transfer_year=2020, transfer_month=10),
+            PpdSaleRow(price=121.0, transfer_year=2020, transfer_month=11),
+            PpdSaleRow(price=121.0, transfer_year=2020, transfer_month=12),
+        ]
+
+        index = build_ppd_signal_index(rows, category_key="all_transactions")
+        lookup = build_signal_lookup_from_index(
+            index,
+            anchor_years=[2020],
+            method_names=["java_like_annualised", "annual_mean_annualised"],
+        )
+
+        self.assertAlmostEqual(lookup["java_like_annualised"][2020].value, 0.10, places=12)
+        self.assertAlmostEqual(lookup["annual_mean_annualised"][2020].value, 0.10, places=12)
+        self.assertEqual(lookup["annual_mean_annualised"][2020].base_year, 2018)
 
 
 if __name__ == "__main__":
