@@ -1,5 +1,7 @@
 # HPA Expectation Recalibration Design
 
+> **Implementation note:** The current code now uses a unified staged workflow in `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py` with `legacy` and `production` modes plus an artifact-driven production calibration rerun. Treat this document as design context, not the current command/interface contract.
+
 **Author:** Max Stoddard
 **Date:** 2026-04-14
 **Status:** Approved
@@ -50,24 +52,29 @@ This implies that the calibration should estimate a linear mapping from an exter
 
 ## Data Reality
 
-Usable NMG expectation files currently available:
+Usable NMG expectation files currently available to the implemented staged search:
 - `private-datasets/nmg/nmg-2014.csv`
+- `private-datasets/nmg/nmg-2015.csv`
 - `private-datasets/nmg/nmg-2016.csv`
-- `private-datasets/nmg/nmg-2024.csv`
+- `private-datasets/nmg/nmg-2017.csv`
+- `private-datasets/nmg/nmg-2018.csv`
+- later modern waves used by the production stage
 
 Available PPD files currently available:
 - `private-datasets/ppd/pp-2011.csv`
 - `private-datasets/ppd/pp.2012.csv`
 - `private-datasets/ppd/pp-2018.csv`
+- `private-datasets/ppd/pp-2019.csv`
+- `private-datasets/ppd/pp-2020.csv`
+- `private-datasets/ppd/pp-2021.csv`
 - `private-datasets/ppd/pp-2022.csv`
 - `private-datasets/ppd/pp-2023.csv`
 - `private-datasets/ppd/pp-2024.csv`
 - `private-datasets/ppd/pp-2025.csv`
 
 Important constraint:
+- `nmg-2013.csv` is present locally but the `boe39` expectation field is blank throughout, so it remains unusable for this task
 - `nmg-2012.csv` is not usable for this task because the `boe39` expectation field is blank throughout the file
-
-This means the production-quality survey anchors are `2014`, `2016`, and `2024`.
 
 Additional data-reality note:
 - `private-datasets/ppd/pp-2011.csv` is also present locally and is required as the nearest available prior PPD base year when the experiment/calibration pairs the `2014` survey anchor to PPD `2012`.

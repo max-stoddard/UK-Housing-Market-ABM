@@ -194,73 +194,58 @@ python3 -m scripts.python.calibration.nmg.nmg_btl_strategy_probabilities private
   - `HPA_EXPECTATION_CONST`
 - Command:
 ```bash
-python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search \
-  private-datasets/nmg/nmg-2014.csv \
-  private-datasets/nmg/nmg-2016.csv \
-  private-datasets/nmg/nmg-2018.csv \
-  private-datasets/nmg/nmg-2019.csv \
-  private-datasets/nmg/nmg-2020.csv \
-  private-datasets/nmg/nmg-2021.csv \
-  private-datasets/nmg/nmg-2022.csv \
-  private-datasets/nmg/nmg-2023.csv \
-  private-datasets/nmg/nmg-2024.csv \
-  private-datasets/ppd/pp-2011.csv \
-  private-datasets/ppd/pp.2012.csv \
-  private-datasets/ppd/pp-2018.csv \
-  private-datasets/ppd/pp-2019.csv \
-  private-datasets/ppd/pp-2020.csv \
-  private-datasets/ppd/pp-2021.csv \
-  private-datasets/ppd/pp-2022.csv \
-  private-datasets/ppd/pp-2023.csv \
-  private-datasets/ppd/pp-2024.csv \
+python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search production \
+  --nmg-wave 2015=private-datasets/nmg/nmg-2015.csv \
+  --nmg-wave 2016=private-datasets/nmg/nmg-2016.csv \
+  --nmg-wave 2017=private-datasets/nmg/nmg-2017.csv \
+  --nmg-wave 2018=private-datasets/nmg/nmg-2018.csv \
+  --nmg-wave 2019=private-datasets/nmg/nmg-2019.csv \
+  --nmg-wave 2020=private-datasets/nmg/nmg-2020.csv \
+  --nmg-wave 2021=private-datasets/nmg/nmg-2021.csv \
+  --nmg-wave 2022=private-datasets/nmg/nmg-2022.csv \
+  --nmg-wave 2023=private-datasets/nmg/nmg-2023.csv \
+  --nmg-wave 2024=private-datasets/nmg/nmg-2024.csv \
+  --nmg-wave 2025-pt1=private-datasets/nmg/nmg-2025-pt1.csv \
+  --nmg-wave 2025-pt2=private-datasets/nmg/nmg-2025-pt2.csv \
+  --ppd private-datasets/ppd/pp-2011.csv \
+  --ppd private-datasets/ppd/pp.2012.csv \
+  --ppd private-datasets/ppd/pp-2018.csv \
+  --ppd private-datasets/ppd/pp-2019.csv \
+  --ppd private-datasets/ppd/pp-2020.csv \
+  --ppd private-datasets/ppd/pp-2021.csv \
+  --ppd private-datasets/ppd/pp-2022.csv \
+  --ppd private-datasets/ppd/pp-2023.csv \
+  --ppd private-datasets/ppd/pp-2024.csv \
+  --ppd private-datasets/ppd/pp-2025.csv \
+  --linkage-xlsx private-datasets/nmg/boe-nmg-household-survey-data.xlsx
 
 python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit \
-  private-datasets/nmg/nmg-2018.csv \
-  private-datasets/nmg/nmg-2019.csv \
-  private-datasets/nmg/nmg-2020.csv \
-  private-datasets/nmg/nmg-2021.csv \
-  private-datasets/nmg/nmg-2022.csv \
-  private-datasets/nmg/nmg-2023.csv \
-  private-datasets/nmg/nmg-2024.csv \
-  --ppd \
-  private-datasets/ppd/pp-2011.csv \
-  private-datasets/ppd/pp.2012.csv \
-  private-datasets/ppd/pp-2018.csv \
-  private-datasets/ppd/pp-2019.csv \
-  private-datasets/ppd/pp-2020.csv \
-  private-datasets/ppd/pp-2021.csv \
-  private-datasets/ppd/pp-2022.csv \
-  private-datasets/ppd/pp-2023.csv \
-  private-datasets/ppd/pp-2024.csv \
+  tmp/nmg_hpa_expectation_production_search.json \
   --target-year 2024
 ```
 - Expected-result snippet:
-  - revised production winner:
-    - `survey-method: midpoint_exact`
+  - selected production default:
+    - `survey-target: national_cross_section__midpoint_exact`
     - `signal-method: annual_mean_annualised`
-    - `category-types: A`
-    - `plausibility: admissible`
-    - `fit-rmse: 0.0121267301`
-    - `HPA_EXPECTATION_FACTOR = 0.1150752545`
-    - `HPA_EXPECTATION_CONST = 0.0034084162`
-  - rejected all-transactions comparison:
-    - `plausibility: inadmissible`
-    - `factor = -0.0919792144`
-    - `const = 0.0104582814`
-  - strict `2020` to `2024` sensitivity:
-    - `survey-method: midpoint_exact`
-    - `factor = 0.0535966141`
-    - `const = 0.0092043687`
+    - `category: A`
+    - `regression: huber`
+    - `plausibility: preferred`
+    - `HPA_EXPECTATION_FACTOR = 0.2887897073`
+    - `HPA_EXPECTATION_CONST = -0.0059593352`
+  - legacy gap remains explicit:
+    - best repo-local reconstruction stayed far from `0.44 / -0.007`
+    - literal `2014/2018` hypothesis remained materially misspecified on local data
 - Method chosen:
-  - `Category A` only + `annual_mean_annualised` + `midpoint_exact` over the `2018` to `2024` NMG window
+  - `national_cross_section` + `midpoint_exact` + `annual_mean_annualised` + `Category A` + `huber`
 - Method-selection decision logic:
-  - `Objective=direct method justification; Why=the revised production surface ranks admissible before inadmissible, then preferred-band status, in-window RMSE, and simplicity, and the real-data all-transactions comparison stayed inadmissible while the Category A fit remained positive and admissible; Tradeoff=the winning fit is admissible but outside the preferred factor band, and the earliest modern anchors still rely on fallback historical bases.`
+  - `Objective=defensible 2024 recalibration; Why=the narrowed production search keeps the method national and transparent while promoting the midpoint_exact + Category A + annual_mean_annualised Huber fit because it lands in the preferred plausibility band and better resists unstable survey years than the simpler OLS alternatives; Tradeoff=the selected coefficients are not the lowest-RMSE OLS fit and they move materially away from the earlier admissible-but-weak OLS slope.`
 - Rationale category:
   - alteration-vs-legacy evidence and justification
 - Evidence links:
   - `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
   - `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
-  - `docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md`
+  - `scripts/python/helpers/nmg/hpa_expectation.py`
+  - `scripts/python/helpers/nmg/linkage.py`
 - Version(s) affected:
   - `v4.2`
 
@@ -628,22 +613,23 @@ python3 -m scripts.python.experiments.was.personal_allowance
 - Companion experiment path: `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
 - Helper paths:
   - `scripts/python/helpers/nmg/hpa_expectation.py`
+  - `scripts/python/helpers/nmg/linkage.py`
   - `scripts/python/helpers/ppd/hpa_signal_methods.py`
 - Outputs/keys produced: `HPA_EXPECTATION_FACTOR`, `HPA_EXPECTATION_CONST`
 - Exact run command:
-  - `python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search private-datasets/nmg/nmg-2014.csv private-datasets/nmg/nmg-2016.csv private-datasets/nmg/nmg-2018.csv private-datasets/nmg/nmg-2019.csv private-datasets/nmg/nmg-2020.csv private-datasets/nmg/nmg-2021.csv private-datasets/nmg/nmg-2022.csv private-datasets/nmg/nmg-2023.csv private-datasets/nmg/nmg-2024.csv private-datasets/ppd/pp-2011.csv private-datasets/ppd/pp.2012.csv private-datasets/ppd/pp-2018.csv private-datasets/ppd/pp-2019.csv private-datasets/ppd/pp-2020.csv private-datasets/ppd/pp-2021.csv private-datasets/ppd/pp-2022.csv private-datasets/ppd/pp-2023.csv private-datasets/ppd/pp-2024.csv`
-  - `python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit private-datasets/nmg/nmg-2018.csv private-datasets/nmg/nmg-2019.csv private-datasets/nmg/nmg-2020.csv private-datasets/nmg/nmg-2021.csv private-datasets/nmg/nmg-2022.csv private-datasets/nmg/nmg-2023.csv private-datasets/nmg/nmg-2024.csv --ppd private-datasets/ppd/pp-2011.csv private-datasets/ppd/pp.2012.csv private-datasets/ppd/pp-2018.csv private-datasets/ppd/pp-2019.csv private-datasets/ppd/pp-2020.csv private-datasets/ppd/pp-2021.csv private-datasets/ppd/pp-2022.csv private-datasets/ppd/pp-2023.csv private-datasets/ppd/pp-2024.csv --target-year 2024`
+  - `python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search production --nmg-wave 2015=private-datasets/nmg/nmg-2015.csv --nmg-wave 2016=private-datasets/nmg/nmg-2016.csv --nmg-wave 2017=private-datasets/nmg/nmg-2017.csv --nmg-wave 2018=private-datasets/nmg/nmg-2018.csv --nmg-wave 2019=private-datasets/nmg/nmg-2019.csv --nmg-wave 2020=private-datasets/nmg/nmg-2020.csv --nmg-wave 2021=private-datasets/nmg/nmg-2021.csv --nmg-wave 2022=private-datasets/nmg/nmg-2022.csv --nmg-wave 2023=private-datasets/nmg/nmg-2023.csv --nmg-wave 2024=private-datasets/nmg/nmg-2024.csv --nmg-wave 2025-pt1=private-datasets/nmg/nmg-2025-pt1.csv --nmg-wave 2025-pt2=private-datasets/nmg/nmg-2025-pt2.csv --ppd private-datasets/ppd/pp-2011.csv --ppd private-datasets/ppd/pp.2012.csv --ppd private-datasets/ppd/pp-2018.csv --ppd private-datasets/ppd/pp-2019.csv --ppd private-datasets/ppd/pp-2020.csv --ppd private-datasets/ppd/pp-2021.csv --ppd private-datasets/ppd/pp-2022.csv --ppd private-datasets/ppd/pp-2023.csv --ppd private-datasets/ppd/pp-2024.csv --ppd private-datasets/ppd/pp-2025.csv --linkage-xlsx private-datasets/nmg/boe-nmg-household-survey-data.xlsx`
+  - `python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit tmp/nmg_hpa_expectation_production_search.json --target-year 2024`
 - Expected result snippet:
-  - `survey-method: midpoint_exact`
+  - `survey-target: national_cross_section__midpoint_exact`
   - `signal-method: annual_mean_annualised`
-  - `category-types: A`
-  - `plausibility: admissible`
-  - `HPA_EXPECTATION_FACTOR = 0.1150752545`
-  - `HPA_EXPECTATION_CONST = 0.0034084162`
+  - `category: A`
+  - `regression: huber`
+  - `HPA_EXPECTATION_FACTOR = 0.2887897073`
+  - `HPA_EXPECTATION_CONST = -0.0059593352`
 - Method chosen:
-  - `Category A` only + `annual_mean_annualised` + `midpoint_exact`
+  - `national_cross_section + midpoint_exact + annual_mean_annualised + Category A + Huber`
 - Method-selection decision logic:
-  - `Objective=direct method justification; Why=the revised Category A production surface produced an admissible positive-factor fit while the all-transactions comparison remained inadmissible at factor=-0.0919792144 and const=0.0104582814; Tradeoff=the winning fit remains outside the preferred factor band and depends on fallback historical bases for the earliest modern anchors.`
+  - `Objective=defensible 2024 recalibration; Why=the promoted Huber fit stays within the preferred plausibility band and becomes the artifact-locked default for both search and calculation; Tradeoff=the earlier simpler OLS v4.2 values are retained only as superseded history, not as the live default.`
 - Rationale category:
   - alteration-vs-legacy evidence and justification
 - Evidence links:

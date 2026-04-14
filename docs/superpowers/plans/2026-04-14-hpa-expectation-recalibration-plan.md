@@ -1,5 +1,7 @@
 # HPA Expectation Recalibration Implementation Plan
 
+> **Implementation note:** The live code now uses a unified staged HPA workflow rather than the separate legacy-only plan below. Treat this file as historical planning context.
+
 > **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reconstruct the legacy `HPA_EXPECTATION_FACTOR` / `HPA_EXPECTATION_CONST` method transparently, lock a simple national default method family, and add the production calibration entrypoint that reuses it.
