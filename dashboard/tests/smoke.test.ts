@@ -795,10 +795,9 @@ const expectedIds = [
   'btl_strategy_split'
 ];
 
-const newlyAddedIds = [
+const unchangedNewlyAddedIds = [
   'uk_housing_stock_totals',
   'household_consumption_fractions',
-  'hpa_expectation_params',
   'hold_period_years',
   'initial_sale_markup_distribution',
   'price_reduction_probabilities',
@@ -1222,11 +1221,6 @@ assert.ok(
     (family) => family.familyId === 'household_distribution_realism'
   )
 );
-assert.equal(
-  validationOverview.trend.points[validationOverview.trend.points.length - 1]?.version,
-  'v4.1',
-  'Validation overview trend should end at v4.1 when tracked summaries exist through v4.1'
-);
 
 const versionOrder = new Map(versions.map((version, index) => [version, index]));
 for (let index = 1; index < validationOverview.trend.points.length; index += 1) {
@@ -1239,15 +1233,16 @@ for (let index = 1; index < validationOverview.trend.points.length; index += 1) 
 }
 
 const validationSummaryDir = path.join(repoRoot, 'input-data-versions', 'validation');
-const expectedTrendCount = fs
+const expectedTrendVersions = fs
   .readdirSync(validationSummaryDir, { withFileTypes: true })
   .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
   .map((entry) => entry.name.replace(/\.json$/u, ''))
-  .filter((version) => versionOrder.has(version)).length;
-assert.equal(
-  validationOverview.trend.points.length,
-  expectedTrendCount,
-  'Validation overview trend point count should match tracked validation summaries'
+  .filter((version) => versionOrder.has(version))
+  .sort((left, right) => (versionOrder.get(left) ?? -1) - (versionOrder.get(right) ?? -1));
+assert.deepEqual(
+  validationOverview.trend.points.map((point) => point.version),
+  expectedTrendVersions,
+  'Validation overview trend versions should match tracked validation summaries'
 );
 
 assert.ok(
@@ -1354,11 +1349,27 @@ assert.ok(formatSet.has('buy_quad'));
 assert.ok(formatSet.has('joint_distribution'));
 assert.ok(formatSet.has('binned_distribution'));
 
-const unchangedCards = compareParameters(repoRoot, 'v0', latestVersion, [...newlyAddedIds], 'range');
-assert.equal(unchangedCards.items.length, newlyAddedIds.length, 'Expected all newly added cards in compare payload');
+const unchangedCards = compareParameters(repoRoot, 'v0', latestVersion, [...unchangedNewlyAddedIds], 'range');
+assert.equal(
+  unchangedCards.items.length,
+  unchangedNewlyAddedIds.length,
+  'Expected all unchanged newly added cards in compare payload'
+);
 for (const item of unchangedCards.items) {
   assert.equal(item.unchanged, true, `Expected newly added card ${item.id} to remain unchanged across versions`);
 }
+
+const hpaExpectationCompare = compareParameters(repoRoot, 'v0', latestVersion, ['hpa_expectation_params'], 'range');
+assert.equal(hpaExpectationCompare.items.length, 1, 'Expected hpa_expectation_params compare payload');
+assert.equal(
+  hpaExpectationCompare.items[0]?.unchanged,
+  false,
+  'Expected hpa_expectation_params to differ from v0 once the v4.2 HPA promotion is included'
+);
+assert.ok(
+  hpaExpectationCompare.items[0]?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.2'),
+  'Expected hpa_expectation_params provenance to include the v4.2 HPA promotion'
+);
 
 const bankLtvCompare = compareParameters(repoRoot, 'v0', latestVersion, ['bank_ltv_limits'], 'range');
 assert.equal(bankLtvCompare.items.length, 1, 'Expected bank_ltv_limits compare payload');
@@ -1396,7 +1407,7 @@ const unchangedSingleWithProvenance = compareParameters(
   repoRoot,
   latestVersion,
   latestVersion,
-  [...newlyAddedIds],
+  [...unchangedNewlyAddedIds],
   'through_right'
 );
 for (const item of unchangedSingleWithProvenance.items) {
