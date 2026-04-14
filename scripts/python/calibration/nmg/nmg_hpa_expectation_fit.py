@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Run the locked national HPA expectation calibration method for production use.
+Run the locked HPA expectation calibration method selected by the search artifact.
 
 @author: Max Stoddard
 """
@@ -9,58 +9,57 @@ Run the locked national HPA expectation calibration method for production use.
 from __future__ import annotations
 
 import argparse
-import csv
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts.python.experiments.nmg.nmg_hpa_expectation_method_search import (
-    PRODUCTION_CATEGORY_TYPES,
-    PRODUCTION_FIT_YEARS,
-    PRODUCTION_SIGNAL_METHOD,
-)
 from scripts.python.helpers.common.cli import format_float
 from scripts.python.helpers.nmg.hpa_expectation import (
+    HpaExpectationCandidateResult,
+    HpaExpectationCandidateSpec,
     HpaExpectationFitClassification,
-    aggregate_expectation,
-    classify_hpa_expectation_fit,
-    compute_fit_rmse,
-    fit_linear_rule,
+    HpaExpectationFitPoint,
+    build_survey_target_result,
+    evaluate_candidate_fit,
+    load_nmg_wave_csv,
 )
-from scripts.python.helpers.ppd.hpa_signal_methods import build_yearly_hpa_signals, load_ppd_rows
+from scripts.python.helpers.nmg.linkage import (
+    build_matched_panel_row_indices,
+    load_pid_subsid_linkage,
+)
+from scripts.python.helpers.ppd.hpa_signal_methods import build_ppd_signal_index, load_ppd_rows
+from scripts.python.helpers.ppd.hpa_signal_methods import build_hpa_signal_from_index
+from scripts.python.experiments.nmg.nmg_hpa_expectation_method_search import (
+    PRODUCTION_MODE,
+    candidate_spec_from_dict,
+)
 
-LOCKED_SURVEY_METHOD = "midpoint_exact"
-LOCKED_SIGNAL_METHOD = PRODUCTION_SIGNAL_METHOD
-LOCKED_CATEGORY_TYPES = set(PRODUCTION_CATEGORY_TYPES)
-PRODUCTION_YEARS = PRODUCTION_FIT_YEARS
+LOCKED_SURVEY_TARGET = "national_cross_section__midpoint_exact"
+LOCKED_SIGNAL_METHOD = "annual_mean_annualised"
+LOCKED_CATEGORY_KEY = "A"
+LOCKED_REGRESSION_TYPE = "huber"
+LOCKED_ANCHOR_POLICY = "same_year_two_year_base"
 
 
 @dataclass(frozen=True)
 class CalibrationOutput:
+    selected_candidate: HpaExpectationCandidateSpec
     factor: float
     const: float
-    survey_method_name: str
-    signal_method_name: str
-    survey_means: dict[int, float]
-    signal_values: dict[int, float]
-    signal_anchor_years: dict[int, int]
-    signal_base_years: dict[int, int]
-    category_types: set[str]
     classification: HpaExpectationFitClassification
-    rmse: float
+    core_rmse: float
+    leave_one_out_rmse: float
+    fit_points: tuple[HpaExpectationFitPoint, ...]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Run the locked national HPA expectation calibration method.",
+        description="Run the locked HPA expectation calibration from a production search artifact.",
     )
-    parser.add_argument("nmg_2018_csv", help="Path to NMG 2018 CSV.")
-    parser.add_argument("nmg_2019_csv", help="Path to NMG 2019 CSV.")
-    parser.add_argument("nmg_2020_csv", help="Path to NMG 2020 CSV.")
-    parser.add_argument("nmg_2021_csv", help="Path to NMG 2021 CSV.")
-    parser.add_argument("nmg_2022_csv", help="Path to NMG 2022 CSV.")
-    parser.add_argument("nmg_2023_csv", help="Path to NMG 2023 CSV.")
-    parser.add_argument("nmg_2024_csv", help="Path to NMG 2024 CSV.")
-    parser.add_argument("--ppd", nargs="+", required=True, help="One or more PPD CSV files.")
+    parser.add_argument(
+        "search_artifact",
+        help="Path to the production search artifact JSON emitted by nmg_hpa_expectation_method_search.py",
+    )
     parser.add_argument(
         "--target-year",
         type=int,
@@ -70,63 +69,151 @@ def build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_nmg_rows(path: Path) -> list[dict[str, str]]:
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
-            raise ValueError(f"NMG CSV has no header row: {path}")
-        return list(reader)
+def _load_search_artifact(path: Path) -> dict[str, object]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if payload.get("mode") != PRODUCTION_MODE:
+        raise ValueError(f"Search artifact is not a production-mode artifact: {path}")
+    return payload
 
 
-def run_calibration(
-    *,
-    nmg_paths: dict[int, Path],
-    ppd_paths: list[Path],
-    survey_method_name: str = LOCKED_SURVEY_METHOD,
-    signal_method_name: str = LOCKED_SIGNAL_METHOD,
-    category_types: set[str] | None = LOCKED_CATEGORY_TYPES,
-) -> CalibrationOutput:
-    survey_means: dict[int, float] = {}
-    for year in sorted(nmg_paths):
-        survey_means[year] = aggregate_expectation(
-            _load_nmg_rows(nmg_paths[year]),
-            method_name=survey_method_name,
-        ).expectation_mean
+def _result_from_artifact(payload: dict[str, object]) -> HpaExpectationCandidateResult:
+    selected_result_data = dict(payload["selected_result"])
+    candidate_spec = candidate_spec_from_dict(dict(selected_result_data["candidate_spec"]))
+    classification_data = dict(selected_result_data["classification"])
+    fit_points = tuple(
+        HpaExpectationFitPoint(
+            survey_wave_label=str(point["survey_wave_label"]),
+            survey_year=int(point["survey_year"]),
+            survey_target=float(point["survey_target"]),
+            signal_value=float(point["signal_value"]),
+            signal_method_name=str(point["signal_method_name"]),
+            signal_anchor_year=int(point["signal_anchor_year"]),
+            signal_base_year=int(point["signal_base_year"]),
+        )
+        for point in selected_result_data["fit_points"]
+    )
+    return HpaExpectationCandidateResult(
+        candidate_spec=candidate_spec,
+        factor=float(selected_result_data["factor"]),
+        const=float(selected_result_data["const"]),
+        classification=HpaExpectationFitClassification(
+            label=str(classification_data["label"]),
+            is_admissible=bool(classification_data["is_admissible"]),
+            is_preferred=bool(classification_data["is_preferred"]),
+        ),
+        core_rmse=float(selected_result_data["core_rmse"]),
+        leave_one_out_rmse=float(selected_result_data["leave_one_out_rmse"]),
+        legacy_distance=(
+            float(selected_result_data["legacy_distance"])
+            if selected_result_data.get("legacy_distance") is not None
+            else None
+        ),
+        fit_points=fit_points,
+    )
 
-    ppd_rows, _stats = load_ppd_rows(
-        ppd_paths,
-        category_types=category_types,
+
+def _verify_selected_method(candidate_spec: HpaExpectationCandidateSpec) -> None:
+    if candidate_spec.survey_target_spec.name != LOCKED_SURVEY_TARGET:
+        raise ValueError(
+            "Search artifact selected an unexpected survey target: "
+            f"{candidate_spec.survey_target_spec.name}"
+        )
+    if candidate_spec.signal_method_name != LOCKED_SIGNAL_METHOD:
+        raise ValueError(
+            "Search artifact selected an unexpected signal method: "
+            f"{candidate_spec.signal_method_name}"
+        )
+    if candidate_spec.category_key != LOCKED_CATEGORY_KEY:
+        raise ValueError(
+            "Search artifact selected an unexpected category key: "
+            f"{candidate_spec.category_key}"
+        )
+    if candidate_spec.regression_type != LOCKED_REGRESSION_TYPE:
+        raise ValueError(
+            "Search artifact selected an unexpected regression type: "
+            f"{candidate_spec.regression_type}"
+        )
+    if candidate_spec.anchor_policy_name != LOCKED_ANCHOR_POLICY:
+        raise ValueError(
+            "Search artifact selected an unexpected anchor policy: "
+            f"{candidate_spec.anchor_policy_name}"
+        )
+
+
+def run_calibration(*, search_artifact_path: Path) -> CalibrationOutput:
+    payload = _load_search_artifact(search_artifact_path)
+    selected_result = _result_from_artifact(payload)
+    candidate_spec = selected_result.candidate_spec
+    _verify_selected_method(candidate_spec)
+    fit_wave_labels = tuple(str(value) for value in payload["fit_wave_labels"])
+    nmg_input_paths = {wave_label: Path(path) for wave_label, path in dict(payload["nmg_input_paths"]).items()}
+    ppd_input_paths = [Path(path) for path in payload["ppd_input_paths"]]
+    linkage_xlsx_path = payload.get("linkage_xlsx_path")
+
+    waves = {
+        wave_label: load_nmg_wave_csv(path, wave_label=wave_label)
+        for wave_label, path in nmg_input_paths.items()
+    }
+    all_ppd_rows, _stats = load_ppd_rows(ppd_input_paths)
+    signal_index = build_ppd_signal_index(
+        all_ppd_rows,
+        category_key=candidate_spec.category_key,
+        category_types={"A"} if candidate_spec.category_key == "A" else None,
     )
-    signals = build_yearly_hpa_signals(
-        ppd_rows,
-        anchor_years=PRODUCTION_YEARS,
-        method_name=signal_method_name,
-    )
-    signal_values = {year: signals[year].value for year in PRODUCTION_YEARS}
-    factor, const = fit_linear_rule(
-        x_values=[signal_values[year] for year in PRODUCTION_YEARS],
-        y_values=[survey_means[year] for year in PRODUCTION_YEARS],
-    )
-    classification = classify_hpa_expectation_fit(factor, const)
-    rmse = compute_fit_rmse(
-        x_values=[signal_values[year] for year in PRODUCTION_YEARS],
-        y_values=[survey_means[year] for year in PRODUCTION_YEARS],
-        factor=factor,
-        const=const,
+
+    matched_row_indices = None
+    if candidate_spec.survey_target_spec.use_matched_panel:
+        if linkage_xlsx_path is None:
+            raise ValueError("Selected candidate requires linkage data, but the artifact does not include a linkage path.")
+        linkage = load_pid_subsid_linkage(Path(str(linkage_xlsx_path)))
+        matched_row_indices = build_matched_panel_row_indices(
+            waves,
+            required_wave_labels=fit_wave_labels,
+            linkage=linkage,
+        )
+
+    survey_results = {}
+    for wave_label in fit_wave_labels:
+        survey_results[wave_label] = build_survey_target_result(
+            waves[wave_label],
+            candidate_spec.survey_target_spec,
+            matched_row_indices=matched_row_indices.get(wave_label) if matched_row_indices else None,
+        )
+
+    fit_points = []
+    for point in selected_result.fit_points:
+        survey_result = survey_results[point.survey_wave_label]
+        signal = build_hpa_signal_from_index(
+            signal_index,
+            anchor_year=point.signal_anchor_year,
+            base_year=point.signal_base_year,
+            method_name=candidate_spec.signal_method_name,
+        )
+        fit_points.append(
+            HpaExpectationFitPoint(
+                survey_wave_label=point.survey_wave_label,
+                survey_year=survey_result.survey_year,
+                survey_target=survey_result.expectation_mean,
+                signal_value=signal.value,
+                signal_method_name=signal.method_name,
+                signal_anchor_year=signal.anchor_year,
+                signal_base_year=signal.base_year,
+            )
+        )
+
+    recalculated_result = evaluate_candidate_fit(
+        candidate_spec,
+        fit_points,
     )
 
     return CalibrationOutput(
-        factor=factor,
-        const=const,
-        survey_method_name=survey_method_name,
-        signal_method_name=signal_method_name,
-        survey_means=survey_means,
-        signal_values=signal_values,
-        signal_anchor_years={year: signals[year].anchor_year for year in PRODUCTION_YEARS},
-        signal_base_years={year: signals[year].base_year for year in PRODUCTION_YEARS},
-        category_types=set(category_types or set()),
-        classification=classification,
-        rmse=rmse,
+        selected_candidate=candidate_spec,
+        factor=recalculated_result.factor,
+        const=recalculated_result.const,
+        classification=recalculated_result.classification,
+        core_rmse=recalculated_result.core_rmse,
+        leave_one_out_rmse=recalculated_result.leave_one_out_rmse,
+        fit_points=tuple(fit_points),
     )
 
 
@@ -134,42 +221,44 @@ def main() -> None:
     args = build_arg_parser().parse_args()
     if args.target_year != 2024:
         raise SystemExit("This calibration entrypoint is currently locked to target-year 2024.")
+    artifact_path = Path(args.search_artifact)
+    if not artifact_path.exists():
+        raise SystemExit(f"Missing search artifact: {artifact_path}")
 
-    nmg_paths = {
-        2018: Path(args.nmg_2018_csv),
-        2019: Path(args.nmg_2019_csv),
-        2020: Path(args.nmg_2020_csv),
-        2021: Path(args.nmg_2021_csv),
-        2022: Path(args.nmg_2022_csv),
-        2023: Path(args.nmg_2023_csv),
-        2024: Path(args.nmg_2024_csv),
-    }
-    for year, path in nmg_paths.items():
-        if not path.exists():
-            raise SystemExit(f"Missing NMG CSV for {year}: {path}")
-    ppd_paths = [Path(path) for path in args.ppd]
-    for path in ppd_paths:
-        if not path.exists():
-            raise SystemExit(f"Missing PPD CSV: {path}")
-
-    result = run_calibration(nmg_paths=nmg_paths, ppd_paths=ppd_paths)
+    result = run_calibration(search_artifact_path=artifact_path)
     if not result.classification.is_admissible:
-        raise SystemExit("Revised v4.2 HPA calibration produced an inadmissible fit.")
+        raise SystemExit("Selected production HPA calibration produced an inadmissible fit.")
 
     print("NMG HPA expectation production calibration")
-    print(f"survey-method: {result.survey_method_name}")
-    print(f"signal-method: {result.signal_method_name}")
-    print(f"category-types: {','.join(sorted(result.category_types))}")
+    print(f"search-artifact: {artifact_path}")
+    print(f"survey-target: {result.selected_candidate.survey_target_spec.name}")
+    print(f"signal-method: {result.selected_candidate.signal_method_name}")
+    print(f"category: {result.selected_candidate.category_key}")
+    print(f"regression: {result.selected_candidate.regression_type}")
+    print(f"anchor-policy: {result.selected_candidate.anchor_policy_name}")
     print(f"plausibility: {result.classification.label}")
-    print(f"fit-rmse: {format_float(result.rmse)}")
-    for year in PRODUCTION_YEARS:
+    print(f"core-rmse: {format_float(result.core_rmse)}")
+    print(f"leave-one-out-rmse: {format_float(result.leave_one_out_rmse)}")
+    for point in result.fit_points:
         print(
-            f"survey-year {year}: expectation={format_float(result.survey_means[year])} "
-            f"ppd-anchor={result.signal_anchor_years[year]} ppd-base={result.signal_base_years[year]} "
-            f"signal={format_float(result.signal_values[year])}"
+            f"{point.survey_wave_label}: expectation={format_float(point.survey_target)} "
+            f"ppd-anchor={point.signal_anchor_year} ppd-base={point.signal_base_year} "
+            f"signal={format_float(point.signal_value)}"
         )
     print(f"HPA_EXPECTATION_FACTOR = {format_float(result.factor)}")
     print(f"HPA_EXPECTATION_CONST = {format_float(result.const)}")
+
+
+__all__ = [
+    "CalibrationOutput",
+    "LOCKED_ANCHOR_POLICY",
+    "LOCKED_CATEGORY_KEY",
+    "LOCKED_REGRESSION_TYPE",
+    "LOCKED_SIGNAL_METHOD",
+    "LOCKED_SURVEY_TARGET",
+    "build_arg_parser",
+    "run_calibration",
+]
 
 
 if __name__ == "__main__":
