@@ -17,21 +17,35 @@ from scripts.python.helpers.ppd.house_price_methods import (
     rank_method_results,
     run_method_search,
 )
+from scripts.python.helpers.ppd.hpa_signal_methods import (
+    HpaSignal,
+    PpdLoadStats,
+    PpdSaleRow,
+    build_hpa_signal,
+    load_ppd_rows as load_hpa_signal_rows,
+    resolve_base_year,
+)
 
 __all__ = [
     "CATEGORY_MODES",
     "DEFAULT_TRIM_FRACTIONS",
+    "HpaSignal",
     "MethodResult",
     "MethodSpec",
+    "PpdLoadStats",
     "PpdParseStats",
     "PpdRow",
+    "PpdSaleRow",
     "SearchOutput",
     "STATUS_MODES",
     "STD_MODES",
     "YEAR_MODES",
+    "build_hpa_signal",
     "build_method_specs",
     "evaluate_method",
+    "load_hpa_signal_rows",
     "load_ppd_rows",
     "rank_method_results",
+    "resolve_base_year",
     "run_method_search",
 ]
