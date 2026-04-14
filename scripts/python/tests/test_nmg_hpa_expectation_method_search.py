@@ -1,73 +1,95 @@
 from __future__ import annotations
 
 import csv
+import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+
+from openpyxl import Workbook
 
 from scripts.python.experiments.nmg.nmg_hpa_expectation_method_search import (
-    CandidateEvaluation,
-    DIAGNOSTIC_YEARS,
+    LEGACY_MODE,
     PRODUCTION_FIT_YEARS,
-    RMSE_TIE_TOLERANCE,
+    PRODUCTION_MODE,
     build_arg_parser,
-    rank_results,
+    main,
     run_method_search,
 )
 
+REPO_ROOT = Path(__file__).resolve().parents[3]
+PRIVATE_PRODUCTION_PATHS = [
+    REPO_ROOT / "private-datasets/nmg/nmg-2015.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2016.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2017.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2018.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2019.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2020.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2021.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2022.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2023.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2024.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2025-pt1.csv",
+    REPO_ROOT / "private-datasets/nmg/nmg-2025-pt2.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2011.csv",
+    REPO_ROOT / "private-datasets/ppd/pp.2012.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2018.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2019.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2020.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2021.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2022.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2023.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2024.csv",
+    REPO_ROOT / "private-datasets/ppd/pp-2025.csv",
+    REPO_ROOT / "private-datasets/nmg/boe-nmg-household-survey-data.xlsx",
+]
+
 
 class TestNmgHpaExpectationMethodSearch(unittest.TestCase):
-    def _write_nmg_csv(self, boe39_code: int) -> Path:
-        handle = tempfile.NamedTemporaryFile(
-            "w",
-            suffix=".csv",
-            delete=False,
-            newline="",
-            encoding="utf-8",
-        )
-        with handle:
-            writer = csv.writer(handle)
-            writer.writerow(["we_factor", "boe39"])
-            writer.writerow([1.0, boe39_code])
-        return Path(handle.name)
-
-    def _write_nmg_csv_for_expectation(self, expectation_mean: float) -> Path:
-        handle = tempfile.NamedTemporaryFile(
-            "w",
-            suffix=".csv",
-            delete=False,
-            newline="",
-            encoding="utf-8",
-        )
-        share_code_6 = expectation_mean / 0.04
-        with handle:
-            writer = csv.writer(handle)
-            writer.writerow(["we_factor", "boe39"])
-            writer.writerow([1.0 - share_code_6, 5])
-            writer.writerow([share_code_6, 6])
-        return Path(handle.name)
+    def _write_nmg_csv(self, filename: str, expectation_mean: float, *, include_subsid: bool = False, include_pid: bool = False) -> Path:
+        temp_dir = tempfile.mkdtemp()
+        path = Path(temp_dir) / filename
+        share_code_6 = max(min(expectation_mean / 0.035, 1.0), 0.0)
+        fieldnames = ["we_factor", "boe39", "dhousing"]
+        if include_subsid:
+            fieldnames.append("subsid")
+        if include_pid:
+            fieldnames.append("pid")
+        with path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=fieldnames)
+            writer.writeheader()
+            first = {"we_factor": f"{1.0 - share_code_6}", "boe39": "5", "dhousing": "1"}
+            second = {"we_factor": f"{share_code_6}", "boe39": "6", "dhousing": "2"}
+            if include_subsid:
+                first["subsid"] = "1001"
+                second["subsid"] = "1002"
+            if include_pid:
+                first["pid"] = "2001"
+                second["pid"] = "2002"
+            writer.writerow(first)
+            writer.writerow(second)
+        return path
 
     def _build_two_year_price_series(
         self,
         yearly_signals: dict[int, float],
         *,
-        base_2016: float = 100.0,
-        base_2017: float = 100.0,
+        base_2011: float = 90.0,
+        base_2012: float = 100.0,
     ) -> dict[int, float]:
-        prices = {2016: base_2016, 2017: base_2017}
+        prices = {2011: base_2011, 2012: base_2012}
         for year in sorted(yearly_signals):
+            if year - 2 not in prices:
+                prices[year - 2] = base_2012
             prices[year] = prices[year - 2] * ((1.0 + yearly_signals[year]) ** 2)
         return prices
 
-    def _write_ppd_csv(self, category_price_series: dict[str, dict[int, float]]) -> Path:
-        handle = tempfile.NamedTemporaryFile(
-            "w",
-            suffix=".csv",
-            delete=False,
-            newline="",
-            encoding="utf-8",
-        )
-        with handle:
+    def _write_ppd_csv(self, filename: str, category_price_series: dict[str, dict[int, float]]) -> Path:
+        temp_dir = tempfile.mkdtemp()
+        path = Path(temp_dir) / filename
+        with path.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle)
             for category_type, yearly_prices in category_price_series.items():
                 for year, price in sorted(yearly_prices.items()):
@@ -92,10 +114,24 @@ class TestNmgHpaExpectationMethodSearch(unittest.TestCase):
                                 "A",
                             ]
                         )
+        return path
+
+    def _write_linkage_workbook(self) -> Path:
+        handle = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False)
+        handle.close()
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "2011-2025 PID-SUBSID"
+        sheet.append(["respid", "wave", "subsidn", "pid"])
+        for year in range(2018, 2025):
+            sheet.append([1, f"Bank of England September {year} - Weighted", 1001 if year == 2018 else None, 2001])
+            sheet.append([2, f"Bank of England September {year} - Weighted", 1002 if year == 2018 else None, 2002])
+        workbook.save(handle.name)
+        workbook.close()
         return Path(handle.name)
 
-    def _build_search_fixture(self) -> tuple[dict[int, Path], Path]:
-        category_a_signals = {
+    def _build_production_fixture(self) -> tuple[dict[str, Path], list[Path], Path]:
+        signal_values = {
             2018: 0.02,
             2019: 0.03,
             2020: 0.04,
@@ -103,206 +139,223 @@ class TestNmgHpaExpectationMethodSearch(unittest.TestCase):
             2022: 0.06,
             2023: 0.07,
             2024: 0.08,
+            2025: 0.09,
         }
-        category_a_prices = self._build_two_year_price_series(category_a_signals)
-        category_b_prices = {
-            2016: 100.0,
-            2017: 100.0,
-            2018: 400.0,
-            2019: 400.0,
-            2020: 100.0,
-            2021: 100.0,
-            2022: 25.0,
-            2023: 25.0,
-            2024: 9.0,
+        category_a_prices = self._build_two_year_price_series(signal_values)
+        category_b_prices = {year: 400.0 for year in category_a_prices}
+        nmg_paths = {
+            "2015": self._write_nmg_csv("nmg-2015.csv", 0.01),
+            "2016": self._write_nmg_csv("nmg-2016.csv", 0.012),
+            "2017": self._write_nmg_csv("nmg-2017.csv", 0.013),
+            "2018": self._write_nmg_csv("nmg-2018.csv", 0.014, include_subsid=True),
+            "2019": self._write_nmg_csv("nmg-2019.csv", (0.2 * signal_values[2019]) + 0.01, include_pid=True),
+            "2020": self._write_nmg_csv("nmg-2020.csv", (0.2 * signal_values[2020]) + 0.01, include_pid=True),
+            "2021": self._write_nmg_csv("nmg-2021.csv", (0.2 * signal_values[2021]) + 0.01, include_pid=True),
+            "2022": self._write_nmg_csv("nmg-2022.csv", (0.2 * signal_values[2022]) + 0.01, include_pid=True),
+            "2023": self._write_nmg_csv("nmg-2023.csv", (0.2 * signal_values[2023]) + 0.01, include_pid=True),
+            "2024": self._write_nmg_csv("nmg-2024.csv", (0.2 * signal_values[2024]) + 0.01, include_pid=True),
+            "2025-pt1": self._write_nmg_csv("nmg-2025-pt1.csv", 0.028, include_pid=True),
+            "2025-pt2": self._write_nmg_csv("nmg-2025-pt2.csv", 0.019, include_pid=True),
+        }
+        ppd_paths = [
+            self._write_ppd_csv("pp-2011.csv", {"A": {2011: category_a_prices[2011]}, "B": {2011: category_b_prices[2011]}}),
+            self._write_ppd_csv("pp.2012.csv", {"A": {2012: category_a_prices[2012]}, "B": {2012: category_b_prices[2012]}}),
+        ]
+        for year in range(2018, 2026):
+            ppd_paths.append(
+                self._write_ppd_csv(
+                    f"pp-{year}.csv",
+                    {"A": {year: category_a_prices[year]}, "B": {year: category_b_prices[year]}},
+                )
+            )
+        linkage_path = self._write_linkage_workbook()
+        return nmg_paths, ppd_paths, linkage_path
+
+    def _build_legacy_fixture(self) -> tuple[dict[str, Path], list[Path]]:
+        expectations = {
+            "2014": 0.036,
+            "2015": 0.033,
+            "2016": 0.011,
+            "2017": 0.013,
+            "2018": -0.0015,
         }
         nmg_paths = {
-            2014: self._write_nmg_csv_for_expectation(0.018),
-            2016: self._write_nmg_csv_for_expectation(0.016),
-            **{
-                year: self._write_nmg_csv_for_expectation((0.2 * signal) + 0.01)
-                for year, signal in category_a_signals.items()
-            },
+            wave_label: self._write_nmg_csv(f"nmg-{wave_label}.csv", expectation)
+            for wave_label, expectation in expectations.items()
         }
-        ppd_path = self._write_ppd_csv(
-            {
-                "A": category_a_prices,
-                "B": category_b_prices,
-            }
-        )
-        return nmg_paths, ppd_path
+        ppd_paths = [
+            self._write_ppd_csv("pp-2011.csv", {"A": {2011: 100.0}, "B": {2011: 120.0}}),
+            self._write_ppd_csv("pp.2012.csv", {"A": {2012: 110.0}, "B": {2012: 130.0}}),
+            self._write_ppd_csv("pp-2018.csv", {"A": {2018: 180.0}, "B": {2018: 220.0}}),
+        ]
+        return nmg_paths, ppd_paths
 
-    def _cleanup_fixture(self, nmg_paths: dict[int, Path], ppd_path: Path) -> None:
-        for path in [*nmg_paths.values(), ppd_path]:
-            path.unlink(missing_ok=True)
+    def _cleanup_paths(self, *paths: Path) -> None:
+        for path in paths:
+            if path.is_file():
+                path.unlink(missing_ok=True)
+            if path.parent.is_dir():
+                try:
+                    path.parent.rmdir()
+                except OSError:
+                    pass
 
-    def test_parser_defaults_use_modern_fit_window(self) -> None:
-        args = build_arg_parser().parse_args(
+    def test_parser_supports_legacy_and_production_modes(self) -> None:
+        parser = build_arg_parser()
+        production_args = parser.parse_args(
             [
-                "nmg-2014.csv",
-                "nmg-2016.csv",
-                "nmg-2018.csv",
-                "nmg-2019.csv",
-                "nmg-2020.csv",
-                "nmg-2021.csv",
-                "nmg-2022.csv",
-                "nmg-2023.csv",
-                "nmg-2024.csv",
+                PRODUCTION_MODE,
+                "--nmg-wave",
+                "2018=nmg-2018.csv",
+                "--nmg-wave",
+                "2019=nmg-2019.csv",
+                "--nmg-wave",
+                "2020=nmg-2020.csv",
+                "--nmg-wave",
+                "2021=nmg-2021.csv",
+                "--nmg-wave",
+                "2022=nmg-2022.csv",
+                "--nmg-wave",
+                "2023=nmg-2023.csv",
+                "--nmg-wave",
+                "2024=nmg-2024.csv",
+                "--ppd",
                 "pp-2018.csv",
-                "pp-2019.csv",
-                "pp-2020.csv",
-                "pp-2021.csv",
-                "pp-2022.csv",
-                "pp-2023.csv",
-                "pp-2024.csv",
+            ]
+        )
+        legacy_args = parser.parse_args(
+            [
+                LEGACY_MODE,
+                "--nmg-wave",
+                "2014=nmg-2014.csv",
+                "--nmg-wave",
+                "2015=nmg-2015.csv",
+                "--nmg-wave",
+                "2016=nmg-2016.csv",
+                "--nmg-wave",
+                "2017=nmg-2017.csv",
+                "--nmg-wave",
+                "2018=nmg-2018.csv",
+                "--ppd",
+                "pp-2011.csv",
             ]
         )
 
-        self.assertEqual(args.fit_years, "2018,2019,2020,2021,2022,2023,2024")
-        self.assertEqual(PRODUCTION_FIT_YEARS, (2018, 2019, 2020, 2021, 2022, 2023, 2024))
+        self.assertEqual(production_args.fit_years, "2018,2019,2020,2021,2022,2023,2024")
+        self.assertEqual(legacy_args.legacy_target_factor, 0.44)
 
-    def test_ranking_prefers_preferred_band_before_lower_rmse_outside_band(self) -> None:
-        preferred = CandidateEvaluation(
-            survey_method_name="midpoint_rounded",
-            signal_method_name="java_like_annualised",
-            factor=0.44,
-            const=-0.007,
-            is_admissible=True,
-            is_preferred=True,
-            rmse=0.012,
-            survey_simplicity_rank=0,
-            signal_simplicity_rank=0,
-        )
-        admissible_only = CandidateEvaluation(
-            survey_method_name="midpoint_exact",
-            signal_method_name="annual_mean_annualised",
-            factor=1.0,
-            const=0.02,
-            is_admissible=True,
-            is_preferred=False,
-            rmse=0.011,
-            survey_simplicity_rank=1,
-            signal_simplicity_rank=1,
-        )
-
-        ranked = rank_results([admissible_only, preferred])
-
-        self.assertTrue(ranked[0].is_preferred)
-
-    def test_ranking_uses_simplicity_only_when_rmse_is_effectively_tied(self) -> None:
-        simpler = CandidateEvaluation(
-            survey_method_name="midpoint_rounded",
-            signal_method_name="java_like_annualised",
-            factor=0.44,
-            const=-0.007,
-            is_admissible=True,
-            is_preferred=True,
-            rmse=0.0100000,
-            survey_simplicity_rank=0,
-            signal_simplicity_rank=0,
-        )
-        less_simple = CandidateEvaluation(
-            survey_method_name="midpoint_exact",
-            signal_method_name="annual_mean_annualised",
-            factor=0.44,
-            const=-0.007,
-            is_admissible=True,
-            is_preferred=True,
-            rmse=0.0100004,
-            survey_simplicity_rank=1,
-            signal_simplicity_rank=1,
-        )
-
-        self.assertLess(abs(less_simple.rmse - simpler.rmse), RMSE_TIE_TOLERANCE)
-
-        ranked = rank_results([less_simple, simpler])
-
-        self.assertEqual(ranked[0].survey_method_name, simpler.survey_method_name)
-        self.assertEqual(ranked[0].signal_method_name, simpler.signal_method_name)
-
-    def test_method_search_uses_category_a_filter_for_ranked_production_candidates(self) -> None:
-        nmg_paths, ppd_path = self._build_search_fixture()
+    def test_run_method_search_production_default_surface_is_narrowed_to_defended_family(self) -> None:
+        nmg_paths, ppd_paths, linkage_path = self._build_production_fixture()
         try:
             output = run_method_search(
-                nmg_paths=nmg_paths,
-                ppd_paths=[ppd_path],
+                mode=PRODUCTION_MODE,
+                nmg_wave_paths=nmg_paths,
+                ppd_paths=ppd_paths,
+                linkage_xlsx_path=linkage_path,
                 fit_years=PRODUCTION_FIT_YEARS,
             )
         finally:
-            self._cleanup_fixture(nmg_paths, ppd_path)
+            self._cleanup_paths(*nmg_paths.values(), *ppd_paths, linkage_path)
 
-        self.assertEqual(output.production_category_types, {"A"})
-        self.assertEqual(output.production_signal_method_name, "annual_mean_annualised")
+        self.assertEqual(output.selected_result.candidate_spec.survey_target_spec.family_name, "national_cross_section")
         self.assertEqual({result.signal_method_name for result in output.ranked_results}, {"annual_mean_annualised"})
+        self.assertEqual({result.category_key for result in output.ranked_results}, {"A"})
+        self.assertEqual({result.candidate_spec.survey_target_spec.family_name for result in output.ranked_results}, {"national_cross_section"})
+        self.assertEqual({result.regression_type for result in output.ranked_results}, {"ols", "huber"})
+        self.assertEqual(output.fit_wave_labels, tuple(str(year) for year in PRODUCTION_FIT_YEARS))
 
-    def test_method_search_reports_all_transactions_comparison_as_diagnostic_only(self) -> None:
-        nmg_paths, ppd_path = self._build_search_fixture()
+    @unittest.skipUnless(all(path.exists() for path in PRIVATE_PRODUCTION_PATHS), "requires private production datasets")
+    def test_real_data_production_cli_selects_midpoint_exact_huber_default(self) -> None:
+        artifact_handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        artifact_handle.close()
+        argv = [
+            "nmg_hpa_expectation_method_search.py",
+            PRODUCTION_MODE,
+            "--artifact-output",
+            artifact_handle.name,
+        ]
+        for wave_label in ("2015", "2016", "2017", "2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025-pt1", "2025-pt2"):
+            argv.extend(["--nmg-wave", f"{wave_label}=private-datasets/nmg/nmg-{wave_label}.csv"])
+        for ppd_name in ("pp-2011.csv", "pp.2012.csv", "pp-2018.csv", "pp-2019.csv", "pp-2020.csv", "pp-2021.csv", "pp-2022.csv", "pp-2023.csv", "pp-2024.csv", "pp-2025.csv"):
+            argv.extend(["--ppd", f"private-datasets/ppd/{ppd_name}"])
+        argv.extend(["--linkage-xlsx", "private-datasets/nmg/boe-nmg-household-survey-data.xlsx"])
         try:
-            output = run_method_search(
-                nmg_paths=nmg_paths,
-                ppd_paths=[ppd_path],
-                fit_years=PRODUCTION_FIT_YEARS,
-            )
+            with patch.object(sys, "argv", argv):
+                main()
+            payload = json.loads(Path(artifact_handle.name).read_text(encoding="utf-8"))
         finally:
-            self._cleanup_fixture(nmg_paths, ppd_path)
+            Path(artifact_handle.name).unlink(missing_ok=True)
 
-        self.assertIn("all_transactions", output.comparison_results)
-        self.assertEqual(output.comparison_results["all_transactions"].signal_method_name, "annual_mean_annualised")
-        self.assertFalse(output.comparison_results["all_transactions"].is_admissible)
-
-    def test_method_search_reports_strict_2020_to_2024_sensitivity(self) -> None:
-        nmg_paths, ppd_path = self._build_search_fixture()
-        try:
-            output = run_method_search(
-                nmg_paths=nmg_paths,
-                ppd_paths=[ppd_path],
-                fit_years=PRODUCTION_FIT_YEARS,
-            )
-        finally:
-            self._cleanup_fixture(nmg_paths, ppd_path)
-
-        self.assertEqual(output.strict_window_years, (2020, 2021, 2022, 2023, 2024))
-        self.assertEqual({result.signal_method_name for result in output.strict_window_results}, {"annual_mean_annualised"})
-
-    def test_run_method_search_reports_unavailable_diagnostic_years_without_failing(self) -> None:
-        nmg_paths = {
-            2014: self._write_nmg_csv(6),
-            2016: self._write_nmg_csv(6),
-            2018: self._write_nmg_csv(6),
-            2019: self._write_nmg_csv(6),
-            2020: self._write_nmg_csv(6),
-            2021: self._write_nmg_csv(6),
-            2022: self._write_nmg_csv(6),
-            2023: self._write_nmg_csv(6),
-            2024: self._write_nmg_csv(6),
-        }
-        ppd_path = self._write_ppd_csv(
-            {
-                "A": {
-                    2016: 100.0,
-                    2017: 100.0,
-                    2018: 121.0,
-                    2019: 121.0,
-                    2020: 144.0,
-                    2021: 144.0,
-                    2022: 169.0,
-                    2023: 169.0,
-                    2024: 196.0,
-                }
-            }
+        selected = payload["selected_result"]
+        spec = selected["candidate_spec"]
+        self.assertEqual(
+            spec["name"],
+            "national_cross_section__midpoint_exact__annual_mean_annualised__A__huber__same_year_two_year_base",
         )
+        self.assertAlmostEqual(selected["factor"], 0.2887897073, places=10)
+        self.assertAlmostEqual(selected["const"], -0.0059593352, places=10)
+
+    def test_run_method_search_legacy_reports_gap_for_missing_pre_2018_ppd_years(self) -> None:
+        nmg_paths, ppd_paths = self._build_legacy_fixture()
         try:
             output = run_method_search(
-                nmg_paths=nmg_paths,
-                ppd_paths=[ppd_path],
-                fit_years=PRODUCTION_FIT_YEARS,
+                mode=LEGACY_MODE,
+                nmg_wave_paths=nmg_paths,
+                ppd_paths=ppd_paths,
             )
         finally:
-            for path in [*nmg_paths.values(), ppd_path]:
-                path.unlink(missing_ok=True)
+            self._cleanup_paths(*nmg_paths.values(), *ppd_paths)
 
-        self.assertEqual(output.unavailable_diagnostic_years, set(DIAGNOSTIC_YEARS))
-        self.assertTrue(output.ranked_results)
+        self.assertTrue(output.gap_report)
+        self.assertIn("2013, 2014, 2015, 2016, 2017", output.gap_report[0])
+        self.assertIsNotNone(output.selected_result.legacy_distance)
+
+    def test_production_cli_writes_artifact(self) -> None:
+        nmg_paths, ppd_paths, linkage_path = self._build_production_fixture()
+        artifact_handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        artifact_handle.close()
+        argv = [
+            "nmg_hpa_expectation_method_search.py",
+            PRODUCTION_MODE,
+        ]
+        for wave_label, path in nmg_paths.items():
+            argv.extend(["--nmg-wave", f"{wave_label}={path}"])
+        for path in ppd_paths:
+            argv.extend(["--ppd", str(path)])
+        argv.extend(["--linkage-xlsx", str(linkage_path), "--artifact-output", artifact_handle.name])
+        try:
+            with patch.object(sys, "argv", argv):
+                main()
+            payload = json.loads(Path(artifact_handle.name).read_text(encoding="utf-8"))
+        finally:
+            self._cleanup_paths(*nmg_paths.values(), *ppd_paths, linkage_path, Path(artifact_handle.name))
+
+        self.assertEqual(payload["mode"], PRODUCTION_MODE)
+        self.assertIn("selected_result", payload)
+        self.assertEqual(payload["fit_wave_labels"], [str(year) for year in PRODUCTION_FIT_YEARS])
+
+    def test_legacy_cli_writes_artifact(self) -> None:
+        nmg_paths, ppd_paths = self._build_legacy_fixture()
+        artifact_handle = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        artifact_handle.close()
+        argv = [
+            "nmg_hpa_expectation_method_search.py",
+            LEGACY_MODE,
+        ]
+        for wave_label, path in nmg_paths.items():
+            argv.extend(["--nmg-wave", f"{wave_label}={path}"])
+        for path in ppd_paths:
+            argv.extend(["--ppd", str(path)])
+        argv.extend(["--artifact-output", artifact_handle.name])
+        try:
+            with patch.object(sys, "argv", argv):
+                main()
+            payload = json.loads(Path(artifact_handle.name).read_text(encoding="utf-8"))
+        finally:
+            self._cleanup_paths(*nmg_paths.values(), *ppd_paths, Path(artifact_handle.name))
+
+        self.assertEqual(payload["mode"], LEGACY_MODE)
+        self.assertTrue(payload["gap_report"])
 
 
 if __name__ == "__main__":
