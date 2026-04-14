@@ -8,6 +8,7 @@ from pathlib import Path
 from scripts.python.helpers.ppd.hpa_signal_methods import (
     PpdSaleRow,
     build_hpa_signal,
+    build_yearly_hpa_signals,
     load_ppd_rows,
     resolve_base_year,
 )
@@ -45,6 +46,23 @@ class TestPpdHpaSignalMethods(unittest.TestCase):
         self.assertEqual(rows[0].transfer_month, 2)
         self.assertEqual(rows[1].transfer_year, 2014)
         self.assertEqual(rows[1].transfer_month, 11)
+
+    def test_load_ppd_rows_can_filter_to_category_a_only(self) -> None:
+        csv_path = self._write_ppd_csv(
+            [
+                ["{A}", "100000", "2020-10-15 00:00", "AA1 1AA", "T", "N", "F", "1", "", "STREET", "", "TOWN", "DIST", "COUNTY", "A", "A"],
+                ["{B}", "125000", "2020-10-15 00:00", "AA1 1AB", "T", "N", "F", "2", "", "STREET", "", "TOWN", "DIST", "COUNTY", "B", "A"],
+            ]
+        )
+        try:
+            rows, stats = load_ppd_rows([csv_path], category_types={"A"})
+        finally:
+            csv_path.unlink(missing_ok=True)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(stats.rows_loaded, 1)
+        self.assertEqual(rows[0].transfer_year, 2020)
+        self.assertEqual(rows[0].transfer_month, 10)
 
     def test_annual_mean_annualised_signal_uses_anchor_gap_years(self) -> None:
         rows = [
@@ -122,6 +140,62 @@ class TestPpdHpaSignalMethods(unittest.TestCase):
         self.assertEqual(resolve_base_year(available_years, anchor_year=2024), 2022)
         self.assertEqual(resolve_base_year(available_years, anchor_year=2018), 2012)
         self.assertEqual(resolve_base_year(available_years, anchor_year=2012), 2011)
+
+    def test_build_hpa_signal_accepts_same_year_anchor_with_two_year_base(self) -> None:
+        rows = [
+            PpdSaleRow(price=100.0, transfer_year=2018, transfer_month=1),
+            PpdSaleRow(price=121.0, transfer_year=2020, transfer_month=1),
+        ]
+
+        signal = build_hpa_signal(
+            rows,
+            anchor_year=2020,
+            base_year=2018,
+            method_name="annual_mean_annualised",
+        )
+
+        self.assertEqual(signal.anchor_year, 2020)
+        self.assertEqual(signal.base_year, 2018)
+
+    def test_build_yearly_hpa_signals_uses_two_year_base_for_each_anchor(self) -> None:
+        rows = [
+            PpdSaleRow(price=90.0, transfer_year=2018, transfer_month=1),
+            PpdSaleRow(price=100.0, transfer_year=2019, transfer_month=1),
+            PpdSaleRow(price=121.0, transfer_year=2020, transfer_month=1),
+            PpdSaleRow(price=144.0, transfer_year=2021, transfer_month=1),
+        ]
+
+        signals = build_yearly_hpa_signals(
+            rows,
+            anchor_years=[2020, 2021],
+            method_name="annual_mean_annualised",
+        )
+
+        self.assertEqual(signals[2020].base_year, 2018)
+        self.assertEqual(signals[2021].base_year, 2019)
+
+    def test_build_yearly_hpa_signals_ignores_category_b_rows_when_category_a_filter_is_active(self) -> None:
+        csv_path = self._write_ppd_csv(
+            [
+                ["{A-2018}", "100", "2018-10-15 00:00", "AA1 1AA", "T", "N", "F", "1", "", "STREET", "", "TOWN", "DIST", "COUNTY", "A", "A"],
+                ["{B-2018}", "400", "2018-10-15 00:00", "AA1 1AB", "T", "N", "F", "2", "", "STREET", "", "TOWN", "DIST", "COUNTY", "B", "A"],
+                ["{A-2020}", "121", "2020-10-15 00:00", "AA1 1AC", "T", "N", "F", "3", "", "STREET", "", "TOWN", "DIST", "COUNTY", "A", "A"],
+                ["{B-2020}", "324", "2020-10-15 00:00", "AA1 1AD", "T", "N", "F", "4", "", "STREET", "", "TOWN", "DIST", "COUNTY", "B", "A"],
+            ]
+        )
+        try:
+            rows, _stats = load_ppd_rows([csv_path], category_types={"A"})
+        finally:
+            csv_path.unlink(missing_ok=True)
+
+        signals = build_yearly_hpa_signals(
+            rows,
+            anchor_years=[2020],
+            method_name="annual_mean_annualised",
+        )
+
+        self.assertEqual(signals[2020].anchor_year, 2020)
+        self.assertAlmostEqual(signals[2020].value, 0.10, places=12)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@ import unittest
 
 from scripts.python.helpers.nmg.hpa_expectation import (
     aggregate_expectation,
+    classify_hpa_expectation_fit,
+    compute_fit_rmse,
     fit_linear_rule,
     get_expectation_method_spec,
     map_boe39_code_to_hpa,
@@ -58,6 +60,21 @@ class TestNmgHpaExpectation(unittest.TestCase):
 
         self.assertAlmostEqual(factor, 0.44, places=12)
         self.assertAlmostEqual(const, -0.007, places=12)
+
+    def test_classify_plausibility_distinguishes_preferred_and_admissible_only(self) -> None:
+        self.assertEqual(classify_hpa_expectation_fit(0.44, -0.007).label, "preferred")
+        self.assertEqual(classify_hpa_expectation_fit(1.0, 0.02).label, "admissible")
+        self.assertEqual(classify_hpa_expectation_fit(-0.1, 0.0).label, "inadmissible")
+
+    def test_compute_fit_rmse_uses_all_anchor_years(self) -> None:
+        rmse = compute_fit_rmse(
+            x_values=[0.01, 0.02, 0.03],
+            y_values=[0.03, 0.04, 0.05],
+            factor=1.0,
+            const=0.02,
+        )
+
+        self.assertAlmostEqual(rmse, 0.0, places=12)
 
 
 if __name__ == "__main__":

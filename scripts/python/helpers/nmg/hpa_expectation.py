@@ -9,6 +9,7 @@ Helpers for reconstructing the national NMG house-price expectation rule.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import sqrt
 from typing import Iterable
 
 from scripts.python.helpers.nmg.parsing import parse_int, parse_positive_float
@@ -45,6 +46,13 @@ class ExpectationAggregate:
     rows_invalid_code: int
     rows_invalid_weight: int
     weight_total_used: float
+
+
+@dataclass(frozen=True)
+class HpaExpectationFitClassification:
+    label: str
+    is_admissible: bool
+    is_preferred: bool
 
 
 EXPECTATION_METHOD_SPECS = {
@@ -186,12 +194,48 @@ def fit_linear_rule(*, x_values: Iterable[float], y_values: Iterable[float]) -> 
     return factor, const
 
 
+def classify_hpa_expectation_fit(factor: float, const: float) -> HpaExpectationFitClassification:
+    is_admissible = 0.0 <= factor <= 1.25 and abs(const) <= 0.03
+    is_preferred = 0.2 <= factor <= 0.8 and abs(const) <= 0.01
+    if is_preferred:
+        label = "preferred"
+    elif is_admissible:
+        label = "admissible"
+    else:
+        label = "inadmissible"
+    return HpaExpectationFitClassification(
+        label=label,
+        is_admissible=is_admissible,
+        is_preferred=is_preferred,
+    )
+
+
+def compute_fit_rmse(
+    *,
+    x_values: Iterable[float],
+    y_values: Iterable[float],
+    factor: float,
+    const: float,
+) -> float:
+    x_list = [float(value) for value in x_values]
+    y_list = [float(value) for value in y_values]
+    if len(x_list) != len(y_list):
+        raise ValueError("x_values and y_values must have the same length.")
+    if not x_list:
+        raise ValueError("At least one anchor point is required.")
+    squared_errors = [((factor * x_value) + const - y_value) ** 2 for x_value, y_value in zip(x_list, y_list)]
+    return sqrt(sum(squared_errors) / len(squared_errors))
+
+
 __all__ = [
     "EXPECTATION_DONT_KNOW_CODE",
     "EXPECTATION_METHOD_SPECS",
     "ExpectationAggregate",
     "ExpectationMethodSpec",
+    "HpaExpectationFitClassification",
     "aggregate_expectation",
+    "classify_hpa_expectation_fit",
+    "compute_fit_rmse",
     "fit_linear_rule",
     "get_expectation_method_spec",
     "map_boe39_code_to_hpa",

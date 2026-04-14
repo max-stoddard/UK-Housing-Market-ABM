@@ -16,6 +16,7 @@ from typing import Iterable, Sequence
 
 PPD_PRICE_INDEX = 1
 PPD_DATE_INDEX = 2
+PPD_CATEGORY_TYPE_INDEX = 14
 
 
 @dataclass(frozen=True)
@@ -65,8 +66,19 @@ def load_ppd_rows(
     delimiter: str = ",",
     price_index: int = PPD_PRICE_INDEX,
     transfer_date_index: int = PPD_DATE_INDEX,
+    category_type_index: int = PPD_CATEGORY_TYPE_INDEX,
+    category_types: set[str] | None = None,
 ) -> tuple[list[PpdSaleRow], PpdLoadStats]:
-    max_required_index = max(price_index, transfer_date_index)
+    normalized_category_types = (
+        {str(category_type).strip() for category_type in category_types}
+        if category_types is not None
+        else None
+    )
+    max_required_index = max(
+        price_index,
+        transfer_date_index,
+        category_type_index if normalized_category_types is not None else 0,
+    )
     rows: list[PpdSaleRow] = []
     stats = PpdLoadStats()
 
@@ -94,6 +106,10 @@ def load_ppd_rows(
                 if year_month is None:
                     stats.rows_invalid_transfer_date += 1
                     continue
+                if normalized_category_types is not None:
+                    category_type = row[category_type_index].strip()
+                    if category_type not in normalized_category_types:
+                        continue
                 rows.append(
                     PpdSaleRow(
                         price=price,
@@ -219,11 +235,36 @@ def build_hpa_signal(
     )
 
 
+def build_yearly_hpa_signals(
+    rows: Sequence[PpdSaleRow],
+    *,
+    anchor_years: Sequence[int],
+    method_name: str,
+    preferred_gap: int = 2,
+) -> dict[int, HpaSignal]:
+    available_years = {row.transfer_year for row in rows}
+    signals: dict[int, HpaSignal] = {}
+    for anchor_year in anchor_years:
+        base_year = resolve_base_year(
+            available_years,
+            anchor_year=anchor_year,
+            preferred_gap=preferred_gap,
+        )
+        signals[int(anchor_year)] = build_hpa_signal(
+            rows,
+            anchor_year=int(anchor_year),
+            base_year=base_year,
+            method_name=method_name,
+        )
+    return signals
+
+
 __all__ = [
     "HpaSignal",
     "PpdLoadStats",
     "PpdSaleRow",
     "build_hpa_signal",
+    "build_yearly_hpa_signals",
     "load_ppd_rows",
     "resolve_base_year",
 ]
