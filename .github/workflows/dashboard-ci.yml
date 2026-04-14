@@ -9,6 +9,8 @@ on:
       - dashboard/**
       - input-data-versions/**
       - .github/workflows/dashboard-ci.yml
+      - .dockerignore
+      - render.yaml
   push:
     branches:
       - master
@@ -16,6 +18,8 @@ on:
       - dashboard/**
       - input-data-versions/**
       - .github/workflows/dashboard-ci.yml
+      - .dockerignore
+      - render.yaml
 
 concurrency:
   group: dashboard-ci-${{ github.workflow }}-${{ github.ref }}
@@ -25,6 +29,57 @@ permissions:
   contents: read
 
 jobs:
+  classify-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      static_changed: ${{ steps.classify.outputs.static_changed }}
+      api_changed: ${{ steps.classify.outputs.api_changed }}
+      blueprint_changed: ${{ steps.classify.outputs.blueprint_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: classify
+        name: Classify changed paths
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BEFORE="${{ github.event.pull_request.base.sha }}"
+            AFTER="${{ github.event.pull_request.head.sha }}"
+          else
+            BEFORE="${{ github.event.before }}"
+            AFTER="${{ github.sha }}"
+          fi
+
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            CHANGED="$(git ls-tree -r --name-only "$AFTER")"
+          else
+            CHANGED="$(git diff --name-only "$BEFORE" "$AFTER")"
+          fi
+
+          printf '%s\n' "$CHANGED" > changed-paths.txt
+
+          if grep -Eq '^(dashboard/src/|dashboard/shared/|dashboard/public/|dashboard/\.nvmrc$|dashboard/package\.json$|dashboard/package-lock\.json$|dashboard/vite\.config\.ts$|dashboard/tsconfig\.json$|dashboard/index\.html$)' changed-paths.txt; then
+            echo "static_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "static_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(dashboard/Dockerfile\.api$|dashboard/server/|dashboard/shared/|dashboard/package\.json$|dashboard/package-lock\.json$|dashboard/tsconfig\.server\.json$|input-data-versions/|\.dockerignore$)' changed-paths.txt; then
+            echo "api_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "api_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^render\.yaml$' changed-paths.txt; then
+            echo "blueprint_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "blueprint_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   dashboard-checks:
     runs-on: ubuntu-latest
     defaults:
@@ -37,7 +92,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version-file: dashboard/.nvmrc
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
@@ -53,59 +108,51 @@ jobs:
       - name: Smoke tests
         run: npm run test:smoke
 
+  api-container-checks:
+    runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+    if: needs.classify-changes.outputs.api_changed == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build dashboard API container
+        run: docker build --file dashboard/Dockerfile.api --tag uk-housing-model-dashboard-api:${{ github.sha }} .
+
   render-deploy-fallback:
     runs-on: ubuntu-latest
     needs:
+      - classify-changes
       - dashboard-checks
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+      - api-container-checks
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.classify-changes.result == 'success' &&
+      needs.dashboard-checks.result == 'success' &&
+      (needs.api-container-checks.result == 'success' || needs.api-container-checks.result == 'skipped')
     env:
       RENDER_STATIC_DEPLOY_HOOK: ${{ secrets.RENDER_STATIC_DEPLOY_HOOK }}
       RENDER_API_DEPLOY_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - id: classify
-        name: Classify changed paths
-        run: |
-          set -euo pipefail
-          BEFORE="${{ github.event.before }}"
-          AFTER="${{ github.sha }}"
-
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            CHANGED="$(git ls-tree -r --name-only "$AFTER")"
-          else
-            CHANGED="$(git diff --name-only "$BEFORE" "$AFTER")"
-          fi
-
-          printf '%s\n' "$CHANGED" > changed-paths.txt
-
-          if grep -Eq '^(dashboard/src/|dashboard/shared/|dashboard/package\.json$|dashboard/package-lock\.json$|dashboard/vite\.config\.ts$|dashboard/index\.html$)' changed-paths.txt; then
-            echo "static_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "static_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-          if grep -Eq '^(dashboard/server/|dashboard/shared/|dashboard/package\.json$|dashboard/package-lock\.json$|input-data-versions/)' changed-paths.txt; then
-            echo "api_changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "api_changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Trigger Render static deploy hook
-        if: steps.classify.outputs.static_changed == 'true' && env.RENDER_STATIC_DEPLOY_HOOK != ''
+        if: needs.classify-changes.outputs.static_changed == 'true' && env.RENDER_STATIC_DEPLOY_HOOK != ''
         run: curl --fail --silent --show-error -X POST "$RENDER_STATIC_DEPLOY_HOOK"
 
       - name: Trigger Render API deploy hook
-        if: steps.classify.outputs.api_changed == 'true' && env.RENDER_API_DEPLOY_HOOK != ''
+        if: needs.classify-changes.outputs.api_changed == 'true' && env.RENDER_API_DEPLOY_HOOK != ''
         run: curl --fail --silent --show-error -X POST "$RENDER_API_DEPLOY_HOOK"
 
       - name: Missing static deploy hook secret
-        if: steps.classify.outputs.static_changed == 'true' && env.RENDER_STATIC_DEPLOY_HOOK == ''
+        if: needs.classify-changes.outputs.static_changed == 'true' && env.RENDER_STATIC_DEPLOY_HOOK == ''
         run: echo "RENDER_STATIC_DEPLOY_HOOK is not set; static fallback trigger skipped."
 
       - name: Missing API deploy hook secret
-        if: steps.classify.outputs.api_changed == 'true' && env.RENDER_API_DEPLOY_HOOK == ''
+        if: needs.classify-changes.outputs.api_changed == 'true' && env.RENDER_API_DEPLOY_HOOK == ''
         run: echo "RENDER_API_DEPLOY_HOOK is not set; API fallback trigger skipped."
+
+      - name: Blueprint sync required
+        if: needs.classify-changes.outputs.blueprint_changed == 'true'
+        run: echo "render.yaml changed; re-sync the Render Blueprint manually because deploy hooks do not apply Blueprint config changes."
