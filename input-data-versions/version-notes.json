@@ -755,6 +755,53 @@
           "decision_logic": "Objective=policy-story interpretability; Why=match the representative-bank hard LTV caps to the central-bank defaults for owner-occupier lending and raise the BTL ceiling to 0.85 for aligned experiments; Tradeoff=this snapshot has not yet been revalidated against R8 outputs."
         }
       ]
+    },
+    {
+      "version_id": "v4.2",
+      "snapshot_folder": "v4.2",
+      "validation_dataset": "r8",
+      "description": "Updated HPA_EXPECTATION_FACTOR and HPA_EXPECTATION_CONST via revised Category A NMG/PPD expectation calibration",
+      "updated_data_sources": [
+        "nmg",
+        "ppd"
+      ],
+      "calibration_files": [
+        "scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py",
+        "scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py"
+      ],
+      "config_parameters": [
+        "HPA_EXPECTATION_FACTOR",
+        "HPA_EXPECTATION_CONST"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "HPA_EXPECTATION_FACTOR",
+          "dataset_source": null
+        },
+        {
+          "config_parameter": "HPA_EXPECTATION_CONST",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": 6.977021,
+        "housing_wealth_diff_pct": 18.616584,
+        "financial_wealth_diff_pct": 13.620395,
+        "note": "2024 validation complete; overallCompositeLoss=0.188565. Household-realism families pass, while mortgage approvals and housing transactions remain outside their target bands. Versus the canonical v4.1 run, v4.2 raises mean house prices by 2.73%, housing transactions by 7.96%, mortgage approvals by 7.89%, and mortgage debt-to-income by 2.86%."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "HPA_EXPECTATION_FACTOR",
+            "HPA_EXPECTATION_CONST"
+          ],
+          "improvement_summary": "Replaced the rejected all-transactions expectation proxy with the revised Category A-only annualised PPD signal and promoted the admissible midpoint_exact fit into the v4.2 snapshot.",
+          "why_changed": "To avoid shipping the negative-factor all-transactions fit while keeping the production expectation rule simple, reproducible, and aligned with the approved v4.2 design.",
+          "method_chosen": "Category A only + annual_mean_annualised + midpoint_exact over the 2018-2024 NMG window, yielding HPA_EXPECTATION_FACTOR=0.1150752545 and HPA_EXPECTATION_CONST=0.0034084162; the all-transactions comparison was rejected at factor=-0.0919792144 and const=0.0104582814; strict 2020-2024 sensitivity remained admissible at factor=0.0535966141 and const=0.0092043687.",
+          "decision_logic": "Objective=direct method justification; Why=rank admissible before inadmissible, then preferred-band status, in-window RMSE, and simplicity under the fixed Category A annual_mean_annualised production surface; Tradeoff=the winning fit is admissible but outside the preferred factor band, early anchors still rely on fallback bases (2018->2012, 2019->2018), and 2025 PPD remains excluded to avoid future leakage."
+        }
+      ]
     }
   ]
 }
