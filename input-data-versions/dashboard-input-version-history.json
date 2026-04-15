@@ -812,6 +812,168 @@
           "decision_logic": "Objective=defensible 2024 recalibration; Why=the narrowed production search now defaults to the national midpoint_exact Category-A annualised Huber fit because it lands in the preferred plausibility band and is more robust to unstable survey years than the earlier OLS default; Tradeoff=the live v4.2 coefficients move materially away from the superseded simpler OLS pair and the current linkage workbook still does not support matched-panel production fits across 2018-2024."
         }
       ]
+    },
+    {
+      "version_id": "v4.3",
+      "snapshot_folder": "v4.3",
+      "validation_dataset": "r8",
+      "description": "Promoted CENTRAL_BANK_INITIAL_BASE_RATE to the full-year 2024 daily-weighted Bank Rate mean as the first BoE bank-parameter refresh step.",
+      "updated_data_sources": [
+        "boe"
+      ],
+      "calibration_files": [
+        "scripts/python/experiments/boe/boe_bank_parameter_method_search.py",
+        "scripts/python/calibration/boe/boe_bank_parameter_calibration.py"
+      ],
+      "config_parameters": [
+        "CENTRAL_BANK_INITIAL_BASE_RATE"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "CENTRAL_BANK_INITIAL_BASE_RATE",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:39:36Z after promoting the BoE 2024 Bank Rate mean. overallCompositeLoss=0.191973. Family losses: Macro Credit and Market Activity=0.415124, Macro Prices, Leverage, and Affordability=0.328204, Household Distribution Realism=0.012282. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, interest rate spread, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "CENTRAL_BANK_INITIAL_BASE_RATE"
+          ],
+          "improvement_summary": "Promoted the central-bank startup rate to the full-year 2024 daily-weighted BoE Bank Rate mean.",
+          "why_changed": "To align the central-bank startup rate with the same 2024 macro window used by the tracked validation targets while beginning the staged bank-parameter refresh.",
+          "method_chosen": "Daily-weighted monthly Bank Rate mean over Jan-Dec 2024, yielding CENTRAL_BANK_INITIAL_BASE_RATE=0.051083333333333335.",
+          "decision_logic": "Objective=direct method justification; Why=the full-year 2024 daily-weighted mean matches the validation window more closely than January or December snapshots; Tradeoff=v4.3 is intentionally a partial startup-rate recalibration step and only becomes startup-rate coherent once BANK_INITIAL_RATE is updated in v4.4."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.4",
+      "snapshot_folder": "v4.4",
+      "validation_dataset": "r8",
+      "description": "Promoted BANK_INITIAL_RATE to the full-year 2024 Bank Rate plus housing-tools mortgage-spread proxy mean and restored startup-rate coherence.",
+      "updated_data_sources": [
+        "boe"
+      ],
+      "calibration_files": [
+        "scripts/python/experiments/boe/boe_bank_parameter_method_search.py",
+        "scripts/python/calibration/boe/boe_bank_parameter_calibration.py"
+      ],
+      "config_parameters": [
+        "BANK_INITIAL_RATE"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BANK_INITIAL_RATE",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:43:12Z after promoting the 2024 mortgage-rate proxy mean. overallCompositeLoss=0.198547. Family losses: Macro Credit and Market Activity=0.407012, Macro Prices, Leverage, and Affordability=0.370125, Household Distribution Realism=0.008526. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, interest rate spread, and all three household-realism metrics. Required metrics warning: house price growth. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BANK_INITIAL_RATE"
+          ],
+          "improvement_summary": "Promoted the representative-bank startup mortgage rate to the full-year 2024 Bank Rate plus housing-tools spread mean.",
+          "why_changed": "To make the startup mortgage rate coherent with the promoted central-bank base rate under the same 2024 calibration window.",
+          "method_chosen": "Monthly Bank Rate plus monthly housing-tools owner-occupier 2-year 75% LTV spread over Jan-Dec 2024, yielding BANK_INITIAL_RATE=0.05649531436698348.",
+          "decision_logic": "Objective=direct method justification; Why=the full-year 2024 mortgage-rate proxy keeps the startup lending rate aligned to the same validation window as the promoted base rate; Tradeoff=the resulting v4.4 snapshot restores startup-rate coherence but leaves house-price growth in the tracked validation warning band."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.5",
+      "snapshot_folder": "v4.5",
+      "validation_dataset": "r8",
+      "description": "Promoted BANK_D_INTEREST_D_DEMAND to the full pre-2025 spread-delta versus credit-delta fit and recorded the rejected negative 2024-only diagnostic.",
+      "updated_data_sources": [
+        "boe",
+        "ons"
+      ],
+      "calibration_files": [
+        "scripts/python/experiments/boe/boe_bank_parameter_method_search.py",
+        "scripts/python/calibration/boe/boe_bank_parameter_calibration.py"
+      ],
+      "config_parameters": [
+        "BANK_D_INTEREST_D_DEMAND"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BANK_D_INTEREST_D_DEMAND",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:47:07Z after promoting the pre-2025 delta-fit bank demand-response coefficient. overallCompositeLoss=0.204879. Family losses: Macro Credit and Market Activity=0.436580, Macro Prices, Leverage, and Affordability=0.372546, Household Distribution Realism=0.005196. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, interest rate spread, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, house price growth, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BANK_D_INTEREST_D_DEMAND"
+          ],
+          "improvement_summary": "Promoted the bank credit-response coefficient to the positive full-overlap spread-delta versus credit-delta fit.",
+          "why_changed": "To calibrate the demand-response term directly against the model’s own monthly update equation while rejecting the negative 2024-only fit.",
+          "method_chosen": "Through-origin fit on Delta spread_fraction = beta * Delta credit_per_household over the full 1995-2024 overlap, yielding BANK_D_INTEREST_D_DEMAND=5.471987263431394e-07; rejected 2024-only fit = -5.91912917550825e-06.",
+          "decision_logic": "Objective=direct method justification; Why=the longer pre-2025 overlap yields a positive coefficient under the model-consistent delta equation while the 2024-only fit is negative and therefore not defensible as the live default; Tradeoff=the promoted coefficient is materially smaller than the legacy value and this intermediate version worsens several macro credit and affordability metrics versus v4.4."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.6",
+      "snapshot_folder": "v4.6",
+      "validation_dataset": "r8",
+      "description": "Promoted BANK_INITIAL_CREDIT_SUPPLY to the full-year 2024 VTUZ per-household mean using the ONS 2024 households denominator.",
+      "updated_data_sources": [
+        "boe",
+        "ons"
+      ],
+      "calibration_files": [
+        "scripts/python/experiments/boe/boe_bank_parameter_method_search.py",
+        "scripts/python/calibration/boe/boe_bank_parameter_calibration.py"
+      ],
+      "config_parameters": [
+        "BANK_INITIAL_CREDIT_SUPPLY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BANK_INITIAL_CREDIT_SUPPLY",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:50:50Z after promoting the 2024 VTUZ per-household credit-supply mean. overallCompositeLoss=0.191319. Family losses: Macro Credit and Market Activity=0.426685, Macro Prices, Leverage, and Affordability=0.329611, Household Distribution Realism=0.004491. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, interest rate spread, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BANK_INITIAL_CREDIT_SUPPLY"
+          ],
+          "improvement_summary": "Promoted the startup credit-supply level to the full-year 2024 VTUZ per-household mean.",
+          "why_changed": "To align the representative-bank startup credit supply with the same 2024 BoE/ONS window used for the other bank-parameter refresh steps.",
+          "method_chosen": "Monthly VTUZ gross lending converted to pounds per household with the locked ONS denominator of 28,600,000 over Jan-Dec 2024, yielding BANK_INITIAL_CREDIT_SUPPLY=704.9388111888112.",
+          "decision_logic": "Objective=direct method justification; Why=the chosen per-household mean keeps the supply proxy aligned to the same 2024 window as the promoted startup-rate parameters and restores the best overall validation balance within the v4.3-v4.6 chain; Tradeoff=the direct data-aligned supply level still leaves mortgage approvals, HM advances, BTL advances, owner-occupier debt to income, and rental yield outside the required bands."
+        }
+      ]
     }
   ]
 }
