@@ -184,8 +184,8 @@ const CORE_INDICATORS: IndicatorDefinition[] = [
   {
     id: 'core_interestRateSpread',
     title: 'Interest Rate Spread',
-    units: '%',
-    description: 'Spread on new residential mortgage lending.',
+    units: 'percentage points',
+    description: 'Spread on new owner-occupier mortgage lending.',
     source: 'core_indicator',
     fileName: 'coreIndicator-interestRateSpread.csv'
   }

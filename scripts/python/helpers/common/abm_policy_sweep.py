@@ -205,7 +205,7 @@ POLICY_INDICATORS: dict[str, IndicatorDefinition] = {
     "core_interestRateSpread": IndicatorDefinition(
         id="core_interestRateSpread",
         title="Interest Rate Spread",
-        units="%",
+        units="percentage points",
         file_name="coreIndicator-interestRateSpread.csv",
     ),
 }

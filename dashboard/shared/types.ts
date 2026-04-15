@@ -229,10 +229,24 @@ export interface HomePreviewPayload {
 
 export type ValidationMetricStatus = 'pass' | 'warn' | 'fail' | 'unsupported';
 export type ValidationMetricRequirement = 'required' | 'diagnostic';
+export type ValidationMetricMappingStatus = 'exact_match' | 'derived_match' | 'unsupported';
 
 export interface ValidationTargetBand {
   lower: number;
   upper: number;
+}
+
+export interface ValidationSourceReference {
+  label: string;
+  sourceDocumentPath: string;
+  sourceTextPath: string | null;
+  sourceTable: string | null;
+  sourcePage: number | null;
+  sourceIndicatorLabel: string | null;
+  rawSourceValue: number | null;
+  sourceAsOf: string | null;
+  sourceUnits: string | null;
+  notes: string | null;
 }
 
 export interface ValidationStatusCounts {
@@ -257,6 +271,20 @@ export interface ValidationMetricSummary {
   requirement: ValidationMetricRequirement;
   units: string;
   sourceLabel: string;
+  sourceIndicatorLabel: string | null;
+  sourceDocumentPath: string | null;
+  sourceTextPath: string | null;
+  sourceTable: string | null;
+  sourcePage: number | null;
+  rawSourceValue: number | null;
+  sourceValue: number | null;
+  sourceAsOf: string | null;
+  sourceUnits: string | null;
+  comparisonUnits: string | null;
+  mappingStatus: ValidationMetricMappingStatus | null;
+  bandMethod: string | null;
+  bandNotes: string | null;
+  sourceReferences: ValidationSourceReference[];
   targetBand: ValidationTargetBand | null;
   seedMean: number;
   p25: number;

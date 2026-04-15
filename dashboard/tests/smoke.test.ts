@@ -15,6 +15,7 @@ import {
   getValidationOverview,
   getVersions
 } from '../server/lib/service.js';
+import { readValidationSummary } from '../server/lib/validationSummaries.js';
 import {
   deleteResultsRun,
   getResultsCompare,
@@ -1268,6 +1269,131 @@ assert.ok(
   validationOverview.selectedSummary.familySummaries.some((family) => family.statusCounts.pass >= 0),
   'Validation overview should expose family status counts'
 );
+
+const validationSummaryFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-summary-'));
+const validationSummaryFixtureDir = path.join(validationSummaryFixtureRoot, 'input-data-versions', 'validation');
+fs.mkdirSync(validationSummaryFixtureDir, { recursive: true });
+fs.writeFileSync(
+  path.join(validationSummaryFixtureDir, 'v-modern.json'),
+  JSON.stringify(
+    {
+      schemaVersion: 1,
+      version: 'v-modern',
+      generatedAt: '2026-04-14T00:00:00Z',
+      seeds: [1, 2, 3, 4, 5, 6, 7, 8],
+      window: { startIndex: 200, endIndex: 2000 },
+      overallCompositeLoss: 0.5,
+      familySummaries: [
+        {
+          familyId: 'macro_credit_activity',
+          label: 'Macro Credit and Market Activity',
+          loss: 1.0,
+          statusCounts: { pass: 0, warn: 0, fail: 5, unsupported: 0 }
+        }
+      ],
+      metrics: [
+        {
+          metricId: 'core_advancesToBTL',
+          familyId: 'macro_credit_activity',
+          label: 'Advances to BTL',
+          status: 'fail',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: 'UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)',
+          sourceIndicatorLabel: 'House purchase BTL loans, annual sum of 2024 quarterly counts',
+          sourceDocumentPath: 'input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q4.pdf',
+          sourceTextPath: 'input-data-versions/validation-sources/2024/ukf/btl-mortgage-market-update-2024-validation-evidence.txt',
+          sourceTable: '2024 house-purchase BTL counts aggregated from Q1-Q4 summary panels',
+          sourcePage: 2,
+          rawSourceValue: 62055,
+          sourceValue: 5.17125,
+          sourceAsOf: '2024 annualized monthly mean',
+          sourceUnits: 'count/year',
+          comparisonUnits: 'thousand count/month',
+          mappingStatus: 'derived_match',
+          bandMethod: 'fixed_plus_minus_15pct_around_official_monthly_mean',
+          bandNotes: 'Quarterly house-purchase counts converted to a monthly mean.',
+          sourceReferences: [
+            {
+              label: 'UK Finance BTL Mortgage Market Update Q1 2024',
+              sourceDocumentPath: 'input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q1.pdf',
+              sourceTextPath: 'input-data-versions/validation-sources/2024/ukf/btl-mortgage-market-update-2024-validation-evidence.txt',
+              sourceTable: 'Latest 2024 Q1 summary panel',
+              sourcePage: 2,
+              sourceIndicatorLabel: 'House purchase',
+              rawSourceValue: 12422,
+              sourceAsOf: 'Q1 2024',
+              sourceUnits: 'count/quarter',
+              notes: 'Quarterly house-purchase BTL count used in the 2024 annual sum.'
+            }
+          ],
+          targetBand: { lower: 4.396, upper: 5.947 },
+          seedMean: 9.0,
+          p25: 8.8,
+          p75: 9.2,
+          insideRate: 0,
+          normalizedDistance: 1.0,
+          normalizedIqr: 0.1,
+          metricLoss: 1.5
+        }
+      ]
+    },
+    null,
+    2
+  )
+);
+fs.writeFileSync(
+  path.join(validationSummaryFixtureDir, 'v-legacy.json'),
+  JSON.stringify(
+    {
+      schemaVersion: 1,
+      version: 'v-legacy',
+      generatedAt: '2026-04-14T00:00:00Z',
+      seeds: [1, 2, 3, 4, 5, 6, 7, 8],
+      window: { startIndex: 200, endIndex: 2000 },
+      overallCompositeLoss: 0.5,
+      familySummaries: [
+        {
+          familyId: 'macro_credit_activity',
+          label: 'Macro Credit and Market Activity',
+          loss: 1.0,
+          statusCounts: { pass: 0, warn: 0, fail: 2, unsupported: 3 }
+        }
+      ],
+      metrics: [
+        {
+          metricId: 'core_mortgageApprovals',
+          familyId: 'macro_credit_activity',
+          label: 'Mortgage Approvals',
+          status: 'fail',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: 'Bank of England FPC core indicators, June 2024',
+          targetBand: { lower: 57, upper: 63 },
+          seedMean: 50,
+          p25: 49,
+          p75: 51,
+          insideRate: 0,
+          normalizedDistance: 1.0,
+          normalizedIqr: 0.1,
+          metricLoss: 1.5
+        }
+      ]
+    },
+    null,
+    2
+  )
+);
+const modernSummary = readValidationSummary(validationSummaryFixtureRoot, 'v-modern');
+assert.equal(modernSummary.metrics[0]?.sourceReferences.length ?? 0, 1, 'Validation parser should preserve source references');
+assert.equal(
+  modernSummary.metrics[0]?.sourceReferences[0]?.sourceDocumentPath,
+  'input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q1.pdf',
+  'Validation parser should expose source reference document paths'
+);
+const legacySummary = readValidationSummary(validationSummaryFixtureRoot, 'v-legacy');
+assert.equal(legacySummary.metrics[0]?.sourceReferences.length ?? 0, 0, 'Validation parser should default missing source references to an empty list');
+assert.equal(legacySummary.metrics[0]?.sourceIndicatorLabel ?? null, null, 'Legacy validation summaries should parse without source detail fields');
 
 const rangeAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'range');
 const throughRightAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'through_right');
@@ -2815,6 +2941,10 @@ assert.ok(
   'App should gate validation behind the same true-dev visibility condition'
 );
 assert.ok(
+  appSource.includes('<NavLink to="/compare">Calibration</NavLink>'),
+  'App should label the compare route as Calibration in the header'
+);
+assert.ok(
   appSource.includes('{validationVisible && <NavLink to="/validation">Validation</NavLink>}'),
   'App should only render the validation nav item when validation is visible'
 );
@@ -2844,12 +2974,68 @@ assert.ok(
   'Validation page should no longer render the validation mode toggle'
 );
 assert.ok(
-  validationPageSource.includes('Overall composite trend'),
-  'Validation page should render the overall composite trend heading'
+  validationPageSource.includes('Validation Loss Across Versions'),
+  'Validation page should render the plain-English validation trend heading'
 );
 assert.ok(
-  validationPageSource.includes('Family summary'),
-  'Validation page should render the family summary section'
+  validationPageSource.includes('Validation Categories'),
+  'Validation page should render the renamed validation categories section'
+);
+assert.ok(
+  validationPageSource.includes('Validation Results by Metric for'),
+  'Validation page should render the renamed metric results section'
+);
+assert.ok(
+  validationPageSource.includes('Metric loss'),
+  'Validation page should explain how validation loss is calculated'
+);
+assert.ok(
+  validationPageSource.includes('The line chart is a secondary overview'),
+  'Validation page should explain that the chart is a secondary decision aid'
+);
+assert.ok(
+  validationPageSource.includes('Click to filter the table'),
+  'Validation page should make the family cards interactive filters'
+);
+assert.ok(
+  validationPageSource.includes('Search metrics'),
+  'Validation page should render metric table search controls'
+);
+assert.ok(
+  validationPageSource.includes('Sort by'),
+  'Validation page should render metric table sort controls'
+);
+assert.ok(
+  validationPageSource.includes('Show all categories'),
+  'Validation page should allow resetting family filters'
+);
+assert.ok(
+  validationPageSource.includes('Provenance & sources'),
+  'Validation page should keep metric sources collapsed behind a disclosure'
+);
+assert.ok(
+  validationPageSource.includes('validation-source-panel'),
+  'Validation page should render a dedicated provenance panel when expanded'
+);
+assert.ok(
+  validationPageSource.includes('metricLoss'),
+  'Validation page should render each metric loss from the validation payload'
+);
+assert.ok(
+  validationPageSource.includes('selectedFamilyIds'),
+  'Validation page should track selected validation family filters'
+);
+assert.ok(
+  validationPageSource.includes('metricSearch'),
+  'Validation page should track the metric search term'
+);
+assert.ok(
+  validationPageSource.includes('sortMode'),
+  'Validation page should track the selected metric sort mode'
+);
+assert.ok(
+  validationPageSource.includes('openMetricIds'),
+  'Validation page should track row-level provenance disclosure state'
 );
 assert.ok(
   validationPageSource.includes('Seeds inside band'),
@@ -2858,6 +3044,14 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('p25-p75'),
   'Validation page should render p25-p75 uncertainty labels'
+);
+assert.ok(
+  validationPageSource.includes('validation-source-label'),
+  'Validation page should render inline source labels for validation metrics'
+);
+assert.ok(
+  validationPageSource.includes('sourceReferences'),
+  'Validation page should render structured source references when available'
 );
 assert.ok(
   validationPageSource.includes('selectedVersion'),

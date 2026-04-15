@@ -13,6 +13,17 @@ import {
   isRetryableApiError
 } from '../lib/api';
 
+type ValidationSortMode =
+  | 'family_then_metric'
+  | 'highest_loss'
+  | 'lowest_loss'
+  | 'metric_name'
+  | 'most_inside_band'
+  | 'least_inside_band'
+  | 'status_severity';
+
+const DEFAULT_SORT_MODE: ValidationSortMode = 'family_then_metric';
+
 function formatNumber(value: number | null, digits = 3): string {
   if (value === null) {
     return 'Unsupported';
@@ -37,6 +48,71 @@ function formatInsideRate(value: number | null): string {
   return `${(value * 100).toLocaleString('en-GB', { maximumFractionDigits: 1 })}%`;
 }
 
+function formatStatusLabel(status: ValidationMetricSummary['status']): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatLoss(value: number | null): string {
+  return value === null ? 'Unsupported' : formatNumber(value, 4);
+}
+
+function getPathTail(pathValue: string | null): string | null {
+  if (!pathValue) {
+    return null;
+  }
+  const parts = pathValue.split('/');
+  return parts[parts.length - 1] ?? pathValue;
+}
+
+function formatSourceReference(metric: ValidationMetricSummary, index: number): {
+  key: string;
+  label: string;
+  title: string;
+} {
+  const reference = metric.sourceReferences[index];
+  const documentLabel = getPathTail(reference?.sourceDocumentPath ?? null) ?? reference?.label ?? metric.sourceLabel;
+  const parts = [documentLabel];
+  if (reference?.sourcePage !== null && reference?.sourcePage !== undefined) {
+    parts.push(`p.${reference.sourcePage}`);
+  }
+  if (reference?.sourceTable) {
+    parts.push(reference.sourceTable);
+  }
+  const title = [
+    reference?.label ?? metric.sourceLabel,
+    reference?.sourceDocumentPath ?? metric.sourceDocumentPath ?? '',
+    reference?.notes ?? ''
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return {
+    key: `${metric.metricId}-${index}`,
+    label: parts.join(' · '),
+    title
+  };
+}
+
+function buildSourceReferences(metric: ValidationMetricSummary): Array<{ key: string; label: string; title: string }> {
+  if (metric.sourceReferences.length > 0) {
+    return metric.sourceReferences.map((_, index) => formatSourceReference(metric, index));
+  }
+  const documentLabel = getPathTail(metric.sourceDocumentPath) ?? metric.sourceLabel;
+  const parts = [documentLabel];
+  if (metric.sourcePage !== null) {
+    parts.push(`p.${metric.sourcePage}`);
+  }
+  if (metric.sourceTable) {
+    parts.push(metric.sourceTable);
+  }
+  return [
+    {
+      key: `${metric.metricId}-primary`,
+      label: parts.join(' · '),
+      title: [metric.sourceLabel, metric.sourceDocumentPath ?? '', metric.bandNotes ?? ''].filter(Boolean).join('\n')
+    }
+  ];
+}
+
 function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
   const selectedIndex = overview.trend.points.findIndex((point) => point.version === overview.selectedVersion);
   return {
@@ -48,7 +124,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
         if (!point) {
           return '';
         }
-        return `${String(point.axisValue ?? '')}<br/>Composite loss: ${formatNumber(point.data ?? null, 4)}`;
+        return `${String(point.axisValue ?? '')}<br/>Validation loss: ${formatNumber(point.data ?? null, 4)}`;
       }
     },
     grid: { left: 64, right: 28, top: 22, bottom: 56, containLabel: true },
@@ -59,7 +135,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
     },
     yAxis: {
       type: 'value',
-      name: 'Composite loss',
+      name: 'Validation loss',
       nameLocation: 'middle',
       nameGap: 52,
       axisLabel: { color: '#50625a' }
@@ -67,7 +143,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
     series: [
       {
         type: 'line',
-        name: 'Composite loss',
+        name: 'Validation loss',
         smooth: true,
         data: overview.trend.points.map((point) => point.overallCompositeLoss),
         lineStyle: { color: '#0b7285', width: 2.4 },
@@ -119,10 +195,89 @@ function familyStatusTone(family: ValidationFamilySummary): 'pass' | 'warn' | 'f
   return 'pass';
 }
 
-function sortMetrics(metrics: ValidationMetricSummary[]): ValidationMetricSummary[] {
+function compareNullableNumbers(left: number | null, right: number | null, descending = false): number {
+  if (left === null && right === null) {
+    return 0;
+  }
+  if (left === null) {
+    return 1;
+  }
+  if (right === null) {
+    return -1;
+  }
+  return descending ? right - left : left - right;
+}
+
+function metricStatusSeverity(status: ValidationMetricSummary['status']): number {
+  switch (status) {
+    case 'fail':
+      return 0;
+    case 'warn':
+      return 1;
+    case 'pass':
+      return 2;
+    case 'unsupported':
+      return 3;
+    default:
+      return 4;
+  }
+}
+
+function buildMetricSearchText(metric: ValidationMetricSummary, familyLabel: string): string {
+  return [
+    metric.label,
+    metric.metricId,
+    familyLabel,
+    metric.familyId,
+    metric.status,
+    metric.sourceLabel
+  ]
+    .join(' ')
+    .toLowerCase();
+}
+
+function sortMetrics(
+  metrics: ValidationMetricSummary[],
+  familyLabelById: Map<string, string>,
+  sortMode: ValidationSortMode
+): ValidationMetricSummary[] {
   return [...metrics].sort((left, right) => {
-    if (left.familyId !== right.familyId) {
-      return left.familyId.localeCompare(right.familyId);
+    if (sortMode === 'highest_loss') {
+      const lossComparison = compareNullableNumbers(left.metricLoss, right.metricLoss, true);
+      if (lossComparison !== 0) {
+        return lossComparison;
+      }
+    } else if (sortMode === 'lowest_loss') {
+      const lossComparison = compareNullableNumbers(left.metricLoss, right.metricLoss);
+      if (lossComparison !== 0) {
+        return lossComparison;
+      }
+    } else if (sortMode === 'metric_name') {
+      const metricComparison = left.label.localeCompare(right.label);
+      if (metricComparison !== 0) {
+        return metricComparison;
+      }
+    } else if (sortMode === 'most_inside_band') {
+      const insideBandComparison = compareNullableNumbers(left.insideRate, right.insideRate, true);
+      if (insideBandComparison !== 0) {
+        return insideBandComparison;
+      }
+    } else if (sortMode === 'least_inside_band') {
+      const insideBandComparison = compareNullableNumbers(left.insideRate, right.insideRate);
+      if (insideBandComparison !== 0) {
+        return insideBandComparison;
+      }
+    } else if (sortMode === 'status_severity') {
+      const severityComparison = metricStatusSeverity(left.status) - metricStatusSeverity(right.status);
+      if (severityComparison !== 0) {
+        return severityComparison;
+      }
+    }
+
+    const leftFamilyLabel = familyLabelById.get(left.familyId) ?? left.familyId;
+    const rightFamilyLabel = familyLabelById.get(right.familyId) ?? right.familyId;
+    if (leftFamilyLabel !== rightFamilyLabel) {
+      return leftFamilyLabel.localeCompare(rightFamilyLabel);
     }
     return left.label.localeCompare(right.label);
   });
@@ -134,6 +289,10 @@ export function ValidationPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isWaitingForApi, setIsWaitingForApi] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [selectedFamilyIds, setSelectedFamilyIds] = useState<string[]>([]);
+  const [metricSearch, setMetricSearch] = useState<string>('');
+  const [sortMode, setSortMode] = useState<ValidationSortMode>(DEFAULT_SORT_MODE);
+  const [openMetricIds, setOpenMetricIds] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -188,16 +347,68 @@ export function ValidationPage() {
   }, [overview]);
 
   const summary = overview?.selectedSummary ?? null;
-  const sortedMetrics = useMemo(() => (summary ? sortMetrics(summary.metrics) : []), [summary]);
+  const familyLabelById = useMemo(
+    () => new Map(summary?.familySummaries.map((family) => [family.familyId, family.label]) ?? []),
+    [summary]
+  );
+  const activeFamilyIds = useMemo(() => new Set(selectedFamilyIds), [selectedFamilyIds]);
+  const openMetricIdSet = useMemo(() => new Set(openMetricIds), [openMetricIds]);
+
+  useEffect(() => {
+    setOpenMetricIds([]);
+  }, [summary?.version]);
+
+  const filteredMetrics = useMemo(() => {
+    if (!summary) {
+      return [];
+    }
+
+    const searchTerm = metricSearch.trim().toLowerCase();
+    const familyFilteredMetrics =
+      activeFamilyIds.size === 0
+        ? summary.metrics
+        : summary.metrics.filter((metric) => activeFamilyIds.has(metric.familyId));
+    const searchFilteredMetrics = searchTerm
+      ? familyFilteredMetrics.filter((metric) =>
+          buildMetricSearchText(metric, familyLabelById.get(metric.familyId) ?? metric.familyId).includes(searchTerm)
+        )
+      : familyFilteredMetrics;
+
+    return sortMetrics(searchFilteredMetrics, familyLabelById, sortMode);
+  }, [summary, activeFamilyIds, metricSearch, familyLabelById, sortMode]);
+
+  const handleFamilyToggle = (familyId: string) => {
+    setSelectedFamilyIds((current) =>
+      current.includes(familyId) ? current.filter((value) => value !== familyId) : [...current, familyId]
+    );
+  };
+
+  const toggleMetricSources = (metricId: string) => {
+    setOpenMetricIds((current) =>
+      current.includes(metricId) ? current.filter((value) => value !== metricId) : [...current, metricId]
+    );
+  };
 
   return (
     <section className="validation-layout validation-framework-layout">
       <article className="results-card">
         <h2>Validation</h2>
-        <p>
-          The 2024 framework scores each version against tracked multi-seed summaries. The trend is a compact ranking
-          aid, while the family cards and metric table remain the primary evidence.
-        </p>
+        <div className="validation-intro-copy">
+          <p>
+            This page compares each version of the model against tracked 2024 target bands using eight-seed validation
+            summaries. The table below is the main decision tool because it shows which real-world patterns the model
+            matches, misses, or cannot yet support.
+          </p>
+          <p>
+            The line chart is a secondary overview for ranking and trend-checking only. Validation matters because a
+            housing-market ABM needs to be realistic against external evidence and robust across multiple seeds, not
+            just tuned to look good in a single run.
+          </p>
+          <p className="validation-formula">
+            <strong>Metric loss</strong> = normalized distance from target band + 0.25 x normalized spread + 0.50 x
+            seeds outside band share
+          </p>
+        </div>
       </article>
 
       {error && <p className="error-banner">{error}</p>}
@@ -208,8 +419,11 @@ export function ValidationPage() {
       <article className="results-card">
         <div className="validation-overview-header">
           <div>
-            <h3>Overall composite trend</h3>
-            <p>Lower composite loss is better. The selected point drives the family and metric drill-down below.</p>
+            <h3>Validation Loss Across Versions</h3>
+            <p className="validation-card-subtitle">
+              Lower validation loss means the model is closer to the external targets and more stable across seeds. The
+              selected point controls the category cards and metric results below.
+            </p>
           </div>
           <label className="validation-selector">
             <span>Version</span>
@@ -232,62 +446,157 @@ export function ValidationPage() {
       </article>
 
       <article className="results-card">
-        <h3>Family summary</h3>
+        <h3>Validation Categories</h3>
+        <p className="validation-card-subtitle">
+          Categories group related metrics so correlated indicators are not double-counted and so macro realism and
+          household realism stay balanced. Pass means the mean is inside the target band and at least 75% of seeds are
+          inside, Warn means the mean is close to the band and at least 50% of seeds are inside, Fail means the mean
+          is clearly outside the band or unstable, and Unsupported means the metric is shown for completeness but does
+          not yet have a usable external target so it does not contribute to loss.
+        </p>
         <div className="validation-family-grid">
           {summary?.familySummaries.map((family) => (
-            <section
+            <button
+              type="button"
               key={family.familyId}
-              className={`validation-family-card validation-family-card-${familyStatusTone(family)}`}
+              className={`validation-family-card validation-family-card-${familyStatusTone(family)} ${
+                activeFamilyIds.has(family.familyId) ? 'validation-family-card-active' : ''
+              }`}
+              onClick={() => handleFamilyToggle(family.familyId)}
+              aria-pressed={activeFamilyIds.has(family.familyId)}
             >
               <p className="validation-family-eyebrow">{family.familyId}</p>
               <h4>{family.label}</h4>
               <p className="validation-family-loss">Loss {formatNumber(family.loss, 4)}</p>
               <p className="validation-family-counts">
-                Pass {family.statusCounts.pass} · Warn {family.statusCounts.warn} · Fail {family.statusCounts.fail} ·
+                Pass {family.statusCounts.pass} · Warn {family.statusCounts.warn} · Fail {family.statusCounts.fail} ·{' '}
                 Unsupported {family.statusCounts.unsupported}
               </p>
-            </section>
+              <p className="validation-family-selection">
+                {activeFamilyIds.has(family.familyId) ? 'Showing in the table filter' : 'Click to filter the table'}
+              </p>
+            </button>
           ))}
         </div>
       </article>
 
       <article className="results-card">
-        <h3>Metric scorecard for {summary?.version ?? selectedVersion}</h3>
-        <div className="validation-table-wrap">
-          <table className="validation-metrics-table">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Family</th>
-                <th>Target band</th>
-                <th>Mean</th>
-                <th>p25-p75</th>
-                <th>Seeds inside band</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedMetrics.map((metric) => (
-                <tr key={metric.metricId}>
-                  <td>
-                    <strong>{metric.label}</strong>
-                    <div className="validation-metric-meta">{metric.metricId}</div>
-                  </td>
-                  <td>{metric.familyId}</td>
-                  <td>{formatTargetBand(metric)}</td>
-                  <td>{formatNumber(metric.seedMean, 3)}</td>
-                  <td>
-                    {formatNumber(metric.p25, 3)} to {formatNumber(metric.p75, 3)}
-                  </td>
-                  <td>{formatInsideRate(metric.insideRate)}</td>
-                  <td>
-                    <span className={`validation-status-pill validation-status-${metric.status}`}>{metric.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <h3>Validation Results by Metric for {summary?.version ?? selectedVersion}</h3>
+        <p className="validation-card-subtitle">
+          Each row shows one validation metric, the target band it is checked against, the model summary across seeds,
+          the status, and how much that metric contributes to total validation loss.
+        </p>
+        <div className="results-controls validation-table-controls">
+          <label>
+            <span>Search metrics</span>
+            <input
+              type="search"
+              value={metricSearch}
+              onChange={(event) => setMetricSearch(event.target.value)}
+              placeholder="Search by metric, category, status, or source"
+            />
+          </label>
+          <label>
+            <span>Sort by</span>
+            <select value={sortMode} onChange={(event) => setSortMode(event.target.value as ValidationSortMode)}>
+              <option value="family_then_metric">Category, then metric</option>
+              <option value="highest_loss">Highest loss first</option>
+              <option value="lowest_loss">Lowest loss first</option>
+              <option value="metric_name">Metric name A-Z</option>
+              <option value="most_inside_band">Most inside-band seeds</option>
+              <option value="least_inside_band">Least inside-band seeds</option>
+              <option value="status_severity">Status severity</option>
+            </select>
+          </label>
+          <div className="validation-control-summary">
+            {selectedFamilyIds.length === 0
+              ? 'Showing all categories'
+              : `Filtering to ${selectedFamilyIds.length} categor${selectedFamilyIds.length === 1 ? 'y' : 'ies'}`}
+          </div>
+          <button
+            type="button"
+            className="table-toggle"
+            onClick={() => setSelectedFamilyIds([])}
+            disabled={selectedFamilyIds.length === 0}
+          >
+            Show all categories
+          </button>
         </div>
+        {filteredMetrics.length === 0 ? (
+          <p className="info-banner validation-table-empty">
+            No validation metrics match the current category filter and search term.
+          </p>
+        ) : (
+          <div className="validation-table-wrap">
+            <table className="validation-metrics-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Category</th>
+                  <th>Target band</th>
+                  <th>Mean</th>
+                  <th>p25-p75</th>
+                  <th>Seeds inside band</th>
+                  <th>Loss</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredMetrics.map((metric) => {
+                  const familyLabel = familyLabelById.get(metric.familyId) ?? metric.familyId;
+                  const isSourcesOpen = openMetricIdSet.has(metric.metricId);
+
+                  return (
+                    <tr key={metric.metricId}>
+                      <td>
+                        <strong>{metric.label}</strong>
+                        <div className="validation-metric-meta">{metric.metricId}</div>
+                        <button
+                          type="button"
+                          className="table-toggle validation-source-toggle"
+                          onClick={() => toggleMetricSources(metric.metricId)}
+                        >
+                          {isSourcesOpen ? 'Hide provenance & sources' : 'Provenance & sources'}
+                        </button>
+                        {isSourcesOpen && (
+                          <div className="validation-source-panel">
+                            <div className="validation-source-label">{metric.sourceLabel}</div>
+                            {buildSourceReferences(metric).map((reference) => (
+                              <div key={reference.key} className="validation-source-ref" title={reference.title}>
+                                {reference.label}
+                              </div>
+                            ))}
+                            {metric.bandNotes && <div className="validation-source-note">{metric.bandNotes}</div>}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <strong>{familyLabel}</strong>
+                        <div className="validation-family-meta">{metric.familyId}</div>
+                      </td>
+                      <td>{formatTargetBand(metric)}</td>
+                      <td>{formatNumber(metric.seedMean, 3)}</td>
+                      <td>
+                        {formatNumber(metric.p25, 3)} to {formatNumber(metric.p75, 3)}
+                      </td>
+                      <td>{formatInsideRate(metric.insideRate)}</td>
+                      <td
+                        className={`validation-loss-cell ${metric.metricLoss === null ? 'validation-loss-unsupported' : ''}`}
+                      >
+                        {formatLoss(metric.metricLoss)}
+                      </td>
+                      <td>
+                        <span className={`validation-status-pill validation-status-${metric.status}`}>
+                          {formatStatusLabel(metric.status)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </article>
     </section>
   );

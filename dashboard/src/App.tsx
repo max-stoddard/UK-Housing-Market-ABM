@@ -160,7 +160,7 @@ export function App() {
             <NavLink to="/" end>
               Home
             </NavLink>
-            <NavLink to="/compare">Calibration Versions</NavLink>
+            <NavLink to="/compare">Calibration</NavLink>
             {validationVisible && <NavLink to="/validation">Validation</NavLink>}
             {experimentsVisible && <NavLink to="/experiments">Experiments</NavLink>}
             {experimentsVisible && authStatus.authEnabled && !authStatus.canWrite && (

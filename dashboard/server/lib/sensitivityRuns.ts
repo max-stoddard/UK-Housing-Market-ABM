@@ -214,7 +214,7 @@ const POLICY_CORE_INDICATORS: IndicatorDef[] = [
   {
     id: 'core_interestRateSpread',
     title: 'Interest Rate Spread',
-    units: '%',
+    units: 'percentage points',
     fileName: 'coreIndicator-interestRateSpread.csv'
   }
 ];

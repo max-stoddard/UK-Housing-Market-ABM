@@ -23,6 +23,13 @@ function assertString(value: unknown, message: string): string {
   return value;
 }
 
+function assertStringOrNull(value: unknown, message: string): string | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return assertString(value, message);
+}
+
 function assertNumber(value: unknown, message: string): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     throw new Error(message);
@@ -31,7 +38,7 @@ function assertNumber(value: unknown, message: string): number {
 }
 
 function assertNumberOrNull(value: unknown, message: string): number | null {
-  if (value === null) {
+  if (value === null || value === undefined) {
     return null;
   }
   return assertNumber(value, message);
@@ -42,6 +49,46 @@ function assertNumberArray(value: unknown, message: string): number[] {
     throw new Error(message);
   }
   return value;
+}
+
+function parseSourceReference(value: unknown, index: number) {
+  const objectValue = assertObject(value, `sourceReferences[${index}] must be an object`);
+  return {
+    label: assertString(objectValue.label, `sourceReferences[${index}].label must be a string`),
+    sourceDocumentPath: assertString(
+      objectValue.sourceDocumentPath,
+      `sourceReferences[${index}].sourceDocumentPath must be a string`
+    ),
+    sourceTextPath: assertStringOrNull(
+      objectValue.sourceTextPath,
+      `sourceReferences[${index}].sourceTextPath must be a string or null`
+    ),
+    sourceTable: assertStringOrNull(
+      objectValue.sourceTable,
+      `sourceReferences[${index}].sourceTable must be a string or null`
+    ),
+    sourcePage: assertNumberOrNull(
+      objectValue.sourcePage,
+      `sourceReferences[${index}].sourcePage must be a number or null`
+    ),
+    sourceIndicatorLabel: assertStringOrNull(
+      objectValue.sourceIndicatorLabel,
+      `sourceReferences[${index}].sourceIndicatorLabel must be a string or null`
+    ),
+    rawSourceValue: assertNumberOrNull(
+      objectValue.rawSourceValue,
+      `sourceReferences[${index}].rawSourceValue must be a number or null`
+    ),
+    sourceAsOf: assertStringOrNull(
+      objectValue.sourceAsOf,
+      `sourceReferences[${index}].sourceAsOf must be a string or null`
+    ),
+    sourceUnits: assertStringOrNull(
+      objectValue.sourceUnits,
+      `sourceReferences[${index}].sourceUnits must be a string or null`
+    ),
+    notes: assertStringOrNull(objectValue.notes, `sourceReferences[${index}].notes must be a string or null`)
+  };
 }
 
 function parseStatusCounts(value: unknown, message: string) {
@@ -70,6 +117,7 @@ function parseFamilySummary(value: unknown, index: number): ValidationFamilySumm
 function parseMetricSummary(value: unknown, index: number): ValidationMetricSummary {
   const objectValue = assertObject(value, `metrics[${index}] must be an object`);
   const rawTargetBand = objectValue.targetBand;
+  const rawSourceReferences = objectValue.sourceReferences;
   const targetBand =
     rawTargetBand === null
       ? null
@@ -89,6 +137,40 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
     ) as ValidationMetricSummary['requirement'],
     units: assertString(objectValue.units, `metrics[${index}].units must be a string`),
     sourceLabel: assertString(objectValue.sourceLabel, `metrics[${index}].sourceLabel must be a string`),
+    sourceIndicatorLabel: assertStringOrNull(
+      objectValue.sourceIndicatorLabel,
+      `metrics[${index}].sourceIndicatorLabel must be a string or null`
+    ),
+    sourceDocumentPath: assertStringOrNull(
+      objectValue.sourceDocumentPath,
+      `metrics[${index}].sourceDocumentPath must be a string or null`
+    ),
+    sourceTextPath: assertStringOrNull(
+      objectValue.sourceTextPath,
+      `metrics[${index}].sourceTextPath must be a string or null`
+    ),
+    sourceTable: assertStringOrNull(objectValue.sourceTable, `metrics[${index}].sourceTable must be a string or null`),
+    sourcePage: assertNumberOrNull(objectValue.sourcePage, `metrics[${index}].sourcePage must be a number or null`),
+    rawSourceValue: assertNumberOrNull(
+      objectValue.rawSourceValue,
+      `metrics[${index}].rawSourceValue must be a number or null`
+    ),
+    sourceValue: assertNumberOrNull(objectValue.sourceValue, `metrics[${index}].sourceValue must be a number or null`),
+    sourceAsOf: assertStringOrNull(objectValue.sourceAsOf, `metrics[${index}].sourceAsOf must be a string or null`),
+    sourceUnits: assertStringOrNull(objectValue.sourceUnits, `metrics[${index}].sourceUnits must be a string or null`),
+    comparisonUnits: assertStringOrNull(
+      objectValue.comparisonUnits,
+      `metrics[${index}].comparisonUnits must be a string or null`
+    ),
+    mappingStatus: assertStringOrNull(
+      objectValue.mappingStatus,
+      `metrics[${index}].mappingStatus must be a string or null`
+    ) as ValidationMetricSummary['mappingStatus'],
+    bandMethod: assertStringOrNull(objectValue.bandMethod, `metrics[${index}].bandMethod must be a string or null`),
+    bandNotes: assertStringOrNull(objectValue.bandNotes, `metrics[${index}].bandNotes must be a string or null`),
+    sourceReferences: Array.isArray(rawSourceReferences)
+      ? rawSourceReferences.map((item, sourceIndex) => parseSourceReference(item, sourceIndex))
+      : [],
     targetBand,
     seedMean: assertNumber(objectValue.seedMean, `metrics[${index}].seedMean must be a number`),
     p25: assertNumber(objectValue.p25, `metrics[${index}].p25 must be a number`),
