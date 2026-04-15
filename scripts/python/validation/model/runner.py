@@ -26,6 +26,7 @@ from scripts.python.validation.model.schema import (
     VALIDATION_WINDOW_START,
     MetricDefinition,
     MetricSourceMetadata,
+    MetricSourceReference,
 )
 from scripts.python.validation.model.scoring import (
     classify_metric_status,
@@ -33,7 +34,7 @@ from scripts.python.validation.model.scoring import (
     compute_normalized_distance,
     compute_overall_composite_loss,
 )
-from scripts.python.validation.model.targets_2024 import FAMILY_DEFINITIONS, TARGETS_BY_ID
+from scripts.python.validation.model.validation_catalog_2024 import FAMILY_DEFINITIONS, TARGETS_BY_ID
 
 VALIDATION_RECORDING_OVERRIDES = {
     "recordTransactions": "false",
@@ -207,6 +208,7 @@ def build_validation_summary(
             "mappingStatus": None,
             "bandMethod": None,
             "bandNotes": None,
+            "sourceReferences": [],
             "targetBand": None,
             "seedMean": seed_mean,
             "p25": p25,
@@ -233,6 +235,10 @@ def build_validation_summary(
                     "mappingStatus": target.source_metadata.mapping_status,
                     "bandMethod": target.source_metadata.band_method,
                     "bandNotes": target.source_metadata.band_notes,
+                    "sourceReferences": [
+                        _serialize_source_reference(reference)
+                        for reference in target.source_metadata.source_references
+                    ],
                 }
             )
 
@@ -429,4 +435,60 @@ def _coerce_source_metadata(raw_source_metadata: object | None) -> MetricSourceM
             None if raw_source_metadata.get("band_method") is None else str(raw_source_metadata["band_method"])
         ),
         band_notes=None if raw_source_metadata.get("band_notes") is None else str(raw_source_metadata["band_notes"]),
+        source_references=tuple(
+            _coerce_source_reference(raw_source_reference)
+            for raw_source_reference in raw_source_metadata.get("source_references", ())
+        ),
     )
+
+
+def _coerce_source_reference(raw_source_reference: object) -> MetricSourceReference:
+    if isinstance(raw_source_reference, MetricSourceReference):
+        return raw_source_reference
+    if not isinstance(raw_source_reference, Mapping):
+        raise RuntimeError("Invalid source reference object")
+    return MetricSourceReference(
+        label=str(raw_source_reference["label"]),
+        source_document_path=str(raw_source_reference["source_document_path"]),
+        source_text_path=(
+            None
+            if raw_source_reference.get("source_text_path") is None
+            else str(raw_source_reference["source_text_path"])
+        ),
+        source_table=(
+            None if raw_source_reference.get("source_table") is None else str(raw_source_reference["source_table"])
+        ),
+        source_page=(
+            None if raw_source_reference.get("source_page") is None else int(raw_source_reference["source_page"])
+        ),
+        source_indicator_label=(
+            None
+            if raw_source_reference.get("source_indicator_label") is None
+            else str(raw_source_reference["source_indicator_label"])
+        ),
+        raw_source_value=(
+            None if raw_source_reference.get("raw_source_value") is None else float(raw_source_reference["raw_source_value"])
+        ),
+        source_as_of=(
+            None if raw_source_reference.get("source_as_of") is None else str(raw_source_reference["source_as_of"])
+        ),
+        source_units=(
+            None if raw_source_reference.get("source_units") is None else str(raw_source_reference["source_units"])
+        ),
+        notes=None if raw_source_reference.get("notes") is None else str(raw_source_reference["notes"]),
+    )
+
+
+def _serialize_source_reference(reference: MetricSourceReference) -> dict[str, object]:
+    return {
+        "label": reference.label,
+        "sourceDocumentPath": reference.source_document_path,
+        "sourceTextPath": reference.source_text_path,
+        "sourceTable": reference.source_table,
+        "sourcePage": reference.source_page,
+        "sourceIndicatorLabel": reference.source_indicator_label,
+        "rawSourceValue": reference.raw_source_value,
+        "sourceAsOf": reference.source_as_of,
+        "sourceUnits": reference.source_units,
+        "notes": reference.notes,
+    }

@@ -81,3 +81,20 @@ class MetricSourceMetadata:
     mapping_status: MappingStatus
     band_method: str | None = None
     band_notes: str | None = None
+    source_references: tuple["MetricSourceReference", ...] = ()
+
+
+@dataclass(frozen=True)
+class MetricSourceReference:
+    """One concrete supporting source reference for a validation target."""
+
+    label: str
+    source_document_path: str
+    source_text_path: str | None = None
+    source_table: str | None = None
+    source_page: int | None = None
+    source_indicator_label: str | None = None
+    raw_source_value: float | None = None
+    source_as_of: str | None = None
+    source_units: str | None = None
+    notes: str | None = None

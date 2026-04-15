@@ -114,17 +114,42 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertEqual(metric["sourceValue"], 61.325)
         self.assertEqual(metric["mappingStatus"], "exact_match")
 
-    def test_source_backed_unbanded_diagnostic_remains_unsupported(self) -> None:
+    def test_build_validation_summary_scores_ukf_backed_advances_metrics(self) -> None:
         summary = build_validation_summary(
             version="v-test",
             seed_results=self._synthetic_seed_results(),
             seeds=[1, 2, 3, 4, 5, 6, 7, 8],
         )
-        metric = next(item for item in summary["metrics"] if item["metricId"] == "core_interestRateSpread")
-        self.assertEqual(metric["status"], "unsupported")
+        metric = next(item for item in summary["metrics"] if item["metricId"] == "core_advancesToBTL")
+        self.assertEqual(metric["sourceLabel"], "UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)")
+        self.assertEqual(metric["status"], "fail")
+        self.assertEqual(metric["targetBand"], {"lower": 4.396, "upper": 5.947})
+        self.assertEqual(len(metric["sourceReferences"]), 4)
+        self.assertIsNotNone(metric["metricLoss"])
+
+    def test_market_source_metrics_are_scored_once_required_bands_exist(self) -> None:
+        summary = build_validation_summary(
+            version="v-test",
+            seed_results=self._synthetic_seed_results(),
+            seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+        )
+        oo_dti = next(item for item in summary["metrics"] if item["metricId"] == "core_ooDebtToIncome")
+        rental = next(item for item in summary["metrics"] if item["metricId"] == "core_rentalYield")
+        spread = next(item for item in summary["metrics"] if item["metricId"] == "core_interestRateSpread")
+
+        self.assertEqual(oo_dti["status"], "fail")
+        self.assertEqual(rental["status"], "fail")
+        self.assertEqual(spread["status"], "fail")
+        self.assertEqual(spread["units"], "percentage points")
+        self.assertEqual(len(rental["sourceReferences"]), 4)
+        self.assertEqual(len(spread["sourceReferences"]), 4)
+        self.assertIsNotNone(oo_dti["metricLoss"])
+        self.assertIsNotNone(rental["metricLoss"])
+        self.assertIsNotNone(spread["metricLoss"])
+        self.assertEqual(len(oo_dti["sourceReferences"]), 5)
         self.assertEqual(
-            metric["sourceIndicatorLabel"],
-            "Spreads on new owner-occupier mortgages with 2-year fix and 75% LTV",
+            oo_dti["sourceReferences"][-1]["sourceDocumentPath"],
+            "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json",
         )
 
     def test_resolve_was_data_root_uses_parent_checkout_when_worktree_lacks_private_datasets(self) -> None:
