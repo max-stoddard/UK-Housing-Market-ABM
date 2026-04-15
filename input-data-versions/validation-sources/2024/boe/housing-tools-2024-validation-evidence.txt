@@ -1,0 +1,34 @@
+Author: Max Stoddard
+
+Bank of England housing-tools validation evidence for 2024 interest-rate spread derived from:
+- input-data-versions/validation-sources/2024/boe/housing-tools.xlsx
+
+Sheet:
+- 8. Spreads new mortgage lending
+
+Series:
+- Mortgage 2-year 75% LTV owner-occupier spreads
+
+2024 monthly values:
+- Jan 2024: 0.5278707362670447
+- Feb 2024: 0.3083474590368747
+- Mar 2024: 0.5273310981355896
+- Apr 2024: 0.4401329138464201
+- May 2024: 0.6321420249883545
+- Jun 2024: 0.6615625183658045
+- Jul 2024: 0.6375778923320610
+- Aug 2024: 0.7641352166442656
+- Sep 2024: 0.7593864679099389
+- Oct 2024: 0.4355699433225699
+- Nov 2024: 0.3464527457003541
+- Dec 2024: 0.4538682238309004
+
+Quarterly means:
+- 2024 Q1: 0.45451643114650303
+- 2024 Q2: 0.5779458190668597
+- 2024 Q3: 0.7203665256287551
+- 2024 Q4: 0.41196363761794147
+
+Validation comparison:
+- 2024 annual mean = (Q1 + Q2 + Q3 + Q4) / 4 = 0.5411981033650148
+- Target band = observed 2024 quarterly range = [0.41196363761794147, 0.7203665256287551]

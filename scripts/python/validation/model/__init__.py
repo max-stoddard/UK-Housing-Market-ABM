@@ -9,21 +9,33 @@ from scripts.python.validation.model.schema import (
     VALIDATION_WINDOW_END,
     VALIDATION_WINDOW_START,
 )
-from scripts.python.validation.model.fpc_source_2024 import (
+from scripts.python.validation.model.validation_catalog_2024 import (
+    FAMILY_DEFINITIONS,
     FPC_SOURCE_2024_BY_METRIC_ID,
+    INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS,
+    MARKET_SOURCE_2024_BY_METRIC_ID,
+    OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES,
+    RENTAL_YIELD_2024_QUARTERLY_VALUES,
     SUPPORTED_FPC_METRIC_IDS,
+    TARGET_CATALOG,
+    TARGETS_BY_ID,
+    UKF_SOURCE_2024_BY_METRIC_ID,
     UNSUPPORTED_FPC_METRIC_IDS,
 )
 from scripts.python.validation.model.runner import build_validation_summary, run_validation_for_version
-from scripts.python.validation.model.targets_2024 import FAMILY_DEFINITIONS, TARGET_CATALOG, TARGETS_BY_ID
 
 __all__ = [
     "CANONICAL_VALIDATION_SEEDS",
     "FAMILY_DEFINITIONS",
     "FPC_SOURCE_2024_BY_METRIC_ID",
+    "INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS",
+    "MARKET_SOURCE_2024_BY_METRIC_ID",
+    "OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES",
+    "RENTAL_YIELD_2024_QUARTERLY_VALUES",
     "SUPPORTED_FPC_METRIC_IDS",
     "TARGET_CATALOG",
     "TARGETS_BY_ID",
+    "UKF_SOURCE_2024_BY_METRIC_ID",
     "UNSUPPORTED_FPC_METRIC_IDS",
     "VALIDATION_SCHEMA_VERSION",
     "VALIDATION_WINDOW_END",

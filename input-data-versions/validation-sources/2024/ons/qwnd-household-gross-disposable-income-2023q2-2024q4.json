@@ -1,0 +1,19 @@
+{
+  "author": "Max Stoddard",
+  "seriesId": "QWND",
+  "seriesLabel": "HH & NPISH disposable income, gross",
+  "units": "\u00a3m",
+  "seasonalAdjustment": "NSA",
+  "sourceUrl": "https://www.ons.gov.uk/economy/grossdomesticproductgdp/timeseries/qwnd/ukea",
+  "sourceSnapshotDate": "2026-04-15",
+  "notes": "Minimal repo-local ONS snapshot required to reconstruct the 2024 trailing four-quarter denominator for owner-occupier debt-to-income validation.",
+  "quarterlyValues": {
+    "2023Q2": 450301.0,
+    "2023Q3": 441590.0,
+    "2023Q4": 450610.0,
+    "2024Q1": 427988.0,
+    "2024Q2": 476243.0,
+    "2024Q3": 472045.0,
+    "2024Q4": 488902.0
+  }
+}

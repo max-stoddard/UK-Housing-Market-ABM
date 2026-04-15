@@ -1,0 +1,20 @@
+Author: Max Stoddard
+
+UK Finance validation evidence for 2024 rental yield derived from:
+- input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q1.pdf
+- input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q2.pdf
+- input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q3.pdf
+- input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q4.pdf
+
+Series:
+- Average gross buy-to-let rental yield for the UK
+
+Quarterly values taken from the page 2 summary panel of each PDF:
+- Q1 2024: 6.88
+- Q2 2024: 6.90
+- Q3 2024: 6.93
+- Q4 2024: 7.00
+
+Validation comparison:
+- 2024 annual mean = (6.88 + 6.90 + 6.93 + 7.00) / 4 = 6.9275
+- Target band = observed 2024 quarterly range = [6.88, 7.00]

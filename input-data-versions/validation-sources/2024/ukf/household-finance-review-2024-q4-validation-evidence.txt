@@ -1,0 +1,15 @@
+Author: Max Stoddard
+
+UK Finance validation evidence for 2024 advances metrics derived from:
+- Household Finance Review 2024 Q4.pdf
+
+Table 1: Key annual mortgage figures
+Page: 6
+
+Number of residential purchase loans:
+- First-time buyers: 334,000
+- Homemovers: 288,000
+
+Validation comparison conversion:
+- FTB monthly mean (thousand count/month) = 334,000 / 12 / 1,000 = 27.833333...
+- HM monthly mean (thousand count/month) = 288,000 / 12 / 1,000 = 24.000000...

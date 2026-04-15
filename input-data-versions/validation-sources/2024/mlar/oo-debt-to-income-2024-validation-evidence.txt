@@ -1,0 +1,37 @@
+Author: Max Stoddard
+
+Owner-occupier debt-to-income validation evidence for 2024 derived from:
+- input-data-versions/validation-sources/2024/mlar/mlar-longrun-detailed.xlsx
+  - Sheet 1.11 row 33 "Total" (£ millions): aggregate debt secured on dwellings
+  - Sheet 1.33 row 53 "Total" (£ millions): regulated unsecuritised balances
+  - Sheet 1.33 row 95 "Total" (£ millions): non-regulated unsecuritised balances
+  - Sheet 1.33 row 41 "Buy to let" (Per cent): regulated BTL balance share
+  - Sheet 1.33 row 91 "Buy to let" (Per cent): non-regulated BTL balance share
+- input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json
+  - Repo-local ONS snapshot for QWND: HH & NPISH disposable income, gross (£m, NSA)
+  - Original source series: https://www.ons.gov.uk/economy/grossdomesticproductgdp/timeseries/qwnd/ukea
+
+Quarterly QWND values in the repo-local snapshot:
+- 2023 Q2: 450301
+- 2023 Q3: 441590
+- 2023 Q4: 450610
+- 2024 Q1: 427988
+- 2024 Q2: 476243
+- 2024 Q3: 472045
+- 2024 Q4: 488902
+
+Quarterly formula:
+- btl_unsecuritised = regulated_total * regulated_btl_share + nonregulated_total * nonregulated_btl_share
+- oo_share = 1 - (btl_unsecuritised / (regulated_total + nonregulated_total))
+- oo_balance = aggregate_debt_secured_on_dwellings * oo_share
+- oo_dti = 100 * oo_balance / trailing_4q_qwnd
+
+2024 quarterly reconstruction:
+- Q1 2024: aggregate_debt=1669970.083, regulated_total=1318240.307, regulated_btl_share=0.15%, nonregulated_total=244457.487, nonregulated_btl_share=94.277%, trailing_4q_qwnd=1770489, oo_share=0.8512543203350231, oo_balance=1421569.2479839872, oo_dti=80.29246428438624
+- Q2 2024: aggregate_debt=1676305.034, regulated_total=1325826.342, regulated_btl_share=0.145%, nonregulated_total=242768.578, nonregulated_btl_share=94.618%, trailing_4q_qwnd=1796431, oo_share=0.8523358590706516, oo_balance=1428774.8912188478, oo_dti=79.53408125437869
+- Q3 2024: aggregate_debt=1674741.461, regulated_total=1326725.915, regulated_btl_share=0.143%, nonregulated_total=240852.89, nonregulated_btl_share=94.903%, trailing_4q_qwnd=1826886, oo_share=0.8529746411982458, oo_balance=1428511.9967963009, oo_dti=78.19382253716438
+- Q4 2024: aggregate_debt=1683406.844, regulated_total=1336671.801, regulated_btl_share=0.14%, nonregulated_total=238331.293, nonregulated_btl_share=95.041%, trailing_4q_qwnd=1865178, oo_share=0.8549947072665687, oo_balance=1439303.9417963182, oo_dti=77.16710908000836
+
+Validation comparison:
+- 2024 annual mean = (80.29246428438624 + 79.53408125437869 + 78.19382253716438 + 77.16710908000836) / 4 = 78.79686928898442
+- Target band = observed 2024 quarterly range = [77.16710908000836, 80.29246428438624]

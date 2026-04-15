@@ -1,0 +1,673 @@
+Page 1
+
+FPC core indicators
+Core indicator set for the countercyclical capital buffer*(a)
+
+Indicator
+
+Average
+1987–
+2006(b)
+
+Average
+2006(c)
+
+Minimum
+since
+1987(b)
+
+Maximum
+since
+1987(b)
+
+Previous
+value
+(oya)
+
+112.8%
+
+151.2%
+
+83.7%
+
+166.7%
+
+134.3%
+
+Latest
+value (as
+of 10
+June
+2024)
+
+Non-bank balance sheet stretch
+1: Credit to GDP(d)
+124.8%
+Ratio
+
+(2023Q4)
+-17.8%
+Gap
+
+6.3%
+
+10.4%
+
+-24.7%
+
+20.2%
+
+-12.3%
+(2023Q4)
+-0.1%
+
+2: Private non-financial sector credit
+growth(e)
+
+10.3%
+
+4: Gross external debt to GDP(f)
+
+179.6%
+
+11.8%
+
+-2.2%
+
+23.3%
+
+3.9%
+(2023Q4)
+281.8%
+
+311.1%
+
+113.1%
+
+395.1%
+
+290.7%
+(2023Q4)
+
+Conditions and terms in markets
+
+6: Long-term real interest rate(g)
+
+1.45%
+
+1.23%
+
+-3.18%
+
+2.18%
+
+0.46%
+
+0.98%
+(10 June
+2024)
+
+7: VIX(h)
+
+19.1
+
+12.8
+
+9.8
+
+65.5
+
+16.6
+
+12.8
+(10 June
+2024)
+
+8: Global corporate bond spreads(i)
+
+USD investment-grade
+
+121 bps
+
+93 bps
+
+53 bps
+
+622 bps
+
+140 bps
+
+90 bps
+(10 June
+2024)
+
+USD high-yield
+
+522 bps
+
+326 bps
+
+241 bps
+
+2147 bps
+
+429 bps
+
+315 bps
+(10 June
+2024)
+
+GBP investment-grade
+
+95 bps
+
+78 bps
+
+38 bps
+
+576 bps
+
+171 bps
+
+114 bps
+(10 June
+2024)
+
+Page 2
+
+Indicator
+
+GBP high-yield
+
+Average
+1987–
+2006(b)
+
+Average
+2006(c)
+
+Minimum
+since
+1987(b)
+
+Maximum
+since
+1987(b)
+
+Previous
+value
+(oya)
+
+Latest
+value (as
+of 10
+June
+2024)
+427 bps
+(10 June
+2024)
+
+563 bps
+
+291 bps
+
+173 bps
+
+2,585 bps
+
+561 bps
+
+n.a.
+
+n.a.
+
+5.3%
+
+19.4%
+
+17.4%
+
+Bank balance sheet stretch(k)
+17.3%
+10: Tier 1 capital ratio(l)
+
+(2024Q1)
+14.7%
+o/w CET1
+
+n.a
+
+n.a
+
+4.3%
+
+16.5%
+
+14.6%
+(2024Q1)
+
+11: Leverage ratio(m)
+5.6%
+Simple leverage ratio
+
+4.9 %
+
+4.0%
+
+2.7%
+
+6.5%
+
+5.4%
+(2023Q4)
+5.2%
+
+UK leverage ratio
+
+n.a.
+
+n.a.
+
+5.1%
+
+5.7%
+
+5.3%
+(2024Q1)
+
+12: Liquidity coverage ratio(n)
+
+n.a.
+
+n.a.
+
+123.0%
+
+154%
+
+145.9%
+
+13: Return on assets (before tax)(o)
+
+1.1%
+
+1.0%
+
+-0.3%
+
+1.5%
+
+0.6%
+
+149.6%
+(end-Apr)
+0.8%
+(2023H2)
+
+14: Loan to deposit ratio(p)
+
+111.3%
+
+122.6%
+
+74.5%
+
+122.6%
+
+75.2%
+
+74.5%
+(2023H2)
+
+16: CDS premia(q)
+
+13 bps
+
+8 bps
+
+5 bps
+
+288 bps
+
+87 bps
+
+58 bps
+(10 June
+2024)
+
+0.7
+
+0.8
+(10 June
+2024)
+
+17: Price to tangible book ratio(r)
+
+*
+
+3.8
+
+3.5
+
+0.4
+
+5.1
+
+The FPC considers this set of core indicators when reaching decisions on the UK countercyclical capital
+buffer (CCyB) rate. Firms use the UK CCyB rate to calculate their institution-specific CCyB rate and the
+countercyclical leverage ratio buffer (CCLB) rate. Currently, the CCLB rate for each major UK bank is
+calculated as 35% of its institution-specific CCyB rate with the CCLB rate percentage rounded to the
+nearest 10 basis points.
+
+(a) A spreadsheet of the series shown in this table is available on the Bank’s website.
+
+Page 3
+(b) If the series starts after 1987, the average between the start date and 2006 end and the maximum/minimum
+since the start date are used.
+(c) 2006 was the last year before the start of the global financial crisis.
+(d) Credit is defined as debt claims on the UK private non-financial sector. This includes all liabilities of the
+household sector except for student loans and financial derivatives, and private non-financial corporations’
+(PNFCs') loans and debt securities excluding direct investment loans and loans secured on dwellings. The
+credit to GDP gap is calculated as the percentage point difference between the credit to GDP ratio and its longterm trend, where the trend is based on a one-sided Hodrick-Prescott filter with a smoothing parameter of
+400,000. See Countercyclical Capital Buffer Guide at www.bankofengland.co.uk/financial-stability for further
+explanation of how this series is calculated. Sources: Association of British Insurers, Bank of England, Bayes
+CRE Lending Report (Bayes Business School(formerly Cass)), Deloitte, Financing & Leasing Association, firm
+public disclosures, Integer Advisors estimates, LCD an offering of S&P Global Market Intelligence, London
+Stock Exchange, ONS, Peer-to-Peer FinanceAssociation, Eikon from Refinitiv, Roe A.R. (1971) - 'The financial
+interdependence of the UK economy 1957-66' - Chapman and Hall - London, UK Finance and Bank
+calculations.
+(e) Twelve-month growth rate of nominal credit (defined as the four-quarter cumulative net flow of credit as a
+proportion of the stock of credit twelve months ago). Credit is defined as above. Sources: Association of British
+Insurers, Bank of England, Bayes CRE Lending Report (Bayes Business School(formerly Cass)), Deloitte,
+Financing & Leasing Association, firm public disclosures, Integer Advisors estimates, LCD an offering of S&P
+Global Market Intelligence, London Stock Exchange, ONS, Peer-to-Peer FinanceAssociation, Eikon from
+Refinitiv, UK Finance and Bank calculations.
+(f) Ratios computed using a four-quarter moving sum of GDP. Sources: ONS and Bank calculations.
+(g) Five-year real interest rates five years forward, implied from inflation swaps and nominal fitted yields. Data
+series runs from October 2004. Sources: Bloomberg Finance L.P., Tradeweb and Bank calculations.
+(h) 22-day moving average. The VIX is a measure of market expectations of 30-day volatility as conveyed by
+S&P 500 stock index options prices. Sources: Bloomberg Finance L.P. and Bank calculations.
+(i) Sources: ICE BofAML & Bank Calculations.
+(j) Global corporate bond spreads refers to a 22-day moving average of the global aggregate market nonfinancial, non-utility corporate bond spread. This tracks the performance of investment-grade corporate debt
+publicly issued in the global and regional markets from both developed and emerging market issuers. Index
+constituents are weighted based on market value. Spreads are option-adjusted (ie they show the number of
+basis points the matched-maturity government spot curve needs to be shifted in order to match a bond’s present
+value of discounted cash flows). Prior to 2016, published versions of this indicator showed the ICE/BofAML
+Global Industrial Index. Sources: Barclays and Bank calculations.
+(k) Unless otherwise stated, indicators are based on the major UK bank peer group defined as: Abbey National
+(until 2003); Alliance & Leicester (until 2007); Bank of Ireland (from 2005); Bank of Scotland (until 2000);
+Barclays; Bradford & Bingley (from 2001 until 2007); Britannia (from 2005 until 2008); Co-operative Banking
+Group (from 2005); Halifax (until 2000); HBOS (from 2001 until 2008); HSBC (from 1992); Lloyds TSB/Lloyds
+Banking Group; Midland (until 1991); National Australia Bank (from 2005 until February 2015); National
+Westminster (until 1999); Nationwide; Northern Rock (until 2011); Royal Bank of Scotland; Santander (from
+2004); TSB (until 1994); Virgin Money (from 2012) and Woolwich (from 1990 until 1997). Accounting changes,
+eg the introduction of IFRS in 2005, result in discontinuities in some series. Restated figures are used where
+available.
+(l) From 2014, the ‘Basel III Tier 1 capital ratio’ is calculated as Tier 1 capital over risk-weighted assets. The
+CET1 element within Tier 1, RWAs and the CET1 capital ratio are according to the Basel III definition as
+implemented in the United Kingdom. The additional Tier 1 element within Tier 1 excludes legacy instruments
+and other transitional adjustments. Prior to 2014, the chart shows Bank estimates; within the Tier 1 ratio
+preference shares are used as a proxy for additional Tier 1 capital. The peer group includes Barclays, HBOS
+(until 2008), HSBC, Lloyds TSB (until 2008), Lloyds Banking Group (from 2009), Nationwide, NatWest,
+Santander UK, Standard Chartered and Virgin Money UK (from end-2020). From 2018, Basel III Tier 1 and
+CET1 capital ratios reflect IFRS 9 transitional arrangements. Sources: PRA regulatory returns, published
+accounts and Bank calculations.
+
+Page 4
+(m) The simple leverage ratio is calculated as aggregate shareholders’ equity over aggregate assets. The UK
+leverage ratio corresponds to the UK leverage framework where qualifying claims on central banks are excluded
+from the leverage exposure measure. The ratio represents the aggregate on an average basis for the quarter.
+From 2018, Tier 1 capital reflects IFRS 9 transitional arrangements. The peer group includes Barclays, HBOS
+(until 2008), HSBC, Lloyds, Nationwide, NatWest, Santander UK, Standard Chartered and Virgin Money UK
+(from end-2020). Sources: PRA regulatory returns, published accounts and Bank calculations.
+(n) The liquidity coverage ratio is calculated as high-quality liquid assets over stressed net-cash outflows over
+30 calendar days. The peer group includes Barclays, HSBC, Lloyds, Nationwide, NatWest, Standard Chartered,
+Santander UK and Virgin Money UK (from end-2020). Series starts in Dec-2015 from which a 3-month rolling
+average is derived. Sources: PRA regulatory returns and Bank calculations.
+(o) Calculated as major UK banks’ profit before tax as a proportion of total assets, averaged over the current
+and previous year. Series starts in 2000 where data are annual, until 2014 and data are half-yearly thereafter.
+When banks in the sample have merged, aggregate profits for the year are approximated by those of the
+acquiring group. The series includes Halifax (up to 2000), HBOS (up to 2009 when acquired by LBG), Barclays,
+Lloyds, HSBC, Santander UK, Nationwide, NatWest, Standard Chartered and Virgin Money UK (from Dec
+2020). Previously, this indicator also included Abbey National, Alliance and Leicester, Bank of Ireland, Bradford
+& Bingley, Britannia, Cooperative Bank, Midland Bank, National Australia Bank, Royal Bank of Scotland,
+National Westminster, Northern Rock, Santander and Woolwich Bank. Sources: Published accounts and Bank
+calculations.
+(p) The loan to deposit ratio is calculated as loans and advances to customers over customer deposits. The
+series starts in 2000 with annual data until the end 2012. From 2013 the data changes to half-yearly. Sources:
+Published accounts and Bank calculations.
+(q) Average of major UK banks' five-year senior CDS premia. Series starts in 2003. Major UK banks are:
+Barclays, Lloyds, HSBC, NatWest, Standard Chartered, Nationwide and HBOS. Data reflect group entities.
+HBOS are excluded from the peer group post-2009 due to their acquisition by LBG. Santander UK data was
+removed from the peer group in June 2022 due to data availability issues and the back-run has been revised to
+reflect this. Sources: S&P Capital IQ and Bank calculations.
+(r) The sample comprises the major UK listed banks' group entities (Barclays, Lloyds Bank, HSBC, NatWest,
+Standard Chartered and Virgin Money UK) and HBOS up to 2009 before it was acquired by Lloyds Banking
+Group. Nationwide is unlisted and therefore excluded from the sample, Santander is also excluded. Virgin
+Money UK is included from Dec 2020. This indicator is a simple unweighted average of the price-to-tangible
+book ratios in the sample. Sources: Bloomberg Finance L.P. and Bank calculations
+
+Page 5
+
+Table A.2: Core indicator set for LTV and DTI limits(a)
+Indicator
+
+Average
+1987–
+2006(b)
+
+Average
+2006(c)
+
+Minimum
+since
+1987(b)
+
+Maximum
+since
+1987(b)
+
+Previous
+value (oya)
+
+5.1%
+
+22.8%
+
+17.1%
+
+Latest value
+(as of 10
+June 2024)
+
+Lender and household balance sheet stretch
+1: LTI and LTV ratios on new residential mortgages
+Share of new
+mortgages with LTV
+≥ 90%(d)
+
+20.7%
+
+Share of new
+mortgages with LTI
+≥ 4.5(e)
+
+4.4%
+
+17.7%
+22.0%
+
+(2023Q4)
+
+4.9%
+5.2%
+
+3.2%
+
+10.5%
+
+8.4%
+(2023Q4)
+
+2: Household credit
+growth(f)
+
+10.1%
+
+11.4%
+
+-1.1%
+
+19.8%
+
+4.5%
+
+3: Household debt to
+income ratio(g)
+
+121.2%
+
+176.2%
+
+91.1%
+
+182.2%
+
+143.4%
+
+0.7%
+(2023Q4)
+133.8%
+(2023Q4)
+
+Conditions and terms in markets
+61325
+
+4: Mortgage
+approvals(h)
+
+97892
+
+5: Housing
+transactions(i)
+
+129508
+
+139039
+
+43030
+
+221978
+
+90050
+
+84200
+(Mar 2024)
+
+6: House price
+growth(j)
+
+2.0%
+
+2.2%
+
+-5.8%
+
+11.5%
+
+-1.2%
+
+1.1%
+(Mar 2024)
+
+7: House price to
+household disposable
+income ratio(k)
+
+3.6
+
+5.3
+
+2.6
+
+6.0
+
+5.9
+
+5.4
+(2023Q4)
+
+8: Spreads on new
+owner-occupier
+mortgages with 2-year
+fix and 75% LTV (l)
+
+0.56
+
+0.28
+
+-0.26
+
+3.39
+
+0.49
+
+119068
+
+9319
+
+132727
+
+51048
+(Mar 2024)
+
+0.53
+(Mar 2024)
+
+(a) A spreadsheet of the series shown in this table is available on the Bank’s website.
+(b) If the series start after 1987, the average between the start date and 2006 end and the maximum/minimum
+since the start date are used.
+(c) 2006 was the last year before the global financial crisis.
+(d) Share of new UK owner-occupier mortgages with loan-to-value ratios of greater than or equal to 90%.
+Includes all new mortgages for house purchases and remortgages with a change in principal. Sources: FCA
+Product Sales Data and Bank calculations.
+
+Page 6
+(e) Share of new UK owner-occupier mortgages with loan-to-income ratios of greater than or equal to 4.5.
+Includes all new mortgages for house purchases and remortgages with a change in principal. Sources: FCA
+Product Sales Data and Bank calculations.
+(f) The twelve month growth rate of nominal credit. Defined as the four quarter cumulative net flow of credit
+divided by the stock of credit 12 months ago. Credit is defined as all liabilities of the household sector
+except for student loans and financial derivatives. Sources: ONS and Bank calculations.
+(g) Gross debt as a percentage of a four-quarter moving sum of gross disposable income of the UK household
+sector. Includes all liabilities of the household sector except for student loans and financial derivatives.
+Disposable income is adjusted for changes in pension entitlements and excludes gross operating surplus
+(GOS) and financial intermediation services indirectly measured (FISIM). Sources: Bank of England, ONS,
+Roe A.R. (1971) - 'The financial interdependence of the UK economy 1957-66' - Chapman and Hall London and Bank calculations.
+(h) Monthly number of approvals for loans secured on dwellings with the purpose of house purchase. This
+covers sterling lending by UK MFIs and other lenders to UK individuals. Approvals are measured net of
+cancellations. Seasonally adjusted. Series starts in 1993. Source: Bank of England.
+(i) The number of houses sold/bought in the current month is sourced from HMRC’s Land Transaction Return.
+From 2008 the Return excluded properties priced at less than £40,000 (2006 and 2007 data have also
+been revised by HMRC to correct for this). Data prior to 2005 comes from the Survey of Property
+Transactions; the UK total figure is computed by assuming that transactions in the rest of the United
+Kingdom grew in line with England, Wales and Northern Ireland. Seasonally adjusted. Sources: HMRC, UK
+Finance and Bank calculations.
+(j) House prices takes the quarterly index of UK House Price Index (HPI) up until March 2005. From June 2005
+onwards, the series uses the monthly index of UK HPI. The growth rate is calculated as the quarter on
+quarter percentage change until March 2005 then calculated as the percentage change three months on
+three months earlier. Seasonally adjusted. Sources: HM Land Registry, ONS and Bank calculations.
+(k) Average £ UK house price as a share of a four-quarter moving sum of average UK household gross
+disposable income. House prices take the seasonally adjusted UK HPI quarterly £ value series from 2005
+onwards. Data prior to 2005 back-projects the UK HPI quarterly £ value series using the quarterly UK HPI
+index series. Gross disposable income is for the UK household sector, adjusted for changes in pension
+entitlements and excludes gross operating surplus (GOS) and financial intermediation services indirectly
+measured (FISIM). Income is divided by the number of households in the UK, estimated using annual
+household projections data, assuming linear growth between available data points within each of the four
+nations of the UK.
+(l) Quoted rates on owner-occupier mortgages with 2-year fix and 75% LTV over relevant risk-free rates of 2year maturity. The quoted rates are weighted monthly average rates advertised by UK banks and building
+societies. The risk-free rates used are the instantaneous forward rate until July 2008 and the overnight
+index swap rate from August 2008. Sources: Bank of England, Bloomberg Finance L.P. and Bank
+calculations.
+
+

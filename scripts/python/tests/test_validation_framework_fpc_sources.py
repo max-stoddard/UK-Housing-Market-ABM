@@ -7,12 +7,14 @@ from __future__ import annotations
 
 import unittest
 
+from scripts.python.validation.model import FPC_SOURCE_2024_BY_METRIC_ID as package_fpc_sources
+from scripts.python.validation.model import TARGETS_BY_ID as package_targets_by_id
 from scripts.python.validation.model.fpc_source_2024 import (
     FPC_SOURCE_2024_BY_METRIC_ID,
     SUPPORTED_FPC_METRIC_IDS,
     UNSUPPORTED_FPC_METRIC_IDS,
 )
-from scripts.python.validation.model.targets_2024 import TARGETS_BY_ID
+from scripts.python.validation.model.validation_catalog_2024 import TARGETS_BY_ID
 
 
 class TestValidationFrameworkFpcSources(unittest.TestCase):
@@ -50,8 +52,11 @@ class TestValidationFrameworkFpcSources(unittest.TestCase):
         self.assertEqual(TARGETS_BY_ID["core_debtToIncome"].label, "Household Debt to Income")
         self.assertEqual(TARGETS_BY_ID["core_priceToIncome"].target_band.lower, 5.4)
         self.assertEqual(TARGETS_BY_ID["core_housingTransactions"].target_band.lower, 84.2)
-        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].requirement, "diagnostic")
-        self.assertIsNone(TARGETS_BY_ID["core_advancesToFTB"].target_band)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].requirement, "required")
+        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].source_label, "UK Finance Household Finance Review 2024 Q4")
+        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.lower, 23.658)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].source_label, "UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)")
+        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.upper, 5.947)
         self.assertNotEqual(
             TARGETS_BY_ID["core_mortgageApprovals"].source_label,
             "Official 2024 macro indicator target",
@@ -72,6 +77,10 @@ class TestValidationFrameworkFpcSources(unittest.TestCase):
             self.assertIsNotNone(source.normalized_source_value)
             self.assertLessEqual(metric.target_band.lower, source.normalized_source_value)
             self.assertGreaterEqual(metric.target_band.upper, source.normalized_source_value)
+
+    def test_package_and_wrapper_exports_resolve_to_canonical_objects(self) -> None:
+        self.assertIs(FPC_SOURCE_2024_BY_METRIC_ID, package_fpc_sources)
+        self.assertIs(TARGETS_BY_ID, package_targets_by_id)
 
 
 if __name__ == "__main__":

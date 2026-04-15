@@ -1,0 +1,17 @@
+Author: Max Stoddard
+
+UK Finance validation evidence for 2024 BTL advances derived from:
+- Buy to let Mortgage Market Update Q1.pdf
+- Buy to let Mortgage Market Update Q2.pdf
+- Buy to let Mortgage Market Update Q3.pdf
+- Buy to let Mortgage Market Update Q4.pdf
+
+House-purchase counts taken from the "Latest 2024 Q*" summary panel on page 2 of each PDF:
+- Q1 2024 House purchase: 12,422
+- Q2 2024 House purchase: 14,955
+- Q3 2024 House purchase: 16,410
+- Q4 2024 House purchase: 18,268
+
+Validation comparison conversion:
+- Annual sum = 12,422 + 14,955 + 16,410 + 18,268 = 62,055
+- Monthly mean (thousand count/month) = 62,055 / 12 / 1,000 = 5.171250

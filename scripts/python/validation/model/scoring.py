@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from scripts.python.validation.model.targets_2024 import FAMILY_WEIGHTS
+from scripts.python.validation.model.validation_catalog_2024 import FAMILY_WEIGHTS
 
 
 def compute_normalized_distance(*, seed_mean: float, lower_bound: float, upper_bound: float) -> float:
