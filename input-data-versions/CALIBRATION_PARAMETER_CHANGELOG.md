@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.2`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.6`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -384,6 +384,45 @@ python3 -m scripts.python.experiments.was.personal_allowance
 - Version(s) affected:
   - `v2.2` context
 
+### `scripts/python/calibration/boe/boe_bank_parameter_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_parameter_method_search.py`
+- Shared helper path: `scripts/python/helpers/boe/bank_parameters.py`
+- Outputs/keys produced: `CENTRAL_BANK_INITIAL_BASE_RATE`, `BANK_INITIAL_RATE`, `BANK_D_INTEREST_D_DEMAND`, `BANK_INITIAL_CREDIT_SUPPLY`
+- Command:
+```bash
+curl -L -o input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv 'https://www.bankofengland.co.uk/boeapps/database/_iadb-fromshowcolumns.asp?csv.x=yes&Datefrom=01/Jan/1995&Dateto=31/Dec/2024&SeriesCodes=LPMVTUZ&CSVF=TN&UsingCodes=Y&VPD=Y&VFD=N'
+
+python3 -m scripts.python.experiments.boe.boe_bank_parameter_method_search --bank-rate-csv 'private-datasets/boe/BoE - Bank Rate history and data.csv' --housing-tools-xlsx private-datasets/boe/housing-tools.xlsx --vtuz-csv input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv --ons-households 28600000 --target-year 2024 --output-dir input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6
+
+python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-rate-csv 'private-datasets/boe/BoE - Bank Rate history and data.csv' --housing-tools-xlsx private-datasets/boe/housing-tools.xlsx --vtuz-csv input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv --ons-households 28600000 --target-year 2024 --output-dir input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6
+```
+- Replay note:
+  - The `curl` step is a one-time evidence acquisition step. Repo-local reruns should reuse the checked-in `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv` file and can skip the network fetch.
+- Expected-result snippet:
+  - `CENTRAL_BANK_INITIAL_BASE_RATE = 0.0510833333`
+  - `BANK_INITIAL_RATE = 0.0564953144`
+  - `BANK_D_INTEREST_D_DEMAND = 0.0000005472`
+  - `BANK_INITIAL_CREDIT_SUPPLY = 704.9388111888`
+  - rejected diagnostic:
+    - `BANK_D_INTEREST_D_DEMAND 2024-only fit = -0.0000059191`
+- Method chosen:
+  - Daily-weighted `2024` Bank Rate monthly mean for `CENTRAL_BANK_INITIAL_BASE_RATE`, monthly Bank Rate plus monthly housing-tools spread mean for `BANK_INITIAL_RATE`, through-origin `Delta spread_fraction = beta * Delta credit_per_household` fit on the full `1995-2024` overlap for `BANK_D_INTEREST_D_DEMAND`, and full-year `2024` VTUZ-per-household mean for `BANK_INITIAL_CREDIT_SUPPLY`.
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the locked workflow keeps the static startup parameters aligned to the full-year 2024 validation window and uses the longer pre-2025 overlap for the demand-response coefficient because the 2024-only fit is negative under the model-consistent delta equation; Tradeoff=the promoted beta is much smaller than the legacy coefficient and the cumulative version chain intentionally passes through a transient v4.3 partial-step state before startup-rate coherence is restored in v4.4.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `scripts/python/experiments/boe/boe_bank_parameter_method_search.py`
+  - `scripts/python/calibration/boe/boe_bank_parameter_calibration.py`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterMethodSearch.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterCalibrationSummary.csv`
+  - `docs/superpowers/specs/2026-04-15-boe-bank-parameter-v4.3-v4.6-calibration.md`
+- Version(s) affected:
+  - `v4.3`
+  - `v4.4`
+  - `v4.5`
+  - `v4.6`
+
 ## Per-Version Changelog Entries (Append-Only)
 
 ### v1.0
@@ -678,3 +717,87 @@ python3 -m scripts.python.experiments.was.personal_allowance
   - `docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md`
 - Version(s) affected:
   - `v4.2`
+
+### v4.3
+- Script path: `scripts/python/calibration/boe/boe_bank_parameter_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_parameter_method_search.py`
+- Outputs/keys produced: `CENTRAL_BANK_INITIAL_BASE_RATE`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-rate-csv 'private-datasets/boe/BoE - Bank Rate history and data.csv' --housing-tools-xlsx private-datasets/boe/housing-tools.xlsx --vtuz-csv input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv --ons-households 28600000 --target-year 2024 --output-dir input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6`
+- Expected result snippet:
+  - `CENTRAL_BANK_INITIAL_BASE_RATE = 0.0510833333`
+- Method chosen:
+  - full-year `2024` mean of the daily-weighted monthly Bank Rate series
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the full-year 2024 daily-weighted mean matches the validation window more closely than January or December snapshots; Tradeoff=v4.3 is intentionally a partial startup-rate recalibration step and remains structurally inconsistent until BANK_INITIAL_RATE is promoted in v4.4.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEBankRate2024Monthly.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterCalibrationSummary.csv`
+  - `input-data-versions/validation/v4.3.json`
+- Version(s) affected: `v4.3`
+
+### v4.4
+- Script path: `scripts/python/calibration/boe/boe_bank_parameter_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_parameter_method_search.py`
+- Outputs/keys produced: `BANK_INITIAL_RATE`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-rate-csv 'private-datasets/boe/BoE - Bank Rate history and data.csv' --housing-tools-xlsx private-datasets/boe/housing-tools.xlsx --vtuz-csv input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv --ons-households 28600000 --target-year 2024 --output-dir input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6`
+- Expected result snippet:
+  - `BANK_INITIAL_RATE = 0.0564953144`
+- Method chosen:
+  - full-year `2024` mean of the monthly Bank Rate plus housing-tools spread mortgage-rate proxy
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the full-year 2024 mortgage-rate proxy keeps the startup lending rate aligned to the same validation window as the promoted base rate; Tradeoff=the resulting v4.4 snapshot restores startup-rate coherence but leaves house-price growth in the tracked validation warning band.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEMortgageRateProxy2024Monthly.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterCalibrationSummary.csv`
+  - `input-data-versions/validation/v4.4.json`
+- Version(s) affected: `v4.4`
+
+### v4.5
+- Script path: `scripts/python/calibration/boe/boe_bank_parameter_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_parameter_method_search.py`
+- Outputs/keys produced: `BANK_D_INTEREST_D_DEMAND`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-rate-csv 'private-datasets/boe/BoE - Bank Rate history and data.csv' --housing-tools-xlsx private-datasets/boe/housing-tools.xlsx --vtuz-csv input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv --ons-households 28600000 --target-year 2024 --output-dir input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6`
+- Expected result snippet:
+  - `BANK_D_INTEREST_D_DEMAND = 0.0000005472`
+  - rejected diagnostic:
+    - `2024-only fit = -0.0000059191`
+- Method chosen:
+  - through-origin fit on `Delta spread_fraction = beta * Delta credit_per_household` using the full `1995-2024` overlap
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the longer pre-2025 overlap yields a positive coefficient under the model-consistent delta equation while the 2024-only fit is negative and therefore not defensible as the live default; Tradeoff=the promoted coefficient is materially smaller than the legacy value and this intermediate version worsens several macro credit and affordability metrics versus v4.4.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZSpreadAlignedDeltas1995To2024.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZSpreadAlignedDeltas2024.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterMethodSearch.csv`
+  - `input-data-versions/validation/v4.5.json`
+- Version(s) affected: `v4.5`
+
+### v4.6
+- Script path: `scripts/python/calibration/boe/boe_bank_parameter_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_parameter_method_search.py`
+- Outputs/keys produced: `BANK_INITIAL_CREDIT_SUPPLY`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-rate-csv 'private-datasets/boe/BoE - Bank Rate history and data.csv' --housing-tools-xlsx private-datasets/boe/housing-tools.xlsx --vtuz-csv input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZGrossLendingInput.csv --ons-households 28600000 --target-year 2024 --output-dir input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6`
+- Expected result snippet:
+  - `BANK_INITIAL_CREDIT_SUPPLY = 704.9388111888`
+- Method chosen:
+  - full-year `2024` mean of monthly VTUZ gross lending converted to pounds per household using the locked ONS denominator
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the chosen per-household mean keeps the supply proxy aligned to the same 2024 window as the promoted startup-rate parameters and restores the best overall validation balance within the v4.3-v4.6 chain; Tradeoff=the direct data-aligned supply level still leaves mortgage approvals, HM advances, BTL advances, owner-occupier debt to income, and rental yield outside the required bands.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoEVTUZCreditSupplyPerHousehold2024Monthly.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/OnsHouseholds2024.csv`
+  - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterCalibrationSummary.csv`
+  - `input-data-versions/validation/v4.6.json`
+- Version(s) affected: `v4.6`
