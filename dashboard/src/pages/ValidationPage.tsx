@@ -56,6 +56,19 @@ function formatLoss(value: number | null): string {
   return value === null ? 'Unsupported' : formatNumber(value, 4);
 }
 
+function formatLossScaleBasis(metric: ValidationMetricSummary): string | null {
+  if (metric.lossScale === null || metric.lossScaleBasis === null) {
+    return null;
+  }
+  const basisLabel =
+    metric.lossScaleBasis === 'source_value'
+      ? 'source target level'
+      : metric.lossScaleBasis === 'target_band_midpoint'
+        ? 'target-band midpoint'
+        : 'target-band upper bound';
+  return `Loss scale ${formatNumber(metric.lossScale, 4)} from ${basisLabel}`;
+}
+
 function getPathTail(pathValue: string | null): string | null {
   if (!pathValue) {
     return null;
@@ -405,8 +418,8 @@ export function ValidationPage() {
             just tuned to look good in a single run.
           </p>
           <p className="validation-formula">
-            <strong>Metric loss</strong> = normalized distance from target band + 0.25 x normalized spread + 0.50 x
-            seeds outside band share
+            <strong>Metric loss</strong> = distance relative to target level + 0.25 x spread relative to target level
+            + 0.50 x seeds outside band share
           </p>
         </div>
       </article>
@@ -566,6 +579,9 @@ export function ValidationPage() {
                                 {reference.label}
                               </div>
                             ))}
+                            {formatLossScaleBasis(metric) && (
+                              <div className="validation-source-note">{formatLossScaleBasis(metric)}</div>
+                            )}
                             {metric.bandNotes && <div className="validation-source-note">{metric.bandNotes}</div>}
                           </div>
                         )}

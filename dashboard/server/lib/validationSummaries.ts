@@ -176,6 +176,11 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
     p25: assertNumber(objectValue.p25, `metrics[${index}].p25 must be a number`),
     p75: assertNumber(objectValue.p75, `metrics[${index}].p75 must be a number`),
     insideRate: assertNumberOrNull(objectValue.insideRate, `metrics[${index}].insideRate must be a number or null`),
+    lossScale: assertNumberOrNull(objectValue.lossScale, `metrics[${index}].lossScale must be a number or null`),
+    lossScaleBasis: assertStringOrNull(
+      objectValue.lossScaleBasis,
+      `metrics[${index}].lossScaleBasis must be a string or null`
+    ) as ValidationMetricSummary['lossScaleBasis'],
     normalizedDistance: assertNumberOrNull(
       objectValue.normalizedDistance,
       `metrics[${index}].normalizedDistance must be a number or null`

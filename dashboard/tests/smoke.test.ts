@@ -1277,7 +1277,7 @@ fs.writeFileSync(
   path.join(validationSummaryFixtureDir, 'v-modern.json'),
   JSON.stringify(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       version: 'v-modern',
       generatedAt: '2026-04-14T00:00:00Z',
       seeds: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -1332,8 +1332,10 @@ fs.writeFileSync(
           p25: 8.8,
           p75: 9.2,
           insideRate: 0,
-          normalizedDistance: 1.0,
-          normalizedIqr: 0.1,
+          lossScale: 5.17125,
+          lossScaleBasis: 'source_value',
+          normalizedDistance: 0.590878521852958,
+          normalizedIqr: 0.077351898525006,
           metricLoss: 1.5
         }
       ]
@@ -1386,6 +1388,8 @@ fs.writeFileSync(
 );
 const modernSummary = readValidationSummary(validationSummaryFixtureRoot, 'v-modern');
 assert.equal(modernSummary.metrics[0]?.sourceReferences.length ?? 0, 1, 'Validation parser should preserve source references');
+assert.equal(modernSummary.metrics[0]?.lossScaleBasis, 'source_value', 'Validation parser should expose loss scale basis');
+assert.equal(modernSummary.metrics[0]?.lossScale, 5.17125, 'Validation parser should expose loss scale values');
 assert.equal(
   modernSummary.metrics[0]?.sourceReferences[0]?.sourceDocumentPath,
   'input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q1.pdf',
@@ -2986,7 +2990,7 @@ assert.ok(
   'Validation page should render the renamed metric results section'
 );
 assert.ok(
-  validationPageSource.includes('Metric loss'),
+  validationPageSource.includes('distance relative to target level'),
   'Validation page should explain how validation loss is calculated'
 );
 assert.ok(

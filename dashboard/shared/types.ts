@@ -230,6 +230,7 @@ export interface HomePreviewPayload {
 export type ValidationMetricStatus = 'pass' | 'warn' | 'fail' | 'unsupported';
 export type ValidationMetricRequirement = 'required' | 'diagnostic';
 export type ValidationMetricMappingStatus = 'exact_match' | 'derived_match' | 'unsupported';
+export type ValidationLossScaleBasis = 'source_value' | 'target_band_midpoint' | 'target_band_upper';
 
 export interface ValidationTargetBand {
   lower: number;
@@ -290,6 +291,8 @@ export interface ValidationMetricSummary {
   p25: number;
   p75: number;
   insideRate: number | null;
+  lossScale: number | null;
+  lossScaleBasis: ValidationLossScaleBasis | null;
   normalizedDistance: number | null;
   normalizedIqr: number | null;
   metricLoss: number | null;
