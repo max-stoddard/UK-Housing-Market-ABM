@@ -26,7 +26,10 @@ import {
   resolveVersionPath
 } from './io';
 import { compareVersions, listVersions } from './versioning';
-import { loadVersionNotes, type VersionNoteEntry } from './versionNotes';
+import {
+  loadDashboardInputVersionHistory,
+  type DashboardInputVersionHistoryEntry
+} from './dashboardInputVersionHistory';
 import { getValidationOverview as getTrackedValidationOverview } from './validationSummaries';
 import {
   buildLatestSourceTagsByKey,
@@ -47,7 +50,7 @@ interface CompareContext {
   rightConfigDetails: Map<string, { value: string; comment: string }>;
   leftFallbackTagsByKey: Map<string, string[]>;
   rightFallbackTagsByKey: Map<string, string[]>;
-  versionNotes: VersionNoteEntry[];
+  dashboardInputVersionHistory: DashboardInputVersionHistoryEntry[];
   provenanceScope: ProvenanceScope;
 }
 
@@ -99,7 +102,7 @@ function intersects(left: string[], right: string[]): boolean {
 }
 
 function toChangeOriginsInRange(context: CompareContext, meta: ParameterCardMeta): VersionChangeOrigin[] {
-  const includeByScope = (entry: VersionNoteEntry): boolean => {
+  const includeByScope = (entry: DashboardInputVersionHistoryEntry): boolean => {
     if (context.provenanceScope === 'through_right') {
       return compareVersions(entry.snapshot_folder, context.rightVersion) <= 0;
     }
@@ -109,7 +112,7 @@ function toChangeOriginsInRange(context: CompareContext, meta: ParameterCardMeta
     );
   };
 
-  return context.versionNotes
+  return context.dashboardInputVersionHistory
     .filter(
       (entry) =>
         includeByScope(entry) &&
@@ -1026,10 +1029,10 @@ export function getVersions(repoRoot: string): string[] {
 export function getInProgressVersions(repoRoot: string): string[] {
   const versions = getVersions(repoRoot);
   const versionSet = new Set(versions);
-  const notes = loadVersionNotes(repoRoot);
+  const dashboardInputVersionHistory = loadDashboardInputVersionHistory(repoRoot);
   const inProgress = new Set<string>();
 
-  for (const entry of notes) {
+  for (const entry of dashboardInputVersionHistory) {
     if (entry.validation.status === 'in_progress' && versionSet.has(entry.snapshot_folder)) {
       inProgress.add(entry.snapshot_folder);
     }
@@ -1092,11 +1095,11 @@ export function compareParameters(
 
   const leftConfig = parseConfigFile(getConfigPath(repoRoot, leftVersion));
   const rightConfig = parseConfigFile(getConfigPath(repoRoot, rightVersion));
-  const versionNotes = loadVersionNotes(repoRoot);
+  const dashboardInputVersionHistory = loadDashboardInputVersionHistory(repoRoot);
   const leftConfigDetails = parseConfigWithComments(getConfigPath(repoRoot, leftVersion));
   const rightConfigDetails = parseConfigWithComments(getConfigPath(repoRoot, rightVersion));
-  const leftFallbackTagsByKey = buildLatestSourceTagsByKey(versionNotes, leftVersion);
-  const rightFallbackTagsByKey = buildLatestSourceTagsByKey(versionNotes, rightVersion);
+  const leftFallbackTagsByKey = buildLatestSourceTagsByKey(dashboardInputVersionHistory, leftVersion);
+  const rightFallbackTagsByKey = buildLatestSourceTagsByKey(dashboardInputVersionHistory, rightVersion);
 
   const catalogById = new Map(PARAMETER_CATALOG.map((meta) => [meta.id, meta]));
   const selected = (ids.length > 0 ? ids : PARAMETER_CATALOG.map((meta) => meta.id)).map((id) => {
@@ -1117,7 +1120,7 @@ export function compareParameters(
     rightConfigDetails,
     leftFallbackTagsByKey,
     rightFallbackTagsByKey,
-    versionNotes,
+    dashboardInputVersionHistory,
     provenanceScope
   };
 

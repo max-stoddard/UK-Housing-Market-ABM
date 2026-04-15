@@ -152,7 +152,7 @@ Homepage preview endpoint:
 
 - `GET /api/home-preview?version=<version>`
 - returns only the lightweight chart payload needed for the homepage hero preview
-- avoids provenance history, dataset attribution, and other compare-page metadata
+- avoids dashboard input version history, dataset attribution, and other compare-page metadata
 - keeps the homepage live without forcing the full compare path on first public load
 
 ## Render Deployment

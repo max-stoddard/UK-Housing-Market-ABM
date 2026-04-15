@@ -19,7 +19,7 @@ from scripts.python.experiments.model.policy_story_scoring import StoryScore
 
 V41_VALIDATION_CAVEAT = (
     "`v4.1` is a fork of `v4.0` with aligned hard LTV caps for FTB, HM, and BTL, "
-    "and its R8 validation remains marked `in_progress` in `input-data-versions/version-notes.json`."
+    "and its R8 validation is now tracked as `complete` in `input-data-versions/dashboard-input-version-history.json`."
 )
 
 

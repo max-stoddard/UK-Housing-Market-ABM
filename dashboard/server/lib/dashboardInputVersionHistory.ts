@@ -3,7 +3,7 @@ import path from 'node:path';
 import { compareVersions } from './versioning';
 import type { ValidationStatus } from '../../shared/types';
 
-export interface VersionNoteValidation {
+export interface DashboardInputVersionHistoryValidation {
   status: ValidationStatus;
   income_diff_pct: number | null;
   housing_wealth_diff_pct: number | null;
@@ -11,12 +11,12 @@ export interface VersionNoteValidation {
   note?: string;
 }
 
-export interface VersionNoteParameterChange {
+export interface DashboardInputVersionHistoryParameterChange {
   config_parameter: string;
   dataset_source: string | null;
 }
 
-export interface VersionNoteEntry {
+export interface DashboardInputVersionHistoryEntry {
   version_id: string;
   snapshot_folder: string;
   validation_dataset: string;
@@ -24,12 +24,12 @@ export interface VersionNoteEntry {
   updated_data_sources: string[];
   calibration_files: string[];
   config_parameters: string[];
-  parameter_changes: VersionNoteParameterChange[];
-  method_variations: VersionNoteMethodVariation[];
-  validation: VersionNoteValidation;
+  parameter_changes: DashboardInputVersionHistoryParameterChange[];
+  method_variations: DashboardInputVersionHistoryMethodVariation[];
+  validation: DashboardInputVersionHistoryValidation;
 }
 
-export interface VersionNoteMethodVariation {
+export interface DashboardInputVersionHistoryMethodVariation {
   config_parameters: string[];
   improvement_summary: string;
   why_changed: string;
@@ -37,11 +37,11 @@ export interface VersionNoteMethodVariation {
   decision_logic?: string;
 }
 
-interface VersionNotesDocument {
+interface DashboardInputVersionHistoryDocument {
   author: string;
   schema_version: number;
   description: string;
-  entries: VersionNoteEntry[];
+  entries: DashboardInputVersionHistoryEntry[];
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -50,14 +50,14 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 function assertString(value: unknown, field: string): string {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    throw new Error(`Invalid version notes schema: ${field} must be a non-empty string`);
+    throw new Error(`Invalid dashboard input version history schema: ${field} must be a non-empty string`);
   }
   return value;
 }
 
 function assertStringArray(value: unknown, field: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
-    throw new Error(`Invalid version notes schema: ${field} must be a string array`);
+    throw new Error(`Invalid dashboard input version history schema: ${field} must be a string array`);
   }
   return value;
 }
@@ -67,24 +67,24 @@ function assertNullableNumber(value: unknown, field: string): number | null {
     return null;
   }
   if (typeof value !== 'number' || Number.isNaN(value)) {
-    throw new Error(`Invalid version notes schema: ${field} must be a number or null`);
+    throw new Error(`Invalid dashboard input version history schema: ${field} must be a number or null`);
   }
   return value;
 }
 
-function parseValidation(value: unknown, field: string): VersionNoteValidation {
+function parseValidation(value: unknown, field: string): DashboardInputVersionHistoryValidation {
   if (!isObject(value)) {
-    throw new Error(`Invalid version notes schema: ${field} must be an object`);
+    throw new Error(`Invalid dashboard input version history schema: ${field} must be an object`);
   }
 
   const status = value.status;
   if (status !== 'complete' && status !== 'in_progress') {
-    throw new Error(`Invalid version notes schema: ${field}.status must be 'complete' or 'in_progress'`);
+    throw new Error(`Invalid dashboard input version history schema: ${field}.status must be 'complete' or 'in_progress'`);
   }
 
   const note = value.note;
   if (note !== undefined && typeof note !== 'string') {
-    throw new Error(`Invalid version notes schema: ${field}.note must be a string when provided`);
+    throw new Error(`Invalid dashboard input version history schema: ${field}.note must be a string when provided`);
   }
 
   return {
@@ -96,14 +96,14 @@ function parseValidation(value: unknown, field: string): VersionNoteValidation {
   };
 }
 
-function parseEntry(value: unknown, index: number): VersionNoteEntry {
+function parseEntry(value: unknown, index: number): DashboardInputVersionHistoryEntry {
   if (!isObject(value)) {
-    throw new Error(`Invalid version notes schema: entries[${index}] must be an object`);
+    throw new Error(`Invalid dashboard input version history schema: entries[${index}] must be an object`);
   }
 
   const methodVariations = value.method_variations;
   if (!Array.isArray(methodVariations)) {
-    throw new Error(`Invalid version notes schema: entries[${index}].method_variations must be an array`);
+    throw new Error(`Invalid dashboard input version history schema: entries[${index}].method_variations must be an array`);
   }
 
   const configParameters = assertStringArray(value.config_parameters, `entries[${index}].config_parameters`);
@@ -126,22 +126,25 @@ function parseEntry(value: unknown, index: number): VersionNoteEntry {
   };
 }
 
-function parseParameterChanges(value: unknown, entryIndex: number): VersionNoteParameterChange[] {
+function parseParameterChanges(
+  value: unknown,
+  entryIndex: number
+): DashboardInputVersionHistoryParameterChange[] {
   if (!Array.isArray(value)) {
-    throw new Error(`Invalid version notes schema: entries[${entryIndex}].parameter_changes must be an array`);
+    throw new Error(`Invalid dashboard input version history schema: entries[${entryIndex}].parameter_changes must be an array`);
   }
 
   return value.map((parameterChange, parameterIndex) => {
     if (!isObject(parameterChange)) {
       throw new Error(
-        `Invalid version notes schema: entries[${entryIndex}].parameter_changes[${parameterIndex}] must be an object`
+        `Invalid dashboard input version history schema: entries[${entryIndex}].parameter_changes[${parameterIndex}] must be an object`
       );
     }
 
     const datasetSource = parameterChange.dataset_source;
     if (datasetSource !== null && typeof datasetSource !== 'string') {
       throw new Error(
-        `Invalid version notes schema: entries[${entryIndex}].parameter_changes[${parameterIndex}].dataset_source must be a string or null`
+        `Invalid dashboard input version history schema: entries[${entryIndex}].parameter_changes[${parameterIndex}].dataset_source must be a string or null`
       );
     }
 
@@ -157,49 +160,57 @@ function parseParameterChanges(value: unknown, entryIndex: number): VersionNoteP
 
 function assertParameterConsistency(
   configParameters: string[],
-  parameterChanges: VersionNoteParameterChange[],
+  parameterChanges: DashboardInputVersionHistoryParameterChange[],
   entryIndex: number
 ): void {
   const configSet = new Set(configParameters);
   const parameterSet = new Set(parameterChanges.map((change) => change.config_parameter));
   if (configSet.size !== configParameters.length) {
-    throw new Error(`Invalid version notes schema: entries[${entryIndex}].config_parameters must not contain duplicates`);
+    throw new Error(
+      `Invalid dashboard input version history schema: entries[${entryIndex}].config_parameters must not contain duplicates`
+    );
   }
   if (parameterSet.size !== parameterChanges.length) {
-    throw new Error(`Invalid version notes schema: entries[${entryIndex}].parameter_changes must not contain duplicates`);
+    throw new Error(
+      `Invalid dashboard input version history schema: entries[${entryIndex}].parameter_changes must not contain duplicates`
+    );
   }
   if (configSet.size !== parameterSet.size) {
     throw new Error(
-      `Invalid version notes schema: entries[${entryIndex}].config_parameters and entries[${entryIndex}].parameter_changes must match as sets`
+      `Invalid dashboard input version history schema: entries[${entryIndex}].config_parameters and entries[${entryIndex}].parameter_changes must match as sets`
     );
   }
   for (const parameter of configSet) {
     if (!parameterSet.has(parameter)) {
       throw new Error(
-        `Invalid version notes schema: entries[${entryIndex}].config_parameters and entries[${entryIndex}].parameter_changes must match as sets`
+        `Invalid dashboard input version history schema: entries[${entryIndex}].config_parameters and entries[${entryIndex}].parameter_changes must match as sets`
       );
     }
   }
 }
 
-function parseMethodVariation(value: unknown, entryIndex: number, variationIndex: number): VersionNoteMethodVariation {
+function parseMethodVariation(
+  value: unknown,
+  entryIndex: number,
+  variationIndex: number
+): DashboardInputVersionHistoryMethodVariation {
   if (!isObject(value)) {
     throw new Error(
-      `Invalid version notes schema: entries[${entryIndex}].method_variations[${variationIndex}] must be an object`
+      `Invalid dashboard input version history schema: entries[${entryIndex}].method_variations[${variationIndex}] must be an object`
     );
   }
 
   const methodChosen = value.method_chosen;
   if (methodChosen !== undefined && typeof methodChosen !== 'string') {
     throw new Error(
-      `Invalid version notes schema: entries[${entryIndex}].method_variations[${variationIndex}].method_chosen must be a string when provided`
+      `Invalid dashboard input version history schema: entries[${entryIndex}].method_variations[${variationIndex}].method_chosen must be a string when provided`
     );
   }
 
   const decisionLogic = value.decision_logic;
   if (decisionLogic !== undefined && typeof decisionLogic !== 'string') {
     throw new Error(
-      `Invalid version notes schema: entries[${entryIndex}].method_variations[${variationIndex}].decision_logic must be a string when provided`
+      `Invalid dashboard input version history schema: entries[${entryIndex}].method_variations[${variationIndex}].decision_logic must be a string when provided`
     );
   }
 
@@ -218,17 +229,17 @@ function parseMethodVariation(value: unknown, entryIndex: number, variationIndex
   };
 }
 
-function parseDocument(value: unknown): VersionNotesDocument {
+function parseDocument(value: unknown): DashboardInputVersionHistoryDocument {
   if (!isObject(value)) {
-    throw new Error('Invalid version notes schema: root must be an object');
+    throw new Error('Invalid dashboard input version history schema: root must be an object');
   }
 
   const entriesValue = value.entries;
   if (!Array.isArray(entriesValue)) {
-    throw new Error('Invalid version notes schema: entries must be an array');
+    throw new Error('Invalid dashboard input version history schema: entries must be an array');
   }
 
-  const document: VersionNotesDocument = {
+  const document: DashboardInputVersionHistoryDocument = {
     author: assertString(value.author, 'author'),
     schema_version: Number(value.schema_version),
     description: assertString(value.description, 'description'),
@@ -236,27 +247,27 @@ function parseDocument(value: unknown): VersionNotesDocument {
   };
 
   if (!Number.isFinite(document.schema_version)) {
-    throw new Error('Invalid version notes schema: schema_version must be a number');
+    throw new Error('Invalid dashboard input version history schema: schema_version must be a number');
   }
 
   return document;
 }
 
-export function getVersionNotesPath(repoRoot: string): string {
-  return path.join(repoRoot, 'input-data-versions', 'version-notes.json');
+export function getDashboardInputVersionHistoryPath(repoRoot: string): string {
+  return path.join(repoRoot, 'input-data-versions', 'dashboard-input-version-history.json');
 }
 
-export function loadVersionNotes(repoRoot: string): VersionNoteEntry[] {
-  const notesPath = getVersionNotesPath(repoRoot);
-  if (!fs.existsSync(notesPath)) {
-    throw new Error(`Missing version notes file: ${path.relative(repoRoot, notesPath)}`);
+export function loadDashboardInputVersionHistory(repoRoot: string): DashboardInputVersionHistoryEntry[] {
+  const historyPath = getDashboardInputVersionHistoryPath(repoRoot);
+  if (!fs.existsSync(historyPath)) {
+    throw new Error(`Missing dashboard input version history file: ${path.relative(repoRoot, historyPath)}`);
   }
 
   let raw: unknown;
   try {
-    raw = JSON.parse(fs.readFileSync(notesPath, 'utf-8'));
+    raw = JSON.parse(fs.readFileSync(historyPath, 'utf-8'));
   } catch (error) {
-    throw new Error(`Invalid version notes JSON: ${(error as Error).message}`);
+    throw new Error(`Invalid dashboard input version history JSON: ${(error as Error).message}`);
   }
 
   const document = parseDocument(raw);

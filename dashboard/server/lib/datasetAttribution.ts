@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { compareVersions } from './versioning';
 import type { DatasetAttribution } from '../../shared/types';
-import type { VersionNoteEntry } from './versionNotes';
+import type { DashboardInputVersionHistoryEntry } from './dashboardInputVersionHistory';
 
 interface ConfigEntryWithComment {
   value: string;
@@ -245,12 +245,12 @@ export function parseConfigWithComments(configPath: string): Map<string, ConfigE
 }
 
 export function buildLatestSourceTagsByKey(
-  versionNotes: VersionNoteEntry[],
+  dashboardInputVersionHistory: DashboardInputVersionHistoryEntry[],
   version: string
 ): Map<string, string[]> {
   const out = new Map<string, string[]>();
 
-  for (const entry of versionNotes) {
+  for (const entry of dashboardInputVersionHistory) {
     if (compareVersions(entry.snapshot_folder, version) > 0) {
       continue;
     }

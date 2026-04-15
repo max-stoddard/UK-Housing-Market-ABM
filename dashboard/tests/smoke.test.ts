@@ -50,7 +50,7 @@ import {
 import { cancelExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../server/lib/experimentJobs.js';
 import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFilePath } from '../server/lib/io.js';
 import { createWriteAuthController, getWriteAuthConfigurationError, resolveDashboardWriteAccess } from '../server/lib/writeAuth.js';
-import { loadVersionNotes } from '../server/lib/versionNotes.js';
+import { loadDashboardInputVersionHistory } from '../server/lib/dashboardInputVersionHistory.js';
 import { assertAxisSpecComplete, getAxisSpec } from '../src/lib/chartAxes.js';
 import {
   buildExperimentSearchParams,
@@ -1042,7 +1042,7 @@ function createModelRunFixtureRepo(): string {
     fs.writeFileSync(path.join(baselinePath, 'Income.csv'), '0,10,0.1\n', 'utf-8');
   });
 
-  const versionNotes = {
+  const dashboardInputVersionHistory = {
     author: 'smoke-test',
     schema_version: 1,
     description: 'fixture',
@@ -1067,7 +1067,11 @@ function createModelRunFixtureRepo(): string {
     ]
   };
 
-  fs.writeFileSync(path.join(inputDataRoot, 'version-notes.json'), JSON.stringify(versionNotes, null, 2), 'utf-8');
+  fs.writeFileSync(
+    path.join(inputDataRoot, 'dashboard-input-version-history.json'),
+    JSON.stringify(dashboardInputVersionHistory, null, 2),
+    'utf-8'
+  );
   return root;
 }
 
@@ -1113,6 +1117,7 @@ assert.ok(
   'In-progress versions should resolve to discovered snapshot folders'
 );
 assert.ok(!inProgressVersions.includes('v4.0'), 'Expected v4.0 to be reported as a stable snapshot');
+assert.ok(!inProgressVersions.includes('v4.1'), 'Expected v4.1 to be reported as a stable snapshot after validation refresh');
 const latestStableVersion = getLatestStableVersion(versions, inProgressVersions);
 const expectedLatestStableVersion = [...versions].reverse().find((version) => !inProgressVersions.includes(version)) ?? '';
 assert.equal(latestStableVersion, expectedLatestStableVersion, 'Expected latest stable version helper to return newest non-progress snapshot');
@@ -1181,9 +1186,12 @@ if (homePreviewLognormal?.visualPayload.type === 'lognormal_pair') {
   );
 }
 
-const notes = loadVersionNotes(repoRoot);
-assert.ok(notes.length > 0, 'Expected at least one version note entry');
-for (const entry of notes) {
+const dashboardInputVersionHistory = loadDashboardInputVersionHistory(repoRoot);
+assert.ok(
+  dashboardInputVersionHistory.length > 0,
+  'Expected at least one dashboard input version history entry'
+);
+for (const entry of dashboardInputVersionHistory) {
   assert.ok(Array.isArray(entry.calibration_files), 'calibration_files should be present for every version entry');
   assert.ok(Array.isArray(entry.config_parameters), 'config_parameters should be present for every version entry');
   assert.ok(Array.isArray(entry.parameter_changes), 'parameter_changes should be present for every version entry');
@@ -1196,7 +1204,7 @@ for (const entry of notes) {
   }
   assert.ok(Array.isArray(entry.method_variations), 'method_variations should be present for every version entry');
 }
-const v10Note = notes.find((entry) => entry.version_id === 'v1.0');
+const v10Note = dashboardInputVersionHistory.find((entry) => entry.version_id === 'v1.0');
 assert.ok(v10Note, 'Expected v1.0 note entry');
 assert.ok(
   v10Note?.parameter_changes.some(
@@ -1206,7 +1214,7 @@ assert.ok(
   ),
   'Expected v1.0 parameter_changes to include DATA_INCOME_GIVEN_AGE dataset source'
 );
-const v38Note = notes.find((entry) => entry.version_id === 'v4.0');
+const v38Note = dashboardInputVersionHistory.find((entry) => entry.version_id === 'v4.0');
 assert.ok(v38Note, 'Expected v4.0 note entry');
 assert.equal(v38Note?.validation.status, 'complete', 'v4.0 validation should be complete');
 assert.equal(v38Note?.validation.income_diff_pct, 7.192856, 'v4.0 income diff should match released value');
@@ -1500,6 +1508,12 @@ assert.ok(
   hpaExpectationCompare.items[0]?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.2'),
   'Expected hpa_expectation_params provenance to include the v4.2 HPA promotion'
 );
+assert.ok(
+  hpaExpectationCompare.items[0]?.changeOriginsInRange.some(
+    (origin) => origin.versionId === 'v4.2' && origin.validationStatus === 'complete'
+  ),
+  'Expected hpa_expectation_params provenance to show v4.2 as validation-complete'
+);
 
 const bankLtvCompare = compareParameters(repoRoot, 'v0', latestVersion, ['bank_ltv_limits'], 'range');
 assert.equal(bankLtvCompare.items.length, 1, 'Expected bank_ltv_limits compare payload');
@@ -1507,6 +1521,12 @@ assert.equal(
   bankLtvCompare.items[0]?.unchanged,
   false,
   'Expected bank_ltv_limits to change in the latest version due to v4.1 cap alignment'
+);
+assert.ok(
+  bankLtvCompare.items[0]?.changeOriginsInRange.some(
+    (origin) => origin.versionId === 'v4.1' && origin.validationStatus === 'complete'
+  ),
+  'Expected bank_ltv_limits provenance to show the v4.1 alignment as validation-complete'
 );
 
 const saleMarkup = unchangedCards.items.find((item) => item.id === 'initial_sale_markup_distribution');

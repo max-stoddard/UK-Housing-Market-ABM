@@ -1,7 +1,7 @@
 {
   "author": "Max Stoddard",
   "schema_version": 3,
-  "description": "Structured changelog for input-data versions, calibration provenance, and WAS validation diffs.",
+  "description": "Structured dashboard-facing history for input-data versions, calibration provenance, and legacy WAS validation diffs.",
   "fields": {
     "version_id": "Display version id in notes (for example v0a, v2.1, v4.0).",
     "snapshot_folder": "Snapshot folder under input-data-versions/ used by switch-input-data.sh.",
@@ -14,11 +14,11 @@
     "config_parameter": "Changed config key name.",
     "dataset_source": "Resolved config value for file-backed parameters (for example src/main/resources/*.csv); null when not file-backed.",
     "validation": {
-      "status": "Validation status: complete | in_progress.",
-      "income_diff_pct": "Income total diff percentage from validation output.",
-      "housing_wealth_diff_pct": "Housing wealth total diff percentage from validation output.",
-      "financial_wealth_diff_pct": "Financial wealth total diff percentage from validation output.",
-      "note": "Optional context, for example when validation is pending or rejected."
+      "status": "Validation status recorded for the snapshot entry: complete | in_progress.",
+      "income_diff_pct": "Legacy WAS validation income total diff percentage; nullable when the tracked validation summary no longer emits this field.",
+      "housing_wealth_diff_pct": "Legacy WAS validation housing wealth total diff percentage; nullable when the tracked validation summary no longer emits this field.",
+      "financial_wealth_diff_pct": "Legacy WAS validation financial wealth total diff percentage; nullable when the tracked validation summary no longer emits this field.",
+      "note": "Optional release-note or tracked-validation summary text, especially for modern summaries that do not use the legacy diff fields."
     }
   },
   "entries": [
@@ -62,7 +62,7 @@
       "version_id": "v1.0",
       "snapshot_folder": "v1.0",
       "validation_dataset": "r8",
-      "description": "Updated age gross income",
+      "description": "Replaced DATA_INCOME_GIVEN_AGE with the R8 weighted age-income joint distribution using positive-and-trimmed non-rent income filtering.",
       "updated_data_sources": [
         "was"
       ],
@@ -100,7 +100,7 @@
       "version_id": "v1.1",
       "snapshot_folder": "v1.1",
       "validation_dataset": "r8",
-      "description": "Updated gross income net wealth",
+      "description": "Replaced DATA_WEALTH_GIVEN_INCOME with the R8 weighted gross-income/net-wealth joint distribution in log space.",
       "updated_data_sources": [
         "was"
       ],
@@ -138,7 +138,7 @@
       "version_id": "v1.2",
       "snapshot_folder": "v1.2",
       "validation_dataset": "r8",
-      "description": "Updated BTL% income%",
+      "description": "Switched DATA_BTL_PROBABILITY to the R8 buy-to-let probability table built from non-rent income percentile bins.",
       "updated_data_sources": [
         "was"
       ],
@@ -176,7 +176,7 @@
       "version_id": "v1.3",
       "snapshot_folder": "v1.3",
       "validation_dataset": "r8",
-      "description": "Updated age bands",
+      "description": "Replaced DATA_AGE_DISTRIBUTION with the R8 weighted 8-band age distribution using the 75-95 compatibility tail bin.",
       "updated_data_sources": [
         "was"
       ],
@@ -214,7 +214,7 @@
       "version_id": "v2.0",
       "snapshot_folder": "v2.0",
       "validation_dataset": "r8",
-      "description": "Updated National Insurance rates",
+      "description": "Updated DATA_NATIONAL_INSURANCE_RATES to the 2025-2026 Class 1 employee contribution table.",
       "updated_data_sources": [
         "gov"
       ],
@@ -253,7 +253,7 @@
       "version_id": "v2.1",
       "snapshot_folder": "v2.1",
       "validation_dataset": "r8",
-      "description": "Updated Income tax rates",
+      "description": "Updated DATA_TAX_RATES to the 2025-2026 UK income tax band table.",
       "updated_data_sources": [
         "gov"
       ],
@@ -291,7 +291,7 @@
       "version_id": "v2.2",
       "snapshot_folder": "v2.2",
       "validation_dataset": "r8",
-      "description": "Updated Personal Allowance Benefits",
+      "description": "Updated GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE and GOVERNMENT_MONTHLY_INCOME_SUPPORT to the modern policy baseline used by the R8 calibration branch.",
       "updated_data_sources": [
         "gov"
       ],
@@ -335,7 +335,7 @@
       "version_id": "v3.0",
       "snapshot_folder": "v3.0",
       "validation_dataset": "r8",
-      "description": "Updated HOUSE_PRICES_SCALE, HOUSE_PRICES_SHAPE",
+      "description": "Recalibrated HOUSE_PRICES_SCALE and HOUSE_PRICES_SHAPE from 2025 Land Registry Price Paid Data using the focused status-A lognormal fit.",
       "updated_data_sources": [
         "ppd"
       ],
@@ -379,7 +379,7 @@
       "version_id": "v3.1",
       "snapshot_folder": "v3.1",
       "validation_dataset": "r8",
-      "description": "Updated RENTAL_PRICES_SCALE, RENTAL_PRICES_SHAPE",
+      "description": "Recalibrated RENTAL_PRICES_SCALE and RENTAL_PRICES_SHAPE from the 2024 NMG renter sample using the qhousing {3,4} weighted lognormal fit.",
       "updated_data_sources": [
         "nmg"
       ],
@@ -423,7 +423,7 @@
       "version_id": "v3.2",
       "snapshot_folder": "v3.2",
       "validation_dataset": "r8",
-      "description": "Updated DESIRED_RENT_SCALE, DESIRED_RENT_EXPONENT",
+      "description": "Recalibrated DESIRED_RENT_SCALE and DESIRED_RENT_EXPONENT from 2024 NMG midpoint income/rent data using the weighted log-space fit.",
       "updated_data_sources": [
         "nmg"
       ],
@@ -467,7 +467,7 @@
       "version_id": "v3.3",
       "snapshot_folder": "v3.3",
       "validation_dataset": "r8",
-      "description": "Updated BTL_P_INCOME_DRIVEN, BTL_P_CAPITAL_DRIVEN",
+      "description": "Updated BTL_P_INCOME_DRIVEN and BTL_P_CAPITAL_DRIVEN from the 2024 NMG legacy-weighted BTL strategy aggregation.",
       "updated_data_sources": [
         "nmg"
       ],
@@ -511,7 +511,7 @@
       "version_id": "v3.4",
       "snapshot_folder": "v3.4",
       "validation_dataset": "r8",
-      "description": "Updated MORTGAGE_DURATION_YEARS",
+      "description": "Updated MORTGAGE_DURATION_YEARS using the PSD 2024 modal-midpoint term method selected for stability.",
       "updated_data_sources": [
         "psd"
       ],
@@ -549,7 +549,7 @@
       "version_id": "v3.5",
       "snapshot_folder": "v3.5",
       "validation_dataset": "r8",
-      "description": "Updated DOWNPAYMENT_FTB_SCALE, DOWNPAYMENT_FTB_SHAPE",
+      "description": "Updated DOWNPAYMENT_FTB_SCALE and DOWNPAYMENT_FTB_SHAPE using the PSD 2024 median-anchored non-FTB proxy downpayment fit.",
       "updated_data_sources": [
         "psd"
       ],
@@ -593,7 +593,7 @@
       "version_id": "v3.6",
       "snapshot_folder": "v3.6",
       "validation_dataset": "r8",
-      "description": "Updated DOWNPAYMENT_OO_SCALE, DOWNPAYMENT_OO_SHAPE",
+      "description": "Updated DOWNPAYMENT_OO_SCALE and DOWNPAYMENT_OO_SHAPE using the PSD 2024 constrained non-FTB proxy owner-occupier fit.",
       "updated_data_sources": [
         "psd"
       ],
@@ -637,7 +637,7 @@
       "version_id": "v4.0",
       "snapshot_folder": "v4.0",
       "validation_dataset": "r8",
-      "description": "Updated BUY_SCALE, BUY_EXPONENT, BUY_MU, BUY_SIGMA",
+      "description": "Promoted BUY_SCALE, BUY_EXPONENT, BUY_MU, and BUY_SIGMA to the constrained-quantile BUY v2 production calibration.",
       "updated_data_sources": [
         "psd",
         "ppd"
@@ -696,7 +696,7 @@
       "version_id": "v4.1",
       "snapshot_folder": "v4.1",
       "validation_dataset": "r8",
-      "description": "Updated bank and central-bank hard LTV caps for FTB, HM, and BTL alignment",
+      "description": "Aligned BANK_LTV_HARD_MAX_* and CENTRAL_BANK_LTV_HARD_MAX_* caps for the default FTB, HM, and BTL policy baseline.",
       "updated_data_sources": [
         "config-only",
         "uk-mortgage-policy-alignment"
@@ -734,11 +734,11 @@
         }
       ],
       "validation": {
-        "status": "in_progress",
-        "income_diff_pct": 6.526575,
-        "housing_wealth_diff_pct": 14.523047,
-        "financial_wealth_diff_pct": 12.933264,
-        "note": "Forked from v4.0 with bank and central-bank hard LTV caps aligned by default: FTB 0.95, HM 0.95, BTL 0.85."
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T10:26:26Z after the v4.1 LTV-cap alignment. overallCompositeLoss=0.446569. Family losses: Macro Credit and Market Activity=0.621725, Macro Prices, Leverage, and Affordability=1.156013, Household Distribution Realism=0.004269. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, rental yield, and interest rate spread. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -752,7 +752,7 @@
           "improvement_summary": "Aligned bank and central-bank hard LTV ceilings so the default representative-bank limits match the intended policy ceilings for FTB, HM, and BTL experiments.",
           "why_changed": "To avoid internal bank LTV caps making higher central-bank LTV settings non-binding and to provide a clearer default policy baseline across borrower types.",
           "method_chosen": "Direct config fork from v4.0 with targeted LTV ceiling updates.",
-          "decision_logic": "Objective=policy-story interpretability; Why=match the representative-bank hard LTV caps to the central-bank defaults for owner-occupier lending and raise the BTL ceiling to 0.85 for aligned experiments; Tradeoff=this snapshot has not yet been revalidated against R8 outputs."
+          "decision_logic": "Objective=policy-story interpretability; Why=match the representative-bank hard LTV caps to the central-bank defaults for owner-occupier lending and raise the BTL ceiling to 0.85 for aligned experiments; Tradeoff=the clearer aligned policy baseline modestly worsens several tracked credit and affordability metrics versus v4.0."
         }
       ]
     },
@@ -760,7 +760,7 @@
       "version_id": "v4.2",
       "snapshot_folder": "v4.2",
       "validation_dataset": "r8",
-      "description": "Promoted the preferred Huber-based 2024 HPA expectation recalibration for v4.2 and republished validation",
+      "description": "Promoted HPA_EXPECTATION_FACTOR and HPA_EXPECTATION_CONST to the preferred 2024 national midpoint_exact Category-A Huber expectation fit and republished validation.",
       "updated_data_sources": [
         "nmg",
         "ppd"
@@ -788,7 +788,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "2024 validation republished on 2026-04-14 after promoting the Huber HPA expectation default; overallCompositeLoss=0.217151. Family losses: Macro Credit and Market Activity=0.830142, Macro Prices/Leverage/Affordability=0.031886, Household Distribution Realism=0.003287. Required metric status: mortgage approvals fail, while housing transactions, household debt-to-income, price-to-income, house price growth, and all three household-realism metrics pass. The current tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T10:26:37Z after promoting the Huber HPA expectation default. overallCompositeLoss=0.421590. Family losses: Macro Credit and Market Activity=0.515438, Macro Prices, Leverage, and Affordability=1.164346, Household Distribution Realism=0.003287. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, rental yield, and interest rate spread. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
