@@ -25,7 +25,7 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             repo_root = Path(tmp_dir)
             summary = {
                 "version": "v-test",
-                "schemaVersion": 1,
+                "schemaVersion": 2,
                 "seeds": [1, 2, 3, 4, 5, 6, 7, 8],
                 "overallCompositeLoss": 0.25,
                 "familySummaries": [],
@@ -126,6 +126,8 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertEqual(metric["targetBand"], {"lower": 4.396, "upper": 5.947})
         self.assertEqual(len(metric["sourceReferences"]), 4)
         self.assertIsNotNone(metric["metricLoss"])
+        self.assertAlmostEqual(metric["lossScale"], 5.17125)
+        self.assertEqual(metric["lossScaleBasis"], "source_value")
 
     def test_market_source_metrics_are_scored_once_required_bands_exist(self) -> None:
         summary = build_validation_summary(
@@ -146,11 +148,32 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertIsNotNone(oo_dti["metricLoss"])
         self.assertIsNotNone(rental["metricLoss"])
         self.assertIsNotNone(spread["metricLoss"])
+        self.assertEqual(oo_dti["lossScaleBasis"], "source_value")
+        self.assertEqual(rental["lossScaleBasis"], "source_value")
+        self.assertEqual(spread["lossScaleBasis"], "source_value")
         self.assertEqual(len(oo_dti["sourceReferences"]), 5)
         self.assertEqual(
             oo_dti["sourceReferences"][-1]["sourceDocumentPath"],
             "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json",
         )
+
+    def test_build_validation_summary_preserves_statuses_while_publishing_loss_scale_audit_fields(self) -> None:
+        summary = build_validation_summary(
+            version="v-test",
+            seed_results=self._synthetic_seed_results(),
+            seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+        )
+
+        mortgage_approvals = next(item for item in summary["metrics"] if item["metricId"] == "core_mortgageApprovals")
+        financial_wealth = next(
+            item for item in summary["metrics"] if item["metricId"] == "financial_wealth_distribution_jsd"
+        )
+
+        self.assertEqual(mortgage_approvals["status"], "pass")
+        self.assertEqual(financial_wealth["status"], "pass")
+        self.assertEqual(mortgage_approvals["lossScaleBasis"], "source_value")
+        self.assertEqual(financial_wealth["lossScaleBasis"], "target_band_upper")
+        self.assertAlmostEqual(financial_wealth["lossScale"], 0.12)
 
     def test_resolve_was_data_root_uses_parent_checkout_when_worktree_lacks_private_datasets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

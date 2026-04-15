@@ -31,8 +31,10 @@ from scripts.python.validation.model.schema import (
 from scripts.python.validation.model.scoring import (
     classify_metric_status,
     compute_metric_loss,
-    compute_normalized_distance,
+    compute_outside_distance,
     compute_overall_composite_loss,
+    normalize_by_loss_scale,
+    resolve_loss_scale,
 )
 from scripts.python.validation.model.validation_catalog_2024 import FAMILY_DEFINITIONS, TARGETS_BY_ID
 
@@ -77,6 +79,25 @@ def run_validation_for_version(
         maven_bin=maven_bin,
         was_data_root=resolved_was_data_root,
     )
+    return publish_validation_results(
+        repo_root=repo_root,
+        version=version,
+        seeds=seeds,
+        output_dir=output_dir,
+        run_results=run_results,
+    )
+
+
+def publish_validation_results(
+    *,
+    repo_root: Path,
+    version: str,
+    seeds: Sequence[int],
+    output_dir: Path,
+    run_results: Sequence[dict[str, object]],
+) -> dict:
+    """Publish tracked and transient outputs after all seed runs succeed."""
+
     returned_seeds = sorted(int(result["seed"]) for result in run_results)
     if returned_seeds != sorted(seeds):
         raise ValueError("Tracked publication requires 8/8 successful seeds before publishing tracked JSON")
@@ -108,42 +129,69 @@ def run_snapshot_local_validation(
     configs_dir.mkdir(parents=True, exist_ok=True)
 
     for seed in seeds:
-        seed_output_dir = output_dir / f"seed-{seed}"
-        if seed_output_dir.exists():
-            shutil.rmtree(seed_output_dir)
-        seed_output_dir.mkdir(parents=True, exist_ok=True)
-
-        overrides = dict(VALIDATION_RECORDING_OVERRIDES)
-        overrides["SEED"] = str(seed)
-        config_text = build_snapshot_local_config_text(version_config_path, overrides)
-        config_path = configs_dir / f"seed-{seed}.properties"
-        config_path.write_text(config_text, encoding="utf-8")
-
-        exec_args = f'-configFile "{config_path}" -outputFolder "{seed_output_dir}" -dev'
-        proc = subprocess.run(
-            [maven_bin, "-q", "exec:java", f"-Dexec.args={exec_args}"],
-            cwd=repo_root,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(
-                "Model validation run failed.\n"
-                f"version={version} seed={seed}\n"
-                f"Output tail:\n{proc.stdout[-3000:]}"
-            )
-
         seed_results.append(
-            {
-                "seed": seed,
-                "outputDir": str(seed_output_dir),
-                "metrics": _extract_seed_metrics(seed_output_dir=seed_output_dir, was_data_root=was_data_root),
-            }
+            run_validation_seed(
+                repo_root=repo_root,
+                version=version,
+                seed=seed,
+                output_dir=output_dir,
+                maven_bin=maven_bin,
+                was_data_root=was_data_root,
+            )
         )
 
     return seed_results
+
+
+def run_validation_seed(
+    *,
+    repo_root: Path,
+    version: str,
+    seed: int,
+    output_dir: Path,
+    maven_bin: str,
+    was_data_root: Path,
+) -> dict[str, object]:
+    """Run one snapshot-local validation seed and return its extracted metrics."""
+
+    version_config_path = repo_root / "input-data-versions" / version / "config.properties"
+    if not version_config_path.exists():
+        raise RuntimeError(f"Missing version config: {version_config_path}")
+
+    configs_dir = output_dir / "configs"
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    seed_output_dir = output_dir / f"seed-{seed}"
+    if seed_output_dir.exists():
+        shutil.rmtree(seed_output_dir)
+    seed_output_dir.mkdir(parents=True, exist_ok=True)
+
+    overrides = dict(VALIDATION_RECORDING_OVERRIDES)
+    overrides["SEED"] = str(seed)
+    config_text = build_snapshot_local_config_text(version_config_path, overrides)
+    config_path = configs_dir / f"seed-{seed}.properties"
+    config_path.write_text(config_text, encoding="utf-8")
+
+    exec_args = f'-configFile "{config_path}" -outputFolder "{seed_output_dir}" -dev'
+    proc = subprocess.run(
+        [maven_bin, "-q", "exec:java", f"-Dexec.args={exec_args}"],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "Model validation run failed.\n"
+            f"version={version} seed={seed}\n"
+            f"Output tail:\n{proc.stdout[-3000:]}"
+        )
+
+    return {
+        "seed": seed,
+        "outputDir": str(seed_output_dir),
+        "metrics": _extract_seed_metrics(seed_output_dir=seed_output_dir, was_data_root=was_data_root),
+    }
 
 
 def resolve_was_data_root(*, repo_root: Path, explicit_root: Path | None) -> Path:
@@ -214,6 +262,8 @@ def build_validation_summary(
             "p25": p25,
             "p75": p75,
             "insideRate": None,
+            "lossScale": None,
+            "lossScaleBasis": None,
             "normalizedDistance": None,
             "normalizedIqr": None,
             "metricLoss": None,
@@ -247,12 +297,20 @@ def build_validation_summary(
                 raise RuntimeError(f"Missing target metadata for required metric {target.metric_id}")
         else:
             inside_rate = _inside_rate(seed_values=seed_values, lower=target.target_band.lower, upper=target.target_band.upper)
-            normalized_distance = compute_normalized_distance(
-                seed_mean=seed_mean,
+            loss_scale, loss_scale_basis = resolve_loss_scale(
+                source_value=target.source_metadata.normalized_source_value if target.source_metadata else None,
                 lower_bound=target.target_band.lower,
                 upper_bound=target.target_band.upper,
             )
-            normalized_iqr = (p75 - p25) / target.target_band.width()
+            normalized_distance = normalize_by_loss_scale(
+                raw_value=compute_outside_distance(
+                    seed_mean=seed_mean,
+                    lower_bound=target.target_band.lower,
+                    upper_bound=target.target_band.upper,
+                ),
+                loss_scale=loss_scale,
+            )
+            normalized_iqr = normalize_by_loss_scale(raw_value=p75 - p25, loss_scale=loss_scale)
             metric_loss = compute_metric_loss(
                 seed_mean=seed_mean,
                 p25=p25,
@@ -260,11 +318,14 @@ def build_validation_summary(
                 lower_bound=target.target_band.lower,
                 upper_bound=target.target_band.upper,
                 inside_rate=inside_rate,
+                loss_scale=loss_scale,
             )
             metric_summary.update(
                 {
                     "targetBand": {"lower": target.target_band.lower, "upper": target.target_band.upper},
                     "insideRate": inside_rate,
+                    "lossScale": loss_scale,
+                    "lossScaleBasis": loss_scale_basis,
                     "normalizedDistance": normalized_distance,
                     "normalizedIqr": normalized_iqr,
                     "metricLoss": metric_loss,

@@ -12,8 +12,9 @@ ValidationStatus = Literal["pass", "warn", "fail", "unsupported"]
 MetricRequirement = Literal["required", "diagnostic"]
 MetricKind = Literal["core_indicator", "household_jsd"]
 MappingStatus = Literal["exact_match", "derived_match", "unsupported"]
+LossScaleBasis = Literal["source_value", "target_band_midpoint", "target_band_upper"]
 
-VALIDATION_SCHEMA_VERSION = 1
+VALIDATION_SCHEMA_VERSION = 2
 VALIDATION_WINDOW_START = 200
 VALIDATION_WINDOW_END = 2000
 CANONICAL_VALIDATION_SEEDS = (1, 2, 3, 4, 5, 6, 7, 8)
