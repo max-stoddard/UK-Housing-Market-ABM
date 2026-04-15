@@ -6,18 +6,37 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from scripts.python.validation.model.runner import run_validation_for_version
+from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled
+from scripts.python.validation.model.runner import (
+    publish_validation_results,
+    resolve_was_data_root,
+    run_validation_seed,
+)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run 2024 validation for multiple input-data versions.")
-    parser.add_argument("--versions", default="all", help="Comma-separated versions or 'all'")
-    parser.add_argument("--seeds", default="1,2,3,4,5,6,7,8", help="Comma-separated seed list")
-    parser.add_argument("--output-root", required=True, help="Transient output root directory")
+    parser = argparse.ArgumentParser(
+        description="Run 2024 validation for multiple input-data versions."
+    )
+    parser.add_argument(
+        "--versions", default="all", help="Comma-separated versions or 'all'"
+    )
+    parser.add_argument(
+        "--seeds", default="1,2,3,4,5,6,7,8", help="Comma-separated seed list"
+    )
+    parser.add_argument(
+        "--workers", type=int, default=1, help="Maximum parallel validation runs"
+    )
+    parser.add_argument(
+        "--output-root", required=True, help="Transient output root directory"
+    )
     parser.add_argument("--maven-bin", default="mvn", help="Maven executable")
-    parser.add_argument("--was-data-root", default=None, help="Optional WAS data root override")
+    parser.add_argument(
+        "--was-data-root", default=None, help="Optional WAS data root override"
+    )
     return parser.parse_args()
 
 
@@ -48,7 +67,9 @@ def list_versions(repo_root: Path) -> list[str]:
     versions = [
         path.name
         for path in input_data_dir.iterdir()
-        if path.is_dir() and path.name.startswith("v") and (path / "config.properties").exists()
+        if path.is_dir()
+        and path.name.startswith("v")
+        and (path / "config.properties").exists()
     ]
     return sorted(versions, key=lambda version: parse_version_parts(version))
 
@@ -56,8 +77,93 @@ def list_versions(repo_root: Path) -> list[str]:
 def resolve_versions(repo_root: Path, raw_versions: str) -> list[str]:
     if raw_versions == "all":
         return list_versions(repo_root)
-    requested = [version.strip() for version in raw_versions.split(",") if version.strip()]
+    requested = [
+        version.strip() for version in raw_versions.split(",") if version.strip()
+    ]
     return sorted(requested, key=lambda version: parse_version_parts(version))
+
+
+def run_validation_campaign(
+    *,
+    repo_root: Path,
+    versions: list[str],
+    seeds: list[int],
+    workers: int,
+    output_root: Path,
+    maven_bin: str = "mvn",
+    was_data_root: Path | None = None,
+) -> tuple[list[str], list[str]]:
+    """Run and publish a multi-version validation refresh."""
+
+    if workers <= 0:
+        raise ValueError("workers must be positive")
+
+    resolved_was_data_root = resolve_was_data_root(
+        repo_root=repo_root, explicit_root=was_data_root
+    )
+    ensure_project_compiled(repo_root, maven_bin=maven_bin)
+
+    results_by_version: dict[str, list[dict[str, object]]] = {
+        version: [] for version in versions
+    }
+    failures: list[str] = []
+    future_to_request: dict[object, tuple[str, int]] = {}
+    total_runs = len(versions) * len(seeds)
+    completed_runs = 0
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for version in versions:
+            version_output_dir = output_root / version
+            for seed in seeds:
+                future = executor.submit(
+                    run_validation_seed,
+                    repo_root=repo_root,
+                    version=version,
+                    seed=seed,
+                    output_dir=version_output_dir,
+                    maven_bin=maven_bin,
+                    was_data_root=resolved_was_data_root,
+                )
+                future_to_request[future] = (version, seed)
+
+        for future in as_completed(future_to_request):
+            version, seed = future_to_request[future]
+            completed_runs += 1
+            try:
+                results_by_version[version].append(future.result())
+                print(
+                    f"Completed {version} seed={seed} ({completed_runs}/{total_runs})"
+                )
+            except Exception as error:
+                failures.append(f"{version} seed={seed}: {error}")
+                print(
+                    f"Failed {version} seed={seed} ({completed_runs}/{total_runs}): {error}"
+                )
+
+    published_versions: list[str] = []
+    missing_versions: list[str] = []
+    expected_seed_set = sorted(seeds)
+    for version in versions:
+        version_results = results_by_version[version]
+        returned_seed_set = sorted(int(result["seed"]) for result in version_results)
+        if returned_seed_set != expected_seed_set:
+            missing_versions.append(version)
+            continue
+        publish_validation_results(
+            repo_root=repo_root,
+            version=version,
+            seeds=seeds,
+            output_dir=output_root / version,
+            run_results=version_results,
+        )
+        published_versions.append(version)
+        print(f"Published {version}")
+
+    failures.extend(
+        f"{version}: tracked publication skipped because not all seeds finished successfully"
+        for version in missing_versions
+    )
+    return published_versions, failures
 
 
 def main() -> None:
@@ -66,22 +172,15 @@ def main() -> None:
     versions = resolve_versions(repo_root, args.versions)
     seeds = parse_seed_list(args.seeds)
     output_root = Path(args.output_root)
-    failures: list[str] = []
-
-    for version in versions:
-        try:
-            run_validation_for_version(
-                repo_root=repo_root,
-                version=version,
-                seeds=seeds,
-                output_dir=output_root / version,
-                maven_bin=args.maven_bin,
-                was_data_root=Path(args.was_data_root) if args.was_data_root else None,
-            )
-            print(f"Published {version}")
-        except Exception as error:  # pragma: no cover - CLI reporting path
-            failures.append(f"{version}: {error}")
-            print(f"Failed {version}: {error}")
+    _, failures = run_validation_campaign(
+        repo_root=repo_root,
+        versions=versions,
+        seeds=seeds,
+        workers=args.workers,
+        output_root=output_root,
+        maven_bin=args.maven_bin,
+        was_data_root=Path(args.was_data_root) if args.was_data_root else None,
+    )
 
     if failures:
         raise SystemExit("Validation failed for versions:\n" + "\n".join(failures))
