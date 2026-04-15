@@ -1,0 +1,26 @@
+﻿"Dataset title","Dwelling stock estimates by tenure and local authority area"
+"Most recent update","15 January 2026"
+"Next update expected","December 2026"
+"Designation","Accredited official statistics"
+"Time period covered","March 2001 to April 2024"
+"Data provider","Welsh Government"
+"Data source","Dwelling stock estimates"
+"Summary of dataset and variables","Estimates of the number of dwellings in Wales, as at 31 March each year. The estimates relate to the end of each financial year i.e. estimates for 2011-12 relate to 31 March 2012. The breakdown of dwelling stock estimates by tenure is estimated from 2001, 2011 and 2021 Census information and information from the Annual Population Survey, local authority returns and registered social landlord (RSL) returns."
+"Data collection or calculation","Estimates of the number of dwellings are based on data from the 2001, 2011 and 2021 population censuses, updated annually to take account of dwelling stock through new build completions plus any gains or losses through conversations and demolitions.
+
+This method of ‘rolling forward’ the estimates from a census provides estimates between the census years. However, after rolling forward estimates for 10 years, discrepancies are usually observed between the rolled forward estimates and the next census figures. The rolled forward method, whilst the best available methodology between censuses, is likely to produce less reliable estimates for years further away from the census base. For further information on the difference between the estimate of dwellings and the census counts please refer to the annex of the Dwelling stock estimates: as at 31 March 2022 report and Dwelling stock estimates: 2011 census count and rolled forward estimates, found in related reports.
+
+The tenure split for Wales between owner-occupied and privately rented dwellings has been estimated using information from the Annual Population Survey (APS). Full details of the methodology are in the statistical release."
+"Statistical quality","Data for 2022 and 2023 has been revised. Following the publication of the Census 2021 dwellings data, dwelling stock estimates have been recalibrated against the Census 2021 dwellings count to ensure consistency with both the previous and latest census. Further details are available in the statistical release."
+"Rounding applied","Due to the uncertainty around the estimates, figures have been rounded to the nearest 100.
+
+Due to the way in which the APS proportions have been applied, the Wales total may not equal the sum of the local authority numbers (and regions) for some tenures. The regional figures are calculated as the sum of the local authority numbers.
+
+Some tenure breakdown percentages may not sum to 100 due to rounding."
+"Related reports","Dwelling stock estimates","https://www.gov.wales/dwelling-stock-estimates"
+"Related reports","Dwelling stock estimates: quality report","https://www.gov.wales/dwelling-stock-estimates-quality-report"
+"Related reports","Social landlord housing stock and rents","https://www.gov.wales/social-landlord-housing-stock-and-rents"
+"Related reports","Dwelling stock estimates: as at 31 March 2022","https://www.gov.wales/dwelling-stock-estimates-31-march-2022"
+"Related reports","Dwelling stock estimates: 2011 census count and rolled forward estimates","https://www.gov.wales/dwelling-stock-estimates-2011-census-count-and-rolled-forward-estimates"
+"Organisation","Welsh Government"
+"Contact email","stats.housing@gov.wales"

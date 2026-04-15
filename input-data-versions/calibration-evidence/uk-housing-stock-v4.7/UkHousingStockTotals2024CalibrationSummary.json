@@ -1,0 +1,121 @@
+{
+  "methodId": "source_native_downloadable_artifacts_2024",
+  "selectedConfigValues": {
+    "UK_HOUSEHOLDS": 28609000,
+    "UK_DWELLINGS": 30676974
+  },
+  "sourceObservations": [
+    {
+      "parameter_key": "UK_HOUSEHOLDS",
+      "component": "United Kingdom households",
+      "published_value": "28609 thousand households",
+      "derived_value": 28609000,
+      "units": "households",
+      "artifact": "ons-families-and-households-uk-2024.xlsx",
+      "source_url": "https://www.ons.gov.uk/file?uri=%2Fpeoplepopulationandcommunity%2Fbirthsdeathsandmarriages%2Ffamilies%2Fdatasets%2Ffamiliesandhouseholdsfamiliesandhouseholds%2Fcurrent%2Ffamiliesandhouseholdsuk2024.xlsx",
+      "publication_date": "2025-07-23",
+      "extraction_ref": "sheet '5' row 'All households' column '2024 Estimate'",
+      "notes": "The ONS workbook publishes households in thousands, so 28,609 becomes 28,609,000 households."
+    },
+    {
+      "parameter_key": "UK_DWELLINGS",
+      "component": "England dwellings",
+      "published_value": "25617413",
+      "derived_value": 25617413,
+      "units": "dwellings",
+      "artifact": "england-live-table-100-2024.ods",
+      "source_url": "https://assets.publishing.service.gov.uk/media/682deb00b33f68eaba95391b/LiveTable100.ods",
+      "publication_date": "2025-05-22",
+      "extraction_ref": "table '2024' row 'England' column 'Total'",
+      "notes": "The England ODS publishes 25,617,413 in the downloadable table; the rounded public headline of 25.62 million is rejected."
+    },
+    {
+      "parameter_key": "UK_DWELLINGS",
+      "component": "Wales dwellings",
+      "published_value": "1482600",
+      "derived_value": 1482600,
+      "units": "dwellings",
+      "artifact": "wales-dwelling-stock-estimates-2024.csv",
+      "source_url": "https://stats.gov.wales/en-GB/6476cc20-ddeb-46a5-be64-10a23c8a159f",
+      "publication_date": "2026-01-15",
+      "extraction_ref": "CSV row where Local authority='Wales', Period='31/03/2024', Tenure='All tenures (Number)'",
+      "notes": "StatsWales metadata states that the estimates are rounded to the nearest 100. The published Wales total is 1,482,600."
+    },
+    {
+      "parameter_key": "UK_DWELLINGS",
+      "component": "Scotland dwellings",
+      "published_value": "2740973",
+      "derived_value": 2740973,
+      "units": "dwellings",
+      "artifact": "scotland-households-and-dwellings-2024.xlsx",
+      "source_url": "https://www.nrscotland.gov.uk/media/nvcaoksr/house-est-24-data.xlsx",
+      "publication_date": "2025-06-26",
+      "extraction_ref": "sheet 'Table2' row 'Scotland' column '2024'",
+      "notes": "The Scotland workbook notes that figures are rounded to the nearest whole number. The published Scotland total is 2,740,973."
+    },
+    {
+      "parameter_key": "UK_DWELLINGS",
+      "component": "Northern Ireland dwellings",
+      "published_value": "835988",
+      "derived_value": 835988,
+      "units": "dwellings",
+      "artifact": "northern-ireland-housing-stock-2008-2025.xlsx",
+      "source_url": "https://www.finance-ni.gov.uk/sites/default/files/2025-06/Housing%20Stock%20Tables%202008%20-%202025.xlsx",
+      "publication_date": "2025-06-04",
+      "extraction_ref": "sheet 'Table 1.17' row 'Northern Ireland' column 'Total Housing Stock'",
+      "notes": "The Northern Ireland workbook publishes the 1 April 2024 stock count directly as 835,988."
+    }
+  ],
+  "selectedAggregation": {
+    "UK_HOUSEHOLDS": {
+      "component": "United Kingdom households",
+      "publishedValue": "28609 thousand households",
+      "derivedValue": 28609000
+    },
+    "UK_DWELLINGS": {
+      "components": [
+        {
+          "component": "England dwellings",
+          "derivedValue": 25617413
+        },
+        {
+          "component": "Wales dwellings",
+          "derivedValue": 1482600
+        },
+        {
+          "component": "Scotland dwellings",
+          "derivedValue": 2740973
+        },
+        {
+          "component": "Northern Ireland dwellings",
+          "derivedValue": 835988
+        }
+      ],
+      "derivedValue": 30676974
+    }
+  },
+  "rejectedComparisons": [
+    {
+      "parameterKey": "UK_HOUSEHOLDS",
+      "label": "Rounded ONS headline comparator",
+      "value": 28600000,
+      "differenceFromSelected": -9000,
+      "whyRejected": "Rejected because the official ONS workbook publishes 28,609 thousand households, which converts to 28,609,000 rather than 28,600,000."
+    },
+    {
+      "parameterKey": "UK_DWELLINGS",
+      "label": "Mixed-precision rounded-country comparator",
+      "value": 30679588,
+      "differenceFromSelected": 2614,
+      "formula": "25,620,000 + 1,482,600 + 2,741,000 + 835,988",
+      "whyRejected": "Rejected because it mixes rounded England and Scotland public-release headline figures with more granular Wales and Northern Ireland downloadable values."
+    }
+  ],
+  "artifacts": {
+    "onsHouseholdsXlsx": "ons-families-and-households-uk-2024.xlsx",
+    "englandDwellingsOds": "england-live-table-100-2024.ods",
+    "walesDwellingsCsv": "wales-dwelling-stock-estimates-2024.csv",
+    "scotlandDwellingsXlsx": "scotland-households-and-dwellings-2024.xlsx",
+    "northernIrelandDwellingsXlsx": "northern-ireland-housing-stock-2008-2025.xlsx"
+  }
+}
