@@ -33,9 +33,9 @@
   Responsibility: cover the new production CLI defaults and the `2018` to `2024` calibration path.
 - `scripts/python/AGENT_SCRIPT_STRUCTURE.md`
   Responsibility: document the modern-window method-search and production calibration contracts.
-- `scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md`
+- `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`
   Responsibility: record the new command set, chosen method family, fit window, and final coefficients for `v4.2`.
-- `input-data-versions/version-notes.json`
+- `input-data-versions/dashboard-input-version-history.json`
   Responsibility: add the comprehensive `v4.2` entry with parameter changes, method rationale, and validation metrics.
 
 **Files to create**
@@ -348,7 +348,7 @@ git commit -m "feat [MS]: fit v4.2 HPA expectation coefficients on the 2018-2024
 - Modify: `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
 - Modify: `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
 - Modify: `scripts/python/AGENT_SCRIPT_STRUCTURE.md`
-- Modify: `scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md`
+- Modify: `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`
 - Modify: `docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md` (only if wording needs a small factual correction after the real run)
 
 - [ ] **Step 1: Run the modern-window method search on the private datasets**
@@ -431,7 +431,7 @@ git add \
   scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py \
   scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py \
   scripts/python/AGENT_SCRIPT_STRUCTURE.md \
-  scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md \
+  input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md \
   docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md
 git commit -m "docs [MS]: record v4.2 HPA expectation calibration method and provenance for reruns"
 ```
@@ -495,7 +495,7 @@ git add \
   scripts/python/tests/test_nmg_hpa_expectation_method_search.py \
   scripts/python/tests/test_nmg_hpa_expectation_fit.py \
   scripts/python/AGENT_SCRIPT_STRUCTURE.md \
-  scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md \
+  input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md \
   docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md \
   docs/superpowers/plans/2026-04-14-hpa-expectation-v4.2-production-calibration-plan.md
 git commit -m "fix [MS]: address subagent review findings in v4.2 HPA expectation calibration"
@@ -505,7 +505,7 @@ git commit -m "fix [MS]: address subagent review findings in v4.2 HPA expectatio
 
 **Files:**
 - Create: `input-data-versions/v4.2/*`
-- Modify: `input-data-versions/version-notes.json`
+- Modify: `input-data-versions/dashboard-input-version-history.json`
 - Create: `input-data-versions/validation/v4.2.json`
 - Create: `Results/v4.2-output/*`
 
@@ -528,7 +528,7 @@ HPA_EXPECTATION_FACTOR = <final factor from Task 4>
 HPA_EXPECTATION_CONST = <final const from Task 4>
 ```
 
-- [ ] **Step 3: Add the `v4.2` entry to `input-data-versions/version-notes.json`**
+- [ ] **Step 3: Add the `v4.2` entry to `input-data-versions/dashboard-input-version-history.json`**
 
 Required content:
 
@@ -568,7 +568,7 @@ Expected file:
 input-data-versions/validation/v4.2.json
 ```
 
-Confirm it records the final validation metrics used in `version-notes.json`.
+Confirm it records the final validation metrics used in `dashboard-input-version-history.json`.
 
 - [ ] **Step 6: Run the full model into `Results/v4.2-output`**
 
@@ -603,14 +603,14 @@ python3 scripts/model/model_speed.py print-v41-simulation-means --run-dir Result
 
 Expected: a concise comparison of post-200 mean values for house prices, transactions, mortgage approvals, and mortgage debt-to-income.
 
-- [ ] **Step 8: Update `version-notes.json` with the final validation metrics and any release note wording refined by the real run**
+- [ ] **Step 8: Update `dashboard-input-version-history.json` with the final validation metrics and any release note wording refined by the real run**
 
 - [ ] **Step 9: Commit the snapshot and provenance updates**
 
 ```bash
 git add \
   input-data-versions/v4.2 \
-  input-data-versions/version-notes.json \
+  input-data-versions/dashboard-input-version-history.json \
   input-data-versions/validation/v4.2.json
 git commit -m "feat [MS]: add v4.2 snapshot with 2024 HPA expectation recalibration"
 ```
@@ -678,9 +678,9 @@ git add \
   scripts/python/tests/test_nmg_hpa_expectation_method_search.py \
   scripts/python/tests/test_nmg_hpa_expectation_fit.py \
   scripts/python/AGENT_SCRIPT_STRUCTURE.md \
-  scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md \
+  input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md \
   input-data-versions/v4.2/config.properties \
-  input-data-versions/version-notes.json \
+  input-data-versions/dashboard-input-version-history.json \
   input-data-versions/validation/v4.2.json \
   docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md \
   docs/superpowers/plans/2026-04-14-hpa-expectation-v4.2-production-calibration-plan.md

@@ -8,7 +8,7 @@
 
 **Architecture:** Add one NMG helper module for `boe39` band mapping and weighted expectation aggregation, one PPD helper module for national HPA signal construction, and two thin entrypoints: a reproduction method-search script and a production-fit script. The reproduction script fits and ranks small explicit method variants against the legacy target and a 2016 holdout; once that default family is selected, the production script reuses the same survey mapping, PPD transform, and pairing style without a hidden methodology switch.
 
-**Tech Stack:** Python 3, `unittest`, existing helper modules under `scripts/python/helpers`, config provenance via `src/main/resources/config.properties`, documentation in `scripts/python/AGENT_SCRIPT_STRUCTURE.md` and `scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md`
+**Tech Stack:** Python 3, `unittest`, existing helper modules under `scripts/python/helpers`, config provenance via `src/main/resources/config.properties`, documentation in `scripts/python/AGENT_SCRIPT_STRUCTURE.md` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`
 
 ---
 
@@ -39,7 +39,7 @@
   Responsibility: add small reusable helpers only if needed for ranking math already shared elsewhere.
 - `scripts/python/AGENT_SCRIPT_STRUCTURE.md`
   Responsibility: document the new helper and entrypoint paths plus the reproduction-vs-production contract.
-- `scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md`
+- `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`
   Responsibility: record the reproduction command, chosen method family, production command, and rationale.
 
 ### Task 1: Build The NMG Expectation Helpers
@@ -191,7 +191,7 @@ Expected: PASS
 **Files:**
 - Modify: `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
 - Modify: `scripts/python/AGENT_SCRIPT_STRUCTURE.md`
-- Modify: `scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md`
+- Modify: `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`
 
 - [ ] **Step 1: Run the experiment on the real datasets**
 
@@ -220,7 +220,7 @@ Expected: ranked methods table, survey diagnostics, PPD diagnostics, and observe
 Required edits:
 - add latest findings to `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
 - document the new experiment and method-locking contract in `scripts/python/AGENT_SCRIPT_STRUCTURE.md`
-- add the reproduction command and decision rationale to `scripts/python/calibration/CALIBRATION_PARAMETER_CHANGELOG.md`
+- add the reproduction command and decision rationale to `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`
 
 ### Task 5: Build The Production Calibration Entrypoint
 

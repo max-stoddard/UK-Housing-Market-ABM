@@ -15,7 +15,7 @@ Current weaknesses:
 - it uses a weak scalar loss on those three values only
 - it does not show seed robustness
 - it does not make broad use of the model's existing core indicators
-- the dashboard validation page is tightly coupled to the old three-metric schema in `input-data-versions/version-notes.json`
+- the dashboard validation page is tightly coupled to the old three-metric schema in `input-data-versions/dashboard-input-version-history.json`
 
 This is a bad fit for the current project goal: showing that successive input-data versions move the model closer to the actual state of the UK housing market in 2024.
 
@@ -346,7 +346,7 @@ Recommended contents:
 - source attribution
 - validation timestamp and seed list
 
-This tracked summary file is the canonical website-facing validation artifact. The dashboard should read these summaries instead of deriving validation from raw `Results/` folders or from legacy fields in `version-notes.json`.
+This tracked summary file is the canonical website-facing validation artifact. The dashboard should read these summaries instead of deriving validation from raw `Results/` folders or from legacy fields in `dashboard-input-version-history.json`.
 
 ## Input-Data Version Migration
 
@@ -369,9 +369,9 @@ Bulk migration responsibilities:
 
 This is how the validation page becomes a calibration-progress page toward the real 2024 market, rather than a static page attached to the old methodology.
 
-## Relationship To `version-notes.json`
+## Relationship To `dashboard-input-version-history.json`
 
-`input-data-versions/version-notes.json` remains the provenance and calibration-history ledger.
+`input-data-versions/dashboard-input-version-history.json` remains the dashboard-facing provenance and calibration-history ledger.
 
 It should continue to hold:
 - version descriptions

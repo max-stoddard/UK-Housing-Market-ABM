@@ -32,7 +32,7 @@ That result changes the goal of the remaining work. The next calibration stage s
   - `input-data-versions/v4.2`
   - validation via `input-data-versions/validate.sh`
   - full model output in `Results/v4.2-output`
-  - complete `input-data-versions/version-notes.json` entry
+  - complete `input-data-versions/dashboard-input-version-history.json` entry
 
 ## Non-Goals
 
@@ -274,7 +274,7 @@ Downstream model behavior is not the fitting objective, but it remains a release
 
 ## Version Notes Requirements
 
-`input-data-versions/version-notes.json` must include a new comprehensive `v4.2` entry covering:
+`input-data-versions/dashboard-input-version-history.json` must include a new comprehensive `v4.2` entry covering:
 
 - version id and snapshot folder
 - human description of the HPA expectation update
@@ -306,4 +306,4 @@ The work is successful when:
 - the final coefficients are admissible and preferably inside the preferred band
 - `input-data-versions/v4.2` exists with only the intended config changes
 - validation and a full `Results/v4.2-output` run are produced
-- `version-notes.json`, changelog, and script-structure docs fully describe what changed and why
+- `dashboard-input-version-history.json`, changelog, and script-structure docs fully describe what changed and why

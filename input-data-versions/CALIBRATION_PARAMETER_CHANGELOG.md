@@ -2,7 +2,9 @@
 Author: Max Stoddard
 
 ## Purpose And Maintenance Rule
-This is the canonical calibration provenance ledger for Python-driven and related parameter updates.
+This is the canonical agent-readable calibration provenance ledger for Python-driven and related parameter updates.
+`input-data-versions/dashboard-input-version-history.json` remains the dashboard-facing machine-readable history; this
+Markdown file carries the fuller reproduction narrative, commands, and method rationale for agents and maintainers.
 
 Maintenance requirements:
 - Update this file in the same change whenever non-legacy calibration outputs, defaults, methods, or script paths change.
@@ -34,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.0`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.2`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -386,7 +388,7 @@ python3 -m scripts.python.experiments.was.personal_allowance
 
 ### v1.0
 - Script path: `scripts/python/calibration/was/income_age_joint_prob_dist.py`
-- Outputs/keys produced: `AgeGrossIncomeJointDist.csv`
+- Outputs/keys produced: `DATA_INCOME_GIVEN_AGE` via `AgeGrossIncomeJointDist.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.income_age_joint_prob_dist --dataset R8 --output-dir input-data-versions/v1.0`
 - Expected result snippet: output file generated with weighted age-income density rows.
 - Method chosen: weighted log-income by age joint distribution with positive-and-trimmed income filtering.
@@ -397,7 +399,7 @@ python3 -m scripts.python.experiments.was.personal_allowance
 
 ### v1.1
 - Script path: `scripts/python/calibration/was/wealth_income_joint_prob_dist.py`
-- Outputs/keys produced: `GrossIncomeNetWealthJointDist.csv`
+- Outputs/keys produced: `DATA_WEALTH_GIVEN_INCOME` via `GrossIncomeNetWealthJointDist.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.wealth_income_joint_prob_dist --dataset R8 --output-dir input-data-versions/v1.1`
 - Expected result snippet: `GrossIncomeNetWealthJointDist.csv` generated.
 - Method chosen: weighted joint distribution for gross income vs net wealth in log space.
@@ -408,7 +410,7 @@ python3 -m scripts.python.experiments.was.personal_allowance
 
 ### v1.2
 - Script path: `scripts/python/calibration/was/btl_probability_per_income_percentile_bin.py`
-- Outputs/keys produced: `BTLProbabilityPerIncomePercentileBin-R8.csv`
+- Outputs/keys produced: `DATA_BTL_PROBABILITY` via `BTLProbabilityPerIncomePercentileBin-R8.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.btl_probability_per_income_percentile_bin --dataset R8`
 - Expected result snippet: 100 percentile-bin rows plus BTL probability values.
 - Method chosen: percentile binning over gross non-rent income and rental-income positivity as BTL marker.
@@ -419,7 +421,7 @@ python3 -m scripts.python.experiments.was.personal_allowance
 
 ### v1.3
 - Script path: `scripts/python/calibration/was/age_dist.py`
-- Outputs/keys produced: `Age8-R8-Weighted.csv`
+- Outputs/keys produced: `DATA_AGE_DISTRIBUTION` via `Age8-R8-Weighted.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.age_dist --dataset R8`
 - Expected result snippet: final bin uses `75-95` compatibility convention.
 - Method chosen: weighted age histogram by WAS age bands.
@@ -436,7 +438,7 @@ python3 -m scripts.python.experiments.was.personal_allowance
 - Method chosen: direct table update from source data.
 - Method-selection decision logic: `Objective=target reproduction; Why=policy-table parameters are direct-source values rather than inferred estimates; Tradeoff=depends on source table update cadence.`
 - Rationale category: direct method justification.
-- Evidence links: `input-data-versions/version-notes.json`
+- Evidence links: `input-data-versions/dashboard-input-version-history.json`
 - Version(s) affected: `v2.0`
 
 ### v2.1
@@ -447,12 +449,12 @@ python3 -m scripts.python.experiments.was.personal_allowance
 - Method chosen: direct table update from source data.
 - Method-selection decision logic: `Objective=target reproduction; Why=tax bands/rates are direct-source values and should not be statistically fitted; Tradeoff=depends on source table update cadence.`
 - Rationale category: direct method justification.
-- Evidence links: `input-data-versions/version-notes.json`
+- Evidence links: `input-data-versions/dashboard-input-version-history.json`
 - Version(s) affected: `v2.1`
 
 ### v2.2
 - Script path: `scripts/python/experiments/was/personal_allowance.py`
-- Outputs/keys produced: `GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE` policy choice context
+- Outputs/keys produced: `GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE`, `GOVERNMENT_MONTHLY_INCOME_SUPPORT`
 - Exact run command: `python3 -m scripts.python.experiments.was.personal_allowance`
 - Expected result snippet: single allowance fit error lower than double allowance fit error.
 - Method chosen: compare log-squared fit to observed net incomes under two allowance assumptions.
@@ -565,10 +567,11 @@ python3 -m scripts.python.experiments.was.personal_allowance
   - `scripts/python/experiments/psd/psd_buy_budget_method_search.py`
   - `tmp/psd_buy_budget_shards_repro/PsdBuyBudgetMethodSearchMerged.csv`
   - `tmp/psd_buy_budget_v38/PsdBuyBudgetCalibration.csv`
-  - `input-data-versions/version-notes.json`
+  - `input-data-versions/dashboard-input-version-history.json`
 - Version(s) affected: `v3.8`
 
-### v4.0: BUY v2 Modern Realism Workflow
+### v4.0
+- Workflow: BUY v2 modern realism production calibration.
 - Script path: `scripts/python/calibration/psd/psd_buy_budget_calibration_v2.py`
 - Companion experiment path: `scripts/python/experiments/psd/psd_buy_budget_quantile_method_search_v2.py`
 - Shared helper path: `scripts/python/helpers/psd/buy_budget_quantile_v2.py`
@@ -608,7 +611,44 @@ python3 -m scripts.python.experiments.was.personal_allowance
 - Version(s) affected:
   - `v4.0`
 
-### HPA Expectation `v4.2` Production Calibration
+### v4.1
+- Script path: `N/A (config-only policy-alignment update)`
+- Outputs/keys produced: `BANK_LTV_HARD_MAX_FTB`, `BANK_LTV_HARD_MAX_HM`, `BANK_LTV_HARD_MAX_BTL`, `CENTRAL_BANK_LTV_HARD_MAX_HM`, `CENTRAL_BANK_LTV_HARD_MAX_BTL`
+- Exact run command: `N/A (direct config-only policy alignment in input-data-versions/v4.1/config.properties)`
+- Expected result snippet:
+  - `BANK_LTV_HARD_MAX_FTB = 0.95`
+  - `BANK_LTV_HARD_MAX_HM = 0.95`
+  - `BANK_LTV_HARD_MAX_BTL = 0.85`
+  - `CENTRAL_BANK_LTV_HARD_MAX_HM = 0.95`
+  - `CENTRAL_BANK_LTV_HARD_MAX_BTL = 0.85`
+- Method chosen: direct config fork from `v4.0` with aligned representative-bank and central-bank hard LTV ceilings.
+- Method-selection decision logic: `Objective=direct method justification; Why=aligned bank and central-bank hard LTV ceilings provide a clearer default policy baseline for FTB, HM, and BTL story work; Tradeoff=the cleaner aligned baseline modestly worsens several tracked credit and affordability metrics versus v4.0.`
+- Rationale category: direct method justification.
+- Evidence links:
+  - `input-data-versions/dashboard-input-version-history.json`
+  - `input-data-versions/validation/v4.1.json`
+- Version(s) affected: `v4.1`
+
+### v4.2
+- Script path: `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
+- Companion experiment path: `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
+- Outputs/keys produced: `HPA_EXPECTATION_FACTOR`, `HPA_EXPECTATION_CONST`
+- Exact run command:
+  - `python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search production --nmg-wave 2015=private-datasets/nmg/nmg-2015.csv --nmg-wave 2016=private-datasets/nmg/nmg-2016.csv --nmg-wave 2017=private-datasets/nmg/nmg-2017.csv --nmg-wave 2018=private-datasets/nmg/nmg-2018.csv --nmg-wave 2019=private-datasets/nmg/nmg-2019.csv --nmg-wave 2020=private-datasets/nmg/nmg-2020.csv --nmg-wave 2021=private-datasets/nmg/nmg-2021.csv --nmg-wave 2022=private-datasets/nmg/nmg-2022.csv --nmg-wave 2023=private-datasets/nmg/nmg-2023.csv --nmg-wave 2024=private-datasets/nmg/nmg-2024.csv --nmg-wave 2025-pt1=private-datasets/nmg/nmg-2025-pt1.csv --nmg-wave 2025-pt2=private-datasets/nmg/nmg-2025-pt2.csv --ppd private-datasets/ppd/pp-2011.csv --ppd private-datasets/ppd/pp.2012.csv --ppd private-datasets/ppd/pp-2018.csv --ppd private-datasets/ppd/pp-2019.csv --ppd private-datasets/ppd/pp-2020.csv --ppd private-datasets/ppd/pp-2021.csv --ppd private-datasets/ppd/pp-2022.csv --ppd private-datasets/ppd/pp-2023.csv --ppd private-datasets/ppd/pp-2024.csv --ppd private-datasets/ppd/pp-2025.csv --linkage-xlsx private-datasets/nmg/boe-nmg-household-survey-data.xlsx`
+  - `python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit tmp/nmg_hpa_expectation_production_search.json --target-year 2024`
+- Expected result snippet:
+  - `HPA_EXPECTATION_FACTOR = 0.2887897073`
+  - `HPA_EXPECTATION_CONST = -0.0059593352`
+- Method chosen: `national_cross_section + midpoint_exact + annual_mean_annualised + Category A + Huber`
+- Method-selection decision logic: `Objective=defensible 2024 recalibration; Why=the promoted Huber fit stays within the preferred plausibility band and becomes the artifact-locked default for both search and calculation; Tradeoff=the earlier simpler OLS v4.2 values are retained only as superseded history, not as the live default.`
+- Rationale category: alteration-vs-legacy evidence and justification.
+- Evidence links:
+  - `input-data-versions/dashboard-input-version-history.json`
+  - `input-data-versions/validation/v4.2.json`
+  - `docs/superpowers/specs/2026-04-14-hpa-expectation-v4.2-production-calibration-design.md`
+- Version(s) affected: `v4.2`
+
+#### HPA Expectation `v4.2` Production Calibration
 - Script path: `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
 - Companion experiment path: `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
 - Helper paths:
