@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.6`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.7`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -801,3 +801,27 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
   - `input-data-versions/calibration-evidence/boe-bank-v4.3-v4.6/BoeBankParameterCalibrationSummary.csv`
   - `input-data-versions/validation/v4.6.json`
 - Version(s) affected: `v4.6`
+
+### v4.7
+- Script path: `scripts/python/calibration/official/uk_housing_stock_totals_2024.py`
+- Outputs/keys produced: `UK_HOUSEHOLDS`, `UK_DWELLINGS`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.official.uk_housing_stock_totals_2024 --ons-households-xlsx input-data-versions/calibration-evidence/uk-housing-stock-v4.7/ons-families-and-households-uk-2024.xlsx --england-dwellings-ods input-data-versions/calibration-evidence/uk-housing-stock-v4.7/england-live-table-100-2024.ods --wales-dwellings-csv input-data-versions/calibration-evidence/uk-housing-stock-v4.7/wales-dwelling-stock-estimates-2024.csv --scotland-dwellings-xlsx input-data-versions/calibration-evidence/uk-housing-stock-v4.7/scotland-households-and-dwellings-2024.xlsx --northern-ireland-dwellings-xlsx input-data-versions/calibration-evidence/uk-housing-stock-v4.7/northern-ireland-housing-stock-2008-2025.xlsx --output-dir input-data-versions/calibration-evidence/uk-housing-stock-v4.7`
+- Expected result snippet:
+  - `UK_HOUSEHOLDS = 28609000`
+  - `UK_DWELLINGS = 30676974`
+  - rejected comparators:
+    - `UK_HOUSEHOLDS = 28600000`
+    - `UK_DWELLINGS = 30679588`
+- Method chosen:
+  - source-native `2024` official artifact aggregation: ONS workbook households value in thousands converted to households, plus England ODS, Wales StatsWales CSV, Scotland workbook, and Northern Ireland workbook dwelling totals summed without mixing rounded public headlines
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the downloadable official artifacts provide the most auditable published 2024 totals and avoid mixed-precision drift from rounded release headlines; Tradeoff=the corrected stock totals materially raise the implied houses-per-household target from 0.855681 to 1.072284, which worsens v4.7 validation versus v4.6 and leaves the v4.6 BoE per-household denominator intentionally unresolved in this release.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/uk-housing-stock-v4.7/README.md`
+  - `input-data-versions/calibration-evidence/uk-housing-stock-v4.7/UkHousingStockTotals2024SourceValues.csv`
+  - `input-data-versions/calibration-evidence/uk-housing-stock-v4.7/UkHousingStockTotals2024CalibrationSummary.json`
+  - `input-data-versions/validation/v4.7.json`
+- Version(s) affected: `v4.7`

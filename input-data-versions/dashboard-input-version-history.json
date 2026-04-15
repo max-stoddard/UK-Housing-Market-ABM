@@ -974,6 +974,55 @@
           "decision_logic": "Objective=direct method justification; Why=the chosen per-household mean keeps the supply proxy aligned to the same 2024 window as the promoted startup-rate parameters and restores the best overall validation balance within the v4.3-v4.6 chain; Tradeoff=the direct data-aligned supply level still leaves mortgage approvals, HM advances, BTL advances, owner-occupier debt to income, and rental yield outside the required bands."
         }
       ]
+    },
+    {
+      "version_id": "v4.7",
+      "snapshot_folder": "v4.7",
+      "validation_dataset": "r8",
+      "description": "Rebased UK_HOUSEHOLDS and UK_DWELLINGS to the retained official 2024 ONS and country dwelling-stock artifacts using source-native downloadable values.",
+      "updated_data_sources": [
+        "ons",
+        "dluhc",
+        "statswales",
+        "nrs",
+        "finance-ni"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/official/uk_housing_stock_totals_2024.py"
+      ],
+      "config_parameters": [
+        "UK_HOUSEHOLDS",
+        "UK_DWELLINGS"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "UK_HOUSEHOLDS",
+          "dataset_source": null
+        },
+        {
+          "config_parameter": "UK_DWELLINGS",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T17:34:28Z after promoting the official 2024 UK household and dwelling stock totals. overallCompositeLoss=0.395333 versus v4.6=0.191319 (delta +0.204014). Family losses: Macro Credit and Market Activity=0.668916, Macro Prices, Leverage, and Affordability=0.422276, Household Distribution Realism=0.245071. Required metrics passing: advances to FTB, advances to HM, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.6: housing transactions pass->fail, advances to HM fail->pass, household debt to income pass->fail, price-to-income pass->fail, and housing wealth distribution realism pass->fail. The corrected stock totals materially increase the implied houses-per-household target from 0.855681 to 1.072284, so this release should be treated as an official-source stock correction with a validation regression rather than a fit improvement. The prior v4.6 BoE per-household denominator remains intentionally unchanged in this version."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "UK_HOUSEHOLDS",
+            "UK_DWELLINGS"
+          ],
+          "improvement_summary": "Rebased the UK household and dwelling stock anchors to the retained 2024 official artifacts using source-native downloadable values instead of rounded public headline comparators.",
+          "why_changed": "To make the stock anchors directly reproducible from the official source files and to avoid mixing rounded England and Scotland headline figures with more granular downloadable tables.",
+          "method_chosen": "UK_HOUSEHOLDS from the ONS workbook sheet 5 'All households' 2024 Estimate = 28,609 thousand => 28,609,000; UK_DWELLINGS = England 25,617,413 + Wales 1,482,600 + Scotland 2,740,973 + Northern Ireland 835,988 = 30,676,974; rejected rounded comparators: 28,600,000 households and 30,679,588 dwellings.",
+          "decision_logic": "Objective=direct method justification; Why=the downloadable official artifacts provide the most auditable published 2024 totals and avoid mixed-precision headline drift; Tradeoff=the corrected stock totals materially worsen v4.7 validation versus v4.6 and the prior BoE per-household denominator remains intentionally unresolved in this release."
+        }
+      ]
     }
   ]
 }
