@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "version": "v4.2",
-  "generatedAt": "2026-04-14T21:10:23Z",
+  "generatedAt": "2026-04-15T10:26:37Z",
   "seeds": [
     1,
     2,
@@ -16,12 +16,12 @@
     "startIndex": 200,
     "endIndex": 2000
   },
-  "overallCompositeLoss": 2.4134919253301974,
+  "overallCompositeLoss": 0.42158951159764224,
   "familySummaries": [
     {
       "familyId": "macro_credit_activity",
       "label": "Macro Credit and Market Activity",
-      "loss": 1.1732816923012286,
+      "loss": 0.5154375041834036,
       "statusCounts": {
         "pass": 2,
         "warn": 0,
@@ -32,7 +32,7 @@
     {
       "familyId": "macro_prices_leverage_affordability",
       "label": "Macro Prices, Leverage, and Affordability",
-      "loss": 8.474111829319398,
+      "loss": 1.1643463625070034,
       "statusCounts": {
         "pass": 3,
         "warn": 0,
@@ -82,9 +82,11 @@
       "p25": 49.742066944444446,
       "p75": 51.08126611111111,
       "insideRate": 0.0,
-      "normalizedDistance": 1.0820559722222214,
-      "normalizedIqr": 0.22319986111111115,
-      "metricLoss": 1.6378559374999992,
+      "lossScale": 61.325,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.10586768582687857,
+      "normalizedIqr": 0.021837736105449115,
+      "metricLoss": 0.6113271198532408,
       "status": "fail"
     },
     {
@@ -116,9 +118,11 @@
       "p25": 94.92382583333334,
       "p75": 96.34129694444445,
       "insideRate": 1.0,
+      "lossScale": 84.2,
+      "lossScaleBasis": "source_value",
       "normalizedDistance": 0.0,
-      "normalizedIqr": 0.08971336146272864,
-      "metricLoss": 0.02242834036568216,
+      "normalizedIqr": 0.016834573766165227,
+      "metricLoss": 0.004208643441541307,
       "status": "pass"
     },
     {
@@ -163,9 +167,11 @@
       "p25": 24.429363333333335,
       "p75": 24.87460861111111,
       "insideRate": 1.0,
+      "lossScale": 27.833333333333332,
+      "lossScaleBasis": "source_value",
       "normalizedDistance": 0.0,
-      "normalizedIqr": 0.05332278775781745,
-      "metricLoss": 0.013330696939454363,
+      "normalizedIqr": 0.015996836327345238,
+      "metricLoss": 0.0039992090818363095,
       "status": "pass"
     },
     {
@@ -210,9 +216,11 @@
       "p25": 15.718818194444445,
       "p75": 16.452396111111113,
       "insideRate": 0.0,
-      "normalizedDistance": 0.6093119212962959,
-      "normalizedIqr": 0.10188582175925945,
-      "metricLoss": 1.1347833767361108,
+      "lossScale": 24.0,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.18279357638888882,
+      "normalizedIqr": 0.030565746527777844,
+      "metricLoss": 0.6904350130208333,
       "status": "fail"
     },
     {
@@ -293,9 +301,11 @@
       "p25": 9.664812361111112,
       "p75": 10.02159875,
       "insideRate": 0.0,
-      "normalizedDistance": 2.500501020846765,
-      "normalizedIqr": 0.23003635647252654,
-      "metricLoss": 3.0580101099648966,
+      "lossScale": 5.17125,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.7499689791314157,
+      "normalizedIqr": 0.06899422555260115,
+      "metricLoss": 1.267217535519566,
       "status": "fail"
     },
     {
@@ -327,9 +337,11 @@
       "p25": 134.23674245833334,
       "p75": 136.00134159722222,
       "insideRate": 1.0,
+      "lossScale": 133.8,
+      "lossScaleBasis": "source_value",
       "normalizedDistance": 0.0,
-      "normalizedIqr": 0.08822995694444416,
-      "metricLoss": 0.02205748923611104,
+      "normalizedIqr": 0.013188334371366838,
+      "metricLoss": 0.0032970835928417094,
       "status": "pass"
     },
     {
@@ -361,9 +373,11 @@
       "p25": 8.079775916666666,
       "p75": 8.173636875,
       "insideRate": 1.0,
+      "lossScale": 5.4,
+      "lossScaleBasis": "source_value",
       "normalizedDistance": 0.0,
-      "normalizedIqr": 0.026072488425926073,
-      "metricLoss": 0.006518122106481518,
+      "normalizedIqr": 0.017381658950617378,
+      "metricLoss": 0.004345414737654344,
       "status": "pass"
     },
     {
@@ -395,9 +409,11 @@
       "p25": 0.01929140277777778,
       "p75": 0.055946722222222224,
       "insideRate": 0.875,
+      "lossScale": 1.1,
+      "lossScaleBasis": "source_value",
       "normalizedDistance": 0.0,
-      "normalizedIqr": 0.018327659722222223,
-      "metricLoss": 0.06708191493055556,
+      "normalizedIqr": 0.03332301767676767,
+      "metricLoss": 0.07083075441919191,
       "status": "pass"
     },
     {
@@ -470,7 +486,7 @@
           "notes": "Uses MLAR 1.11 row 33, MLAR 1.33 rows 41, 53, 91, 95 and trailing four-quarter ONS QWND gross disposable income."
         },
         {
-          "label": "ONS UKEA QWND",
+          "label": "ONS UKEA QWND 2023Q2-2024Q4 snapshot",
           "sourceDocumentPath": "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json",
           "sourceTextPath": "input-data-versions/validation-sources/2024/mlar/oo-debt-to-income-2024-validation-evidence.txt",
           "sourceTable": null,
@@ -479,7 +495,7 @@
           "rawSourceValue": null,
           "sourceAsOf": "2023 Q2 to 2024 Q4",
           "sourceUnits": "\u00a3m",
-          "notes": "Quarterly gross disposable income series used to build the trailing four-quarter denominator."
+          "notes": "Repo-local quarterly gross disposable income snapshot used to build the trailing four-quarter denominator."
         }
       ],
       "targetBand": {
@@ -490,9 +506,11 @@
       "p25": 108.71127415277778,
       "p75": 109.72077909722222,
       "insideRate": 0.0,
-      "normalizedDistance": 9.26180389123273,
-      "normalizedIqr": 0.3230048677444301,
-      "metricLoss": 9.842555108168838,
+      "lossScale": 78.79686928898442,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.367355039033742,
+      "normalizedIqr": 0.012811485450546575,
+      "metricLoss": 0.8705579103963786,
       "status": "fail"
     },
     {
@@ -573,9 +591,11 @@
       "p25": 3.014411041666667,
       "p75": 3.104877222222222,
       "insideRate": 0.0,
-      "normalizedDistance": 31.85275295138886,
-      "normalizedIqr": 0.7538848379629586,
-      "metricLoss": 32.5412241608796,
+      "lossScale": 6.9275,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.551761869962709,
+      "normalizedIqr": 0.013058993945226288,
+      "metricLoss": 1.0550266184490156,
       "status": "fail"
     },
     {
@@ -656,9 +676,11 @@
       "p25": 3.1375666944444447,
       "p75": 3.1483360138888887,
       "insideRate": 0.0,
-      "normalizedDistance": 7.856504269281459,
-      "normalizedIqr": 0.03491964525334285,
-      "metricLoss": 8.365234180594793,
+      "lossScale": 0.5411981033650148,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 4.477045634953937,
+      "normalizedIqr": 0.019899033972003027,
+      "metricLoss": 4.982020393446938,
       "status": "fail"
     },
     {
@@ -690,6 +712,8 @@
       "p25": 0.06593918449263063,
       "p75": 0.06700562730671639,
       "insideRate": 1.0,
+      "lossScale": 0.12,
+      "lossScaleBasis": "target_band_upper",
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.00888702345071465,
       "metricLoss": 0.0022217558626786626,
@@ -724,6 +748,8 @@
       "p25": 0.06874774743452966,
       "p75": 0.07155074493409144,
       "insideRate": 1.0,
+      "lossScale": 0.12,
+      "lossScaleBasis": "target_band_upper",
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.023358312496348187,
       "metricLoss": 0.005839578124087047,
@@ -758,6 +784,8 @@
       "p25": 0.10186921899875323,
       "p75": 0.10273318806922235,
       "insideRate": 1.0,
+      "lossScale": 0.12,
+      "lossScaleBasis": "target_band_upper",
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.0071997422539093565,
       "metricLoss": 0.0017999355634773391,
