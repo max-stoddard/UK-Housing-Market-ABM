@@ -1,0 +1,709 @@
+[
+  {
+    "review_id": "supported_fpc_metric_ids",
+    "review_category": "constant",
+    "catalog_symbol": "SUPPORTED_FPC_METRIC_IDS",
+    "metric_ids": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_debtToIncome",
+      "core_housePriceGrowth",
+      "core_priceToIncome",
+      "core_interestRateSpread"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Locked June 2024 FPC metrics with defensible table mappings.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt",
+      "docs/superpowers/specs/2026-04-13-2024-validation-fpc-source-verification-design.md"
+    ],
+    "source_locator": {
+      "table": "Table A.2 plus the locked FPC support outcome documented in the design spec"
+    },
+    "recalculation_rule": "Reproduce the supported metric id set from the locked June 2024 FPC mapping outcome.",
+    "methodology_rule": null,
+    "expected_result": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_debtToIncome",
+      "core_housePriceGrowth",
+      "core_priceToIncome",
+      "core_interestRateSpread"
+    ],
+    "rounding_policy": "exact_string_match",
+    "status": "verified",
+    "notes": "This is a source-mapping outcome rather than a scalar extracted directly from the FPC table."
+  },
+  {
+    "review_id": "unsupported_fpc_metric_ids",
+    "review_category": "constant",
+    "catalog_symbol": "UNSUPPORTED_FPC_METRIC_IDS",
+    "metric_ids": [
+      "core_advancesToFTB",
+      "core_advancesToHM",
+      "core_advancesToBTL",
+      "core_ooDebtToIncome",
+      "core_rentalYield"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Current core indicators without a clean June 2024 FPC mapping.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt",
+      "docs/superpowers/specs/2026-04-13-2024-validation-fpc-source-verification-design.md"
+    ],
+    "source_locator": {
+      "table": "Locked unsupported metric outcome in the FPC verification design spec"
+    },
+    "recalculation_rule": "Reproduce the unsupported metric id set from the locked June 2024 FPC mapping outcome.",
+    "methodology_rule": null,
+    "expected_result": [
+      "core_advancesToFTB",
+      "core_advancesToHM",
+      "core_advancesToBTL",
+      "core_ooDebtToIncome",
+      "core_rentalYield"
+    ],
+    "rounding_policy": "exact_string_match",
+    "status": "verified",
+    "notes": "This group documents which current core indicators must rely on non-FPC or derived 2024 sources."
+  },
+  {
+    "review_id": "advances_target_tolerance",
+    "review_category": "constant",
+    "catalog_symbol": "ADVANCES_TARGET_TOLERANCE",
+    "metric_ids": [
+      "core_advancesToFTB",
+      "core_advancesToHM",
+      "core_advancesToBTL"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "0.15",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "docs/validation/validation-catalog-2024-review.md"
+    ],
+    "source_locator": {
+      "section": "UK Finance advances methodology note"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "The UK Finance advances bands are defined as plus/minus 15 percent around the official monthly mean.",
+    "expected_result": 0.15,
+    "rounding_policy": "exact_numeric_match",
+    "status": "verified",
+    "notes": "This constant is not an official source value; it is the locked band-width rule for UK Finance advances metrics."
+  },
+  {
+    "review_id": "family_definitions_and_weights",
+    "review_category": "constant",
+    "catalog_symbol": "FAMILY_DEFINITIONS and FAMILY_WEIGHTS",
+    "metric_ids": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_advancesToFTB",
+      "core_advancesToHM",
+      "core_advancesToBTL",
+      "core_debtToIncome",
+      "core_priceToIncome",
+      "core_housePriceGrowth",
+      "core_ooDebtToIncome",
+      "core_rentalYield",
+      "core_interestRateSpread",
+      "income_distribution_jsd",
+      "housing_wealth_distribution_jsd",
+      "financial_wealth_distribution_jsd"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Three scored families with weights 0.25, 0.25, 0.50.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "docs/superpowers/specs/2026-04-13-2024-validation-framework-design.md",
+      "docs/validation/validation-catalog-2024-review.md"
+    ],
+    "source_locator": {
+      "section": "Validation framework family weighting"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "Family membership and weights are methodology-owned constants from the 2024 validation framework design.",
+    "expected_result": {
+      "definitions": [
+        {
+          "family_id": "macro_credit_activity",
+          "label": "Macro Credit and Market Activity",
+          "weight": 0.25
+        },
+        {
+          "family_id": "macro_prices_leverage_affordability",
+          "label": "Macro Prices, Leverage, and Affordability",
+          "weight": 0.25
+        },
+        {
+          "family_id": "household_distribution_realism",
+          "label": "Household Distribution Realism",
+          "weight": 0.5
+        }
+      ],
+      "weights": {
+        "macro_credit_activity": 0.25,
+        "macro_prices_leverage_affordability": 0.25,
+        "household_distribution_realism": 0.5
+      }
+    },
+    "rounding_policy": "exact_numeric_match",
+    "status": "verified",
+    "notes": "The audit treats family definitions and weights as methodology constants rather than source-derived values."
+  },
+  {
+    "review_id": "source_fpc_core_metrics",
+    "review_category": "source_metadata",
+    "catalog_symbol": "FPC_SOURCE_2024_BY_METRIC_ID",
+    "metric_ids": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_debtToIncome",
+      "core_housePriceGrowth",
+      "core_priceToIncome",
+      "core_interestRateSpread"
+    ],
+    "value_class": "direct_source",
+    "current_value": "Locked June 2024 FPC latest values parsed from the repo-local text extraction aid.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt"
+    ],
+    "source_locator": {
+      "table": "Table A.2: Core indicator set for LTV and DTI limits",
+      "page": 5
+    },
+    "recalculation_rule": "Parse the latest-value section of the repo-local FPC text snapshot and normalize counts to thousand count/month where required.",
+    "methodology_rule": null,
+    "expected_result": {
+      "core_mortgageApprovals": {
+        "raw_source_value": 61325.0,
+        "normalized_source_value": 61.325,
+        "source_as_of": "Mar 2024",
+        "source_indicator_label": "Mortgage approvals",
+        "mapping_status": "exact_match"
+      },
+      "core_housingTransactions": {
+        "raw_source_value": 84200.0,
+        "normalized_source_value": 84.2,
+        "source_as_of": "Mar 2024",
+        "source_indicator_label": "Housing transactions",
+        "mapping_status": "exact_match"
+      },
+      "core_debtToIncome": {
+        "raw_source_value": 133.8,
+        "normalized_source_value": 133.8,
+        "source_as_of": "2023Q4",
+        "source_indicator_label": "Household debt to income ratio",
+        "mapping_status": "derived_match"
+      },
+      "core_housePriceGrowth": {
+        "raw_source_value": 1.1,
+        "normalized_source_value": 1.1,
+        "source_as_of": "Mar 2024",
+        "source_indicator_label": "House price growth",
+        "mapping_status": "exact_match"
+      },
+      "core_priceToIncome": {
+        "raw_source_value": 5.4,
+        "normalized_source_value": 5.4,
+        "source_as_of": "2023Q4",
+        "source_indicator_label": "House price to household disposable income ratio",
+        "mapping_status": "derived_match"
+      },
+      "core_interestRateSpread": {
+        "raw_source_value": 0.53,
+        "normalized_source_value": 0.53,
+        "source_as_of": "Mar 2024",
+        "source_indicator_label": "Spreads on new owner-occupier mortgages with 2-year fix and 75% LTV",
+        "mapping_status": "derived_match"
+      }
+    },
+    "rounding_policy": "exact_numeric_match after source normalization",
+    "status": "verified",
+    "notes": "The OCR ordering in the FPC text is imperfect, so the review helper uses fixed regexes against the frozen text snapshot."
+  },
+  {
+    "review_id": "source_ukf_advances_metrics",
+    "review_category": "source_metadata",
+    "catalog_symbol": "UKF_SOURCE_2024_BY_METRIC_ID",
+    "metric_ids": [
+      "core_advancesToFTB",
+      "core_advancesToHM",
+      "core_advancesToBTL"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "UK Finance annual totals and quarterly BTL counts converted to monthly means and ±15% bands.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/ukf/household-finance-review-2024-q4-validation-evidence.txt",
+      "input-data-versions/validation-sources/2024/ukf/btl-mortgage-market-update-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "tables": [
+        "Table 1: Key annual mortgage figures",
+        "Latest 2024 Q* summary panels"
+      ]
+    },
+    "recalculation_rule": "Convert annual totals to monthly thousand counts and derive target bands by applying a ±15% tolerance, rounded to three decimals with Decimal ROUND_HALF_UP.",
+    "methodology_rule": null,
+    "expected_result": {
+      "core_advancesToFTB": {
+        "raw_source_value": 334000.0,
+        "normalized_source_value": 27.833333333333332,
+        "target_band": {
+          "lower": 23.658,
+          "upper": 32.008
+        },
+        "source_reference_raw_values": [
+          334000.0
+        ]
+      },
+      "core_advancesToHM": {
+        "raw_source_value": 288000.0,
+        "normalized_source_value": 24.0,
+        "target_band": {
+          "lower": 20.4,
+          "upper": 27.6
+        },
+        "source_reference_raw_values": [
+          288000.0
+        ]
+      },
+      "core_advancesToBTL": {
+        "raw_source_value": 62055.0,
+        "normalized_source_value": 5.17125,
+        "source_reference_raw_values": [
+          12422.0,
+          14955.0,
+          16410.0,
+          18268.0
+        ],
+        "target_band": {
+          "lower": 4.396,
+          "upper": 5.947
+        }
+      }
+    },
+    "rounding_policy": "derived monthly means exact; target bands rounded to three decimals with Decimal ROUND_HALF_UP",
+    "status": "verified",
+    "notes": "This group covers both the source-value conversions and the methodology-owned ±15% band rule applied to UK Finance advances metrics."
+  },
+  {
+    "review_id": "source_market_interest_rate_spread",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID.core_interestRateSpread",
+    "metric_ids": [
+      "core_interestRateSpread"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Quarterly means, annual mean, and observed-range band derived from the 2024 monthly BOE housing-tools series.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx",
+      "input-data-versions/validation-sources/2024/boe/housing-tools-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "sheet": "8. Spreads new mortgage lending"
+    },
+    "recalculation_rule": "Read the 2024 monthly spread series from the workbook, compute quarterly means in contiguous Jan-Mar / Apr-Jun / Jul-Sep / Oct-Dec windows, then compute the annual mean and observed quarterly range.",
+    "methodology_rule": null,
+    "expected_result": {
+      "quarterly_values": [
+        0.45451643114650303,
+        0.5779458190668597,
+        0.7203665256287551,
+        0.41196363761794147
+      ],
+      "annual_mean": 0.5411981033650148,
+      "target_band": {
+        "lower": 0.41196363761794147,
+        "upper": 0.7203665256287551
+      }
+    },
+    "rounding_policy": "full precision means from workbook series; compare within floating tolerance",
+    "status": "verified",
+    "notes": "The direct monthly series is verified by tests; the ledger stores the reviewed quarterly and annual outputs."
+  },
+  {
+    "review_id": "source_market_rental_yield",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID.core_rentalYield",
+    "metric_ids": [
+      "core_rentalYield"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Quarterly UK Finance rental-yield values, annual mean, and observed-range band.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/ukf/btl-rental-yield-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "table": "Page 2 summary panels across the Q1-Q4 Buy to let Mortgage Market Update PDFs"
+    },
+    "recalculation_rule": "Read the four quarterly rental-yield values from the evidence note, compute the arithmetic annual mean, and use the observed quarterly range as the target band.",
+    "methodology_rule": null,
+    "expected_result": {
+      "quarterly_values": [
+        6.88,
+        6.9,
+        6.93,
+        7.0
+      ],
+      "annual_mean": 6.9275,
+      "target_band": {
+        "lower": 6.88,
+        "upper": 7.0
+      }
+    },
+    "rounding_policy": "exact decimal values from evidence text",
+    "status": "verified",
+    "notes": "The evidence file already records the annual mean and quarterly range explicitly; the checker recomputes them from the quarterly values."
+  },
+  {
+    "review_id": "source_market_oo_debt_to_income",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID.core_ooDebtToIncome",
+    "metric_ids": [
+      "core_ooDebtToIncome"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "OO DTI quarterly reconstruction from MLAR workbook rows plus the repo-local ONS QWND snapshot.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "input-data-versions/validation-sources/2024/mlar/mlar-longrun-detailed.xlsx",
+      "input-data-versions/validation-sources/2024/mlar/oo-debt-to-income-2024-validation-evidence.txt",
+      "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json"
+    ],
+    "source_locator": {
+      "table": "Sheet 1.11 row 33 and sheet 1.33 rows 41, 53, 91, 95 plus repo-local QWND snapshot"
+    },
+    "recalculation_rule": "Rebuild the quarterly owner-occupier share and balance from MLAR totals and BTL shares, divide by the trailing four-quarter QWND denominator from the repo-local ONS snapshot, then compute the annual mean and observed quarterly range.",
+    "methodology_rule": null,
+    "expected_result": {
+      "qwnd_trailing_four_quarter": {
+        "2024Q1": 1770489.0,
+        "2024Q2": 1796431.0,
+        "2024Q3": 1826886.0,
+        "2024Q4": 1865178.0
+      },
+      "quarterly_values": [
+        80.29246428438626,
+        79.5340812543787,
+        78.1938225371644,
+        77.16710908000836
+      ],
+      "annual_mean": 78.79686928898442,
+      "target_band": {
+        "lower": 77.16710908000836,
+        "upper": 80.29246428438626
+      }
+    },
+    "rounding_policy": "full precision floating-point reconstruction from workbook values and repo-local quarterly QWND snapshot",
+    "status": "verified",
+    "notes": "The local ONS snapshot closes the previous external-dependency gap and makes the denominator fully reproducible inside the repo."
+  },
+  {
+    "review_id": "metric_definitions_core",
+    "review_category": "metric_definition",
+    "catalog_symbol": "TARGETS_BY_ID for core_indicator metrics",
+    "metric_ids": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_advancesToFTB",
+      "core_advancesToHM",
+      "core_advancesToBTL",
+      "core_debtToIncome",
+      "core_priceToIncome",
+      "core_housePriceGrowth",
+      "core_ooDebtToIncome",
+      "core_rentalYield",
+      "core_interestRateSpread"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Live runtime metric-definition fields for all core_indicator metrics.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py"
+    ],
+    "source_locator": {
+      "symbol": "TARGET_CATALOG / TARGETS_BY_ID"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "Metric definitions are runtime methodology configuration; this review locks the fields that affect scoring and interpretation.",
+    "expected_result": {
+      "core_mortgageApprovals": {
+        "requirement": "required",
+        "units": "count/month",
+        "source_label": "Bank of England FPC core indicators, June 2024",
+        "target_band": {
+          "lower": 57.0,
+          "upper": 63.0
+        },
+        "file_name": "coreIndicator-mortgageApprovals.csv",
+        "scale": 0.001
+      },
+      "core_housingTransactions": {
+        "requirement": "required",
+        "units": "count/month",
+        "source_label": "Bank of England FPC core indicators, June 2024",
+        "target_band": {
+          "lower": 84.2,
+          "upper": 100.0
+        },
+        "file_name": "coreIndicator-housingTransactions.csv",
+        "scale": 0.001
+      },
+      "core_advancesToFTB": {
+        "requirement": "required",
+        "units": "count/month",
+        "source_label": "UK Finance Household Finance Review 2024 Q4",
+        "target_band": {
+          "lower": 23.658,
+          "upper": 32.008
+        },
+        "file_name": "coreIndicator-advancesToFTB.csv",
+        "scale": 0.001
+      },
+      "core_advancesToHM": {
+        "requirement": "required",
+        "units": "count/month",
+        "source_label": "UK Finance Household Finance Review 2024 Q4",
+        "target_band": {
+          "lower": 20.4,
+          "upper": 27.6
+        },
+        "file_name": "coreIndicator-advancesToHM.csv",
+        "scale": 0.001
+      },
+      "core_advancesToBTL": {
+        "requirement": "required",
+        "units": "count/month",
+        "source_label": "UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)",
+        "target_band": {
+          "lower": 4.396,
+          "upper": 5.947
+        },
+        "file_name": "coreIndicator-advancesToBTL.csv",
+        "scale": 0.001
+      },
+      "core_debtToIncome": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "Bank of England FPC core indicators, June 2024",
+        "target_band": {
+          "lower": 125.0,
+          "upper": 145.0
+        },
+        "file_name": "coreIndicator-debtToIncome.csv",
+        "scale": 1.0
+      },
+      "core_priceToIncome": {
+        "requirement": "required",
+        "units": "ratio",
+        "source_label": "Bank of England FPC core indicators, June 2024",
+        "target_band": {
+          "lower": 5.4,
+          "upper": 9.0
+        },
+        "file_name": "coreIndicator-priceToIncome.csv",
+        "scale": 1.0
+      },
+      "core_housePriceGrowth": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "Bank of England FPC core indicators, June 2024",
+        "target_band": {
+          "lower": 0.0,
+          "upper": 2.0
+        },
+        "file_name": "coreIndicator-housePriceGrowth.csv",
+        "scale": 1.0
+      },
+      "core_ooDebtToIncome": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "MLAR long-run detailed tables plus ONS QWND (full-year 2024 reconstruction)",
+        "target_band": {
+          "lower": 77.16710908000836,
+          "upper": 80.29246428438624
+        },
+        "file_name": "coreIndicator-ooDebtToIncome.csv",
+        "scale": 1.0
+      },
+      "core_rentalYield": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "UK Finance Buy to let Mortgage Market Update 2024 (Q1-Q4)",
+        "target_band": {
+          "lower": 6.88,
+          "upper": 7.0
+        },
+        "file_name": "coreIndicator-rentalYield.csv",
+        "scale": 1.0
+      },
+      "core_interestRateSpread": {
+        "requirement": "required",
+        "units": "percentage points",
+        "source_label": "Bank of England housing-tools workbook (full-year 2024 monthly spread series)",
+        "target_band": {
+          "lower": 0.41196363761794147,
+          "upper": 0.7203665256287551
+        },
+        "file_name": "coreIndicator-interestRateSpread.csv",
+        "scale": 1.0
+      }
+    },
+    "rounding_policy": "exact field match against the live catalog",
+    "status": "verified",
+    "notes": "This entry locks the runtime fields that affect metric extraction, scaling, labeling, and scoring."
+  },
+  {
+    "review_id": "metric_definitions_household_jsd",
+    "review_category": "metric_definition",
+    "catalog_symbol": "TARGETS_BY_ID for household_jsd metrics",
+    "metric_ids": [
+      "income_distribution_jsd",
+      "housing_wealth_distribution_jsd",
+      "financial_wealth_distribution_jsd"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Live runtime metric-definition fields for the three household JSD metrics.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/extractors.py"
+    ],
+    "source_locator": {
+      "symbol": "TARGET_CATALOG / HOUSEHOLD_DISTRIBUTION_SPECS"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "Household metric definitions are methodology-owned and must remain consistent with the fixed histogram/bin/filter extraction code.",
+    "expected_result": {
+      "income_distribution_jsd": {
+        "requirement": "required",
+        "units": "JSD",
+        "source_label": "WAS Round 8",
+        "target_band": {
+          "lower": 0.0,
+          "upper": 0.12
+        },
+        "legacy_validation_module": "income_dist",
+        "results_file_name": "MonthlyGrossEmploymentIncome-run1.csv"
+      },
+      "housing_wealth_distribution_jsd": {
+        "requirement": "required",
+        "units": "JSD",
+        "source_label": "WAS Round 8",
+        "target_band": {
+          "lower": 0.0,
+          "upper": 0.12
+        },
+        "legacy_validation_module": "housing_wealth_dist",
+        "results_file_name": "HousingWealth-run1.csv"
+      },
+      "financial_wealth_distribution_jsd": {
+        "requirement": "required",
+        "units": "JSD",
+        "source_label": "WAS Round 8",
+        "target_band": {
+          "lower": 0.0,
+          "upper": 0.12
+        },
+        "legacy_validation_module": "financial_wealth_dist",
+        "results_file_name": "BankBalance-run1.csv"
+      }
+    },
+    "rounding_policy": "exact field match against the live catalog",
+    "status": "verified",
+    "notes": "The audit ties each household metric definition back to both the catalog entry and the extractor spec used to build the JSD comparison."
+  },
+  {
+    "review_id": "methodology_fpc_target_bands",
+    "review_category": "methodology",
+    "catalog_symbol": "TargetBand values for FPC-backed macro metrics",
+    "metric_ids": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_debtToIncome",
+      "core_priceToIncome",
+      "core_housePriceGrowth"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Framework-owned acceptance bands for the FPC-backed macro indicators.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "docs/superpowers/specs/2026-04-13-2024-validation-fpc-source-verification-design.md",
+      "docs/superpowers/plans/2026-04-13-2024-validation-fpc-source-verification-implementation.md",
+      "docs/validation/validation-catalog-2024-review.md"
+    ],
+    "source_locator": {
+      "section": "Target bands are methodology-owned, distinct from official source values"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "These bands are framework acceptance choices. The official FPC value is evidence; the target band is the scoring rule. The audit note records the locked rationale for each band.",
+    "expected_result": {
+      "core_mortgageApprovals": {
+        "lower": 57.0,
+        "upper": 63.0
+      },
+      "core_housingTransactions": {
+        "lower": 84.2,
+        "upper": 100.0
+      },
+      "core_debtToIncome": {
+        "lower": 125.0,
+        "upper": 145.0
+      },
+      "core_priceToIncome": {
+        "lower": 5.4,
+        "upper": 9.0
+      },
+      "core_housePriceGrowth": {
+        "lower": 0.0,
+        "upper": 2.0
+      }
+    },
+    "rounding_policy": "exact field match",
+    "status": "verified",
+    "notes": "This entry explicitly prevents the audit from conflating official source values with methodology-owned acceptance bands."
+  },
+  {
+    "review_id": "methodology_household_jsd_acceptance_band",
+    "review_category": "methodology",
+    "catalog_symbol": "TargetBand values for household_jsd metrics",
+    "metric_ids": [
+      "income_distribution_jsd",
+      "housing_wealth_distribution_jsd",
+      "financial_wealth_distribution_jsd"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Shared JSD acceptance band [0.0, 0.12] across the three household realism metrics.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/extractors.py",
+      "docs/superpowers/specs/2026-04-13-2024-validation-framework-design.md",
+      "docs/validation/validation-catalog-2024-review.md"
+    ],
+    "source_locator": {
+      "section": "Household distribution realism methodology"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "The three household realism metrics use the same acceptance band because they are all Jensen-Shannon distances under the locked histogram/filtering methodology documented in the extractor code and review note.",
+    "expected_result": {
+      "metric_ids": [
+        "income_distribution_jsd",
+        "housing_wealth_distribution_jsd",
+        "financial_wealth_distribution_jsd"
+      ],
+      "target_band": {
+        "lower": 0.0,
+        "upper": 0.12
+      }
+    },
+    "rounding_policy": "exact field match",
+    "status": "verified",
+    "notes": "The review note makes this previously implicit methodology constant explicit so the band is no longer an undocumented magic number."
+  }
+]
