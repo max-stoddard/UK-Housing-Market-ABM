@@ -1,0 +1,14 @@
+parameter_key,selected_value,candidate_id,window_label,method_label,rationale
+CENTRAL_BANK_INITIAL_BASE_RATE,0.051083333333333335,full_year_2024_mean,2024 Jan-Dec,Daily-weighted monthly Bank Rate mean,Selected default: full-year 2024 constant proxy aligned to the validation window.
+BANK_INITIAL_RATE,0.05649531436698348,full_year_2024_mean,2024 Jan-Dec,Monthly Bank Rate plus monthly housing-tools spread,Selected default: full-year 2024 mortgage-rate proxy aligned to the validation window.
+BANK_INITIAL_CREDIT_SUPPLY,704.9388111888112,full_year_2024_mean,2024 Jan-Dec,Monthly VTUZ converted to pounds per household,Selected default: full-year 2024 per-household lending mean aligned to the validation window.
+BANK_D_INTEREST_D_DEMAND,5.471987263431394e-07,delta_fit_1995_to_2024,1995-2024,Through-origin fit on monthly spread deltas versus monthly credit deltas,Selected default: full pre-2025 overlap stays positive and matches the model update equation.
+
+parameter_key,rejected_value,candidate_id,window_label,method_label,rationale
+CENTRAL_BANK_INITIAL_BASE_RATE,0.0475,dec_2024_snapshot,2024-12,December month-end snapshot,Rejected: year-end snapshot is less aligned to the full-year validation window.
+CENTRAL_BANK_INITIAL_BASE_RATE,0.0525,jan_2024_snapshot,2024-01,January month-end snapshot,Rejected: opening-month snapshot is less representative than the full-year mean.
+BANK_INITIAL_RATE,0.05203868223830901,dec_2024_snapshot,2024-12,December mortgage-rate proxy snapshot,Rejected: year-end snapshot is less aligned to the full-year validation window.
+BANK_INITIAL_RATE,0.05777870736267045,jan_2024_snapshot,2024-01,January mortgage-rate proxy snapshot,Rejected: opening-month snapshot is less representative than the full-year mean.
+BANK_INITIAL_CREDIT_SUPPLY,718.8811188811189,dec_2024_snapshot,2024-12,December VTUZ per-household snapshot,Rejected: year-end snapshot is less aligned to the full-year validation window.
+BANK_INITIAL_CREDIT_SUPPLY,588.4265734265734,jan_2024_snapshot,2024-01,January VTUZ per-household snapshot,Rejected: opening-month snapshot is less representative than the full-year mean.
+BANK_D_INTEREST_D_DEMAND,-5.91912917550825e-06,delta_fit_2024_only,2024 Jan-Dec,Through-origin fit on monthly spread deltas versus monthly credit deltas,Rejected diagnostic: 2024-only window turns the fitted coefficient negative.

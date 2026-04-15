@@ -1,0 +1,105 @@
+{
+  "targetYear": 2024,
+  "onsHouseholds": 28600000,
+  "selectedParameters": {
+    "CENTRAL_BANK_INITIAL_BASE_RATE": {
+      "value": 0.051083333333333335,
+      "candidateId": "full_year_2024_mean",
+      "windowLabel": "2024 Jan-Dec",
+      "methodLabel": "Daily-weighted monthly Bank Rate mean",
+      "rationale": "Selected default: full-year 2024 constant proxy aligned to the validation window."
+    },
+    "BANK_INITIAL_RATE": {
+      "value": 0.05649531436698348,
+      "candidateId": "full_year_2024_mean",
+      "windowLabel": "2024 Jan-Dec",
+      "methodLabel": "Monthly Bank Rate plus monthly housing-tools spread",
+      "rationale": "Selected default: full-year 2024 mortgage-rate proxy aligned to the validation window."
+    },
+    "BANK_INITIAL_CREDIT_SUPPLY": {
+      "value": 704.9388111888112,
+      "candidateId": "full_year_2024_mean",
+      "windowLabel": "2024 Jan-Dec",
+      "methodLabel": "Monthly VTUZ converted to pounds per household",
+      "rationale": "Selected default: full-year 2024 per-household lending mean aligned to the validation window."
+    },
+    "BANK_D_INTEREST_D_DEMAND": {
+      "value": 5.471987263431394e-07,
+      "candidateId": "delta_fit_1995_to_2024",
+      "windowLabel": "1995-2024",
+      "methodLabel": "Through-origin fit on monthly spread deltas versus monthly credit deltas",
+      "rationale": "Selected default: full pre-2025 overlap stays positive and matches the model update equation."
+    }
+  },
+  "rejectedDiagnostics": [
+    {
+      "parameterKey": "CENTRAL_BANK_INITIAL_BASE_RATE",
+      "value": 0.0475,
+      "candidateId": "dec_2024_snapshot",
+      "windowLabel": "2024-12",
+      "methodLabel": "December month-end snapshot",
+      "rationale": "Rejected: year-end snapshot is less aligned to the full-year validation window."
+    },
+    {
+      "parameterKey": "CENTRAL_BANK_INITIAL_BASE_RATE",
+      "value": 0.0525,
+      "candidateId": "jan_2024_snapshot",
+      "windowLabel": "2024-01",
+      "methodLabel": "January month-end snapshot",
+      "rationale": "Rejected: opening-month snapshot is less representative than the full-year mean."
+    },
+    {
+      "parameterKey": "BANK_INITIAL_RATE",
+      "value": 0.05203868223830901,
+      "candidateId": "dec_2024_snapshot",
+      "windowLabel": "2024-12",
+      "methodLabel": "December mortgage-rate proxy snapshot",
+      "rationale": "Rejected: year-end snapshot is less aligned to the full-year validation window."
+    },
+    {
+      "parameterKey": "BANK_INITIAL_RATE",
+      "value": 0.05777870736267045,
+      "candidateId": "jan_2024_snapshot",
+      "windowLabel": "2024-01",
+      "methodLabel": "January mortgage-rate proxy snapshot",
+      "rationale": "Rejected: opening-month snapshot is less representative than the full-year mean."
+    },
+    {
+      "parameterKey": "BANK_INITIAL_CREDIT_SUPPLY",
+      "value": 718.8811188811189,
+      "candidateId": "dec_2024_snapshot",
+      "windowLabel": "2024-12",
+      "methodLabel": "December VTUZ per-household snapshot",
+      "rationale": "Rejected: year-end snapshot is less aligned to the full-year validation window."
+    },
+    {
+      "parameterKey": "BANK_INITIAL_CREDIT_SUPPLY",
+      "value": 588.4265734265734,
+      "candidateId": "jan_2024_snapshot",
+      "windowLabel": "2024-01",
+      "methodLabel": "January VTUZ per-household snapshot",
+      "rationale": "Rejected: opening-month snapshot is less representative than the full-year mean."
+    },
+    {
+      "parameterKey": "BANK_D_INTEREST_D_DEMAND",
+      "value": -5.91912917550825e-06,
+      "candidateId": "delta_fit_2024_only",
+      "windowLabel": "2024 Jan-Dec",
+      "methodLabel": "Through-origin fit on monthly spread deltas versus monthly credit deltas",
+      "rationale": "Rejected diagnostic: 2024-only window turns the fitted coefficient negative."
+    }
+  ],
+  "evidenceFiles": {
+    "bankRateHistoryInputCsv": "BoEBankRateHistoryInput.csv",
+    "bankRateMonthlyCsv": "BoEBankRate2024Monthly.csv",
+    "housingToolsSpreadMonthlyCsv": "BoEHousingToolsSpreadMonthly.csv",
+    "housingToolsSpread2024Csv": "BoEHousingToolsSpread2024Monthly.csv",
+    "mortgageRateProxyCsv": "BoEMortgageRateProxy2024Monthly.csv",
+    "vtuzInputCsv": "BoEVTUZGrossLendingInput.csv",
+    "creditSupplyPerHouseholdCsv": "BoEVTUZCreditSupplyPerHousehold2024Monthly.csv",
+    "deltaPanelFullCsv": "BoEVTUZSpreadAlignedDeltas1995To2024.csv",
+    "deltaPanelTargetYearCsv": "BoEVTUZSpreadAlignedDeltas2024.csv",
+    "onsHouseholdsCsv": "OnsHouseholds2024.csv",
+    "summaryCsv": "BoeBankParameterCalibrationSummary.csv"
+  }
+}
