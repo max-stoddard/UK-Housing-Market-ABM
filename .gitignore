@@ -45,6 +45,8 @@ AGENT*.md
 ignore_me*
 CLAUDE.md
 TODO.md
+.skills
+PROMPT.md
 
 # dashboard artifacts
 dashboard/node_modules/
