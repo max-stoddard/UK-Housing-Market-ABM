@@ -1,0 +1,16 @@
+{
+  "parameterKey": "HOLD_PERIOD",
+  "selectedConfigValues": {
+    "HOLD_PERIOD": 17.2
+  },
+  "source": {
+    "parameter_key": "HOLD_PERIOD",
+    "config_value": 17.2,
+    "extracted_value": 17.2,
+    "source_path": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/private-datasets/ehs/2023-24_EHS_Headline_Report_Chapter_3_Housing_History_and_future_housing_Annex_Tables.ods",
+    "table_name": "AT3_6",
+    "row_label": "all owner occupiers",
+    "year": "2023-24"
+  },
+  "method": "published_ehs_annex_table_extraction"
+}

@@ -1023,6 +1023,45 @@
           "decision_logic": "Objective=direct method justification; Why=the downloadable official artifacts provide the most auditable published 2024 totals and avoid mixed-precision headline drift; Tradeoff=the corrected stock totals materially worsen v4.7 validation versus v4.6 and the prior BoE per-household denominator remains intentionally unresolved in this release."
         }
       ]
+    },
+    {
+      "version_id": "v4.8",
+      "snapshot_folder": "v4.8",
+      "validation_dataset": "r8",
+      "description": "Recalibrated HOLD_PERIOD to the published EHS 2023-24 Annex Table 3.6 all-owner-occupier average years in current home.",
+      "updated_data_sources": [
+        "ehs"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/official/ehs_hold_period_2024.py"
+      ],
+      "config_parameters": [
+        "HOLD_PERIOD"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "HOLD_PERIOD",
+          "dataset_source": "private-datasets/ehs/2023-24_EHS_Headline_Report_Chapter_3_Housing_History_and_future_housing_Annex_Tables.ods"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-16T12:12:55Z after promoting the published EHS 2023-24 Annex Table 3.6 all-owner-occupier hold period. overallCompositeLoss=0.393724 versus v4.7=0.395333 (delta -0.001609). Family losses: Macro Credit and Market Activity=0.662376, Macro Prices, Leverage, and Affordability=0.423266, Household Distribution Realism=0.244627. Required metrics passing: advances to FTB, advances to HM, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.7: none. This release should be treated as an official EHS hold-period refresh with a small overall validation improvement but no required-metric status changes."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "HOLD_PERIOD"
+          ],
+          "improvement_summary": "Rebased the owner-occupier hold period to the published EHS 2023-24 annex-table mean.",
+          "why_changed": "To align HOLD_PERIOD with the latest retained official EHS housing-history publication and make the extraction directly reproducible from the released annex table.",
+          "method_chosen": "AT3_6 -> all owner occupiers -> 2023-24 = 17.2, promoted directly as HOLD_PERIOD.",
+          "decision_logic": "Objective=direct method justification; Why=user chose the published 2023-24 EHS AT3_6 all-owner-occupier mean as the authoritative recalibration source; Tradeoff=this supersedes the earlier 17.0 value instead of reconstructing a legacy raw-row method."
+        }
+      ]
     }
   ]
 }

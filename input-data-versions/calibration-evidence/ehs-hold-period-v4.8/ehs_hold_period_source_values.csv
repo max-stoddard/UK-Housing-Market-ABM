@@ -1,0 +1,2 @@
+parameter_key,config_value,extracted_value,source_path,table_name,row_label,year
+HOLD_PERIOD,17.2,17.2,/home/max/dev/uni/project/models/uk-housing-model-individual-project/private-datasets/ehs/2023-24_EHS_Headline_Report_Chapter_3_Housing_History_and_future_housing_Annex_Tables.ods,AT3_6,all owner occupiers,2023-24

@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.7`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.8`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -837,3 +837,24 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
   - `input-data-versions/calibration-evidence/uk-housing-stock-v4.7/UkHousingStockTotals2024CalibrationSummary.json`
   - `input-data-versions/validation/v4.7.json`
 - Version(s) affected: `v4.7`
+
+### v4.8
+- Script path: `scripts/python/calibration/official/ehs_hold_period_2024.py`
+- Outputs/keys produced: `HOLD_PERIOD`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.official.ehs_hold_period_2024 --output-dir input-data-versions/calibration-evidence/ehs-hold-period-v4.8`
+- Expected result snippet:
+  - `Extracted value: 17.2`
+  - `HOLD_PERIOD = 17.2`
+- Method chosen:
+  - published EHS annex-table extraction from `AT3_6 -> all owner occupiers -> 2023-24`
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=user chose the published 2023-24 EHS AT3_6 all-owner-occupier mean as the authoritative recalibration source; Tradeoff=this supersedes the earlier 17.0 value instead of reconstructing a legacy raw-row method.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/ehs-hold-period-v4.8/ehs_hold_period_source_values.csv`
+  - `input-data-versions/calibration-evidence/ehs-hold-period-v4.8/ehs_hold_period_summary.json`
+  - `input-data-versions/validation/v4.8.json`
+- Version(s) affected:
+  - `v4.8`
