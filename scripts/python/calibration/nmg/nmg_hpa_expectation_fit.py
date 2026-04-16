@@ -89,6 +89,11 @@ def _result_from_artifact(payload: dict[str, object]) -> HpaExpectationCandidate
             signal_method_name=str(point["signal_method_name"]),
             signal_anchor_year=int(point["signal_anchor_year"]),
             signal_base_year=int(point["signal_base_year"]),
+            signal_months=(
+                tuple(int(month) for month in point["signal_months"])
+                if point.get("signal_months") is not None
+                else None
+            ),
         )
         for point in selected_result_data["fit_points"]
     )
@@ -198,6 +203,7 @@ def run_calibration(*, search_artifact_path: Path) -> CalibrationOutput:
                 signal_method_name=signal.method_name,
                 signal_anchor_year=signal.anchor_year,
                 signal_base_year=signal.base_year,
+                signal_months=point.signal_months,
             )
         )
 

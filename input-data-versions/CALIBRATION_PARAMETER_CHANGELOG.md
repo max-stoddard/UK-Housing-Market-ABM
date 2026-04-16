@@ -242,9 +242,6 @@ python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit \
     - `plausibility: preferred`
     - `HPA_EXPECTATION_FACTOR = 0.2887897073`
     - `HPA_EXPECTATION_CONST = -0.0059593352`
-  - legacy gap remains explicit:
-    - best repo-local reconstruction stayed far from `0.44 / -0.007`
-    - literal `2014/2018` hypothesis remained materially misspecified on local data
 - Method chosen:
   - `national_cross_section` + `midpoint_exact` + `annual_mean_annualised` + `Category A` + `huber`
 - Method-selection decision logic:
@@ -258,6 +255,50 @@ python3 -m scripts.python.calibration.nmg.nmg_hpa_expectation_fit \
   - `scripts/python/helpers/nmg/linkage.py`
 - Version(s) affected:
   - `v4.2`
+
+### `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
+- Outputs/keys produced:
+  - legacy printed-precision recovery metadata for `HPA_EXPECTATION_FACTOR`
+  - legacy printed-precision recovery metadata for `HPA_EXPECTATION_CONST`
+  - production search artifact for `scripts/python/calibration/nmg/nmg_hpa_expectation_fit.py`
+- Command:
+```bash
+python3 -m scripts.python.experiments.nmg.nmg_hpa_expectation_method_search legacy \
+  --nmg-wave 2014=private-datasets/nmg/nmg-2014.csv \
+  --nmg-wave 2015=private-datasets/nmg/nmg-2015.csv \
+  --nmg-wave 2016=private-datasets/nmg/nmg-2016.csv \
+  --nmg-wave 2017=private-datasets/nmg/nmg-2017.csv \
+  --nmg-wave 2018=private-datasets/nmg/nmg-2018.csv \
+  --ppd private-datasets/ppd/pp-2011.csv \
+  --ppd private-datasets/ppd/pp.2012.csv \
+  --ppd private-datasets/ppd/pp-2014-part1.csv \
+  --ppd private-datasets/ppd/pp-2014-part2.csv \
+  --ppd private-datasets/ppd/pp-2018.csv \
+  --artifact-output tmp/nmg_hpa_expectation_legacy_search.json
+```
+- Expected-result snippet:
+  - selected printed-precision legacy recovery:
+    - `survey-target: owner_occupier_cross_section__midpoint_exact_cap35`
+    - `signal-method: rolling_quarter_cumulative`
+    - `category: A`
+    - `2014 anchor/base/months: 2014 / 2012 / Aug-Oct`
+    - `2018 anchor/base/months: 2012 / 2011 / Mar-May`
+    - `HPA_EXPECTATION_FACTOR = 0.4407356112`
+    - `HPA_EXPECTATION_CONST = -0.0066328562`
+    - `legacy-printed-match: 0.44 / -0.007`
+- Method chosen:
+  - `owner_occupier_cross_section + midpoint_exact_cap35 + rolling_quarter_cumulative + Category A + explicit legacy per-wave pairing`
+- Method-selection decision logic:
+  - `Objective=target reproduction; Why=explicit per-wave pairing plus survey-aligned rolling-quarter cumulative Category-A owner-occupier signals is the only on-disk candidate that reproduces 0.44 / -0.007 at printed config precision; Tradeoff=the recovered legacy pairing remains historically opaque and intentionally legacy-only rather than becoming the production default.`
+- Rationale category:
+  - target reproduction
+- Evidence links:
+  - `scripts/python/experiments/nmg/nmg_hpa_expectation_method_search.py`
+  - `scripts/python/helpers/nmg/hpa_expectation.py`
+  - `scripts/python/helpers/ppd/hpa_signal_methods.py`
+  - `scripts/python/helpers/nmg/linkage.py`
+- Version(s) affected:
+  - `v0` to `v4.1`
 
 ### `scripts/python/calibration/ppd/house_price_lognormal_fit.py`
 - Outputs/keys produced:

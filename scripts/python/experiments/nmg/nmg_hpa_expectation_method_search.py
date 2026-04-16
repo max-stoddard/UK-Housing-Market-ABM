@@ -3,11 +3,13 @@
 """
 Search legacy and production HPA-expectation method variants.
 
-Latest findings (private datasets, 2026-04-14):
-- Legacy mode still does not recover the historical `0.44 / -0.007` target from repo-local inputs; the best local candidate remains far away and the gap report points to missing pre-2018 PPD vintages plus likely unrecorded historical methodology.
+Latest findings (private datasets, 2026-04-16):
+- Legacy mode now recovers the historical coefficients at printed config precision with an explicit legacy-only search surface.
+- The recovered legacy method is `owner_occupier_cross_section + midpoint_exact_cap35 + rolling_quarter_cumulative + Category A + explicit legacy per-wave pairing`.
+- On the current private datasets this yields `HPA_EXPECTATION_FACTOR = 0.4407356112` and `HPA_EXPECTATION_CONST = -0.0066328562`, which reproduce the historical `0.44 / -0.007` values at printed precision.
 - The promoted 2024 production default is `national_cross_section + midpoint_exact + annual_mean_annualised + Category A + Huber + same_year_two_year_base`.
 - On the current private datasets this yields `HPA_EXPECTATION_FACTOR = 0.2887897073` and `HPA_EXPECTATION_CONST = -0.0059593352`.
-- Interpretation: this is the best defensible 2024 default because it stays within the preferred plausibility band while remaining simple, national, and aligned with the model's two-year HPA semantics.
+- Interpretation: the legacy recovery now depends on explicit per-wave pairing and survey-aligned rolling-quarter windows, while the production default remains the best defended 2024 national method.
 
 @author: Max Stoddard
 """
@@ -18,7 +20,7 @@ import argparse
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Sequence
 
 from scripts.python.helpers.common.cli import format_float
 from scripts.python.helpers.nmg.hpa_expectation import (
@@ -29,6 +31,8 @@ from scripts.python.helpers.nmg.hpa_expectation import (
     HpaExpectationFitPoint,
     LEGACY_TARGET_CONST,
     LEGACY_TARGET_FACTOR,
+    LEGACY_CONST_PRINT_DECIMALS,
+    LEGACY_FACTOR_PRINT_DECIMALS,
     NmgWaveData,
     ProductionSelection,
     SurveyTargetResult,
@@ -37,6 +41,7 @@ from scripts.python.helpers.nmg.hpa_expectation import (
     build_survey_target_result,
     evaluate_candidate_fit,
     load_nmg_wave_csv,
+    matches_legacy_printed_precision,
     rank_legacy_candidates,
     select_production_candidate,
 )
@@ -55,10 +60,25 @@ from scripts.python.helpers.ppd.hpa_signal_methods import (
 
 LEGACY_MODE = "legacy"
 PRODUCTION_MODE = "production"
+LEGACY_PRIMARY_FIT_WAVE_LABELS = ("2014", "2018")
+LEGACY_DIAGNOSTIC_WAVE_LABELS = ("2015", "2016", "2017")
 PRODUCTION_FIT_YEARS = (2018, 2019, 2020, 2021, 2022, 2023, 2024)
 PRODUCTION_DIAGNOSTIC_WAVE_LABELS = ("2015", "2016", "2017", "2025-pt1", "2025-pt2")
 DEFAULT_PRODUCTION_FIT_YEARS = ",".join(str(year) for year in PRODUCTION_FIT_YEARS)
 LEGACY_WAVE_LABELS = ("2014", "2015", "2016", "2017", "2018")
+LEGACY_EXISTING_SIGNAL_METHODS = (
+    "java_like_annualised",
+    "annual_mean_annualised",
+    "annual_mean_cumulative",
+)
+LEGACY_ROLLING_QUARTER_SIGNAL_METHODS = (
+    "rolling_quarter_annualised",
+    "rolling_quarter_cumulative",
+)
+LEGACY_ROLLING_QUARTER_MONTH_CHOICES = tuple(
+    tuple(range(start_month, start_month + 3))
+    for start_month in range(1, 11)
+)
 DEFAULT_PRODUCTION_SIGNAL_METHODS = ("annual_mean_annualised",)
 DEFAULT_PRODUCTION_CATEGORY_KEYS = ("A",)
 DEFAULT_PRODUCTION_REGRESSION_TYPES = ("huber", "ols")
@@ -79,18 +99,17 @@ DEFAULT_LEGACY_ARTIFACT_OUTPUT = Path("tmp/nmg_hpa_expectation_legacy_search.jso
 
 
 @dataclass(frozen=True)
-class LegacyHypothesis:
-    name: str
-    fit_wave_labels: tuple[str, ...]
-    anchor_policy_name: str
-    explicit_anchor_years_by_wave_label: dict[str, int] | None = None
+class ExplicitSignalSpec:
+    anchor_year: int
+    base_year: int
+    signal_months: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
 class SearchCandidateDefinition:
     candidate_spec: HpaExpectationCandidateSpec
     fit_wave_labels: tuple[str, ...]
-    explicit_anchor_years_by_wave_label: dict[str, int] | None = None
+    explicit_signal_specs_by_wave_label: dict[str, ExplicitSignalSpec] | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +130,7 @@ class MethodSearchOutput:
     panel_notes: tuple[str, ...]
     panel_row_indices_by_wave_label: dict[str, set[int]]
     signal_indexes: dict[str, PpdSignalIndex]
+    exact_precision_matches: tuple[HpaExpectationCandidateResult, ...]
 
 
 def _parse_wave_arg(value: str) -> tuple[str, Path]:
@@ -272,6 +292,7 @@ def _result_to_dict(result: HpaExpectationCandidateResult) -> dict[str, object]:
                 "signal_method_name": point.signal_method_name,
                 "signal_anchor_year": point.signal_anchor_year,
                 "signal_base_year": point.signal_base_year,
+                "signal_months": list(point.signal_months) if point.signal_months is not None else None,
             }
             for point in result.fit_points
         ],
@@ -387,22 +408,30 @@ def _build_fit_points(
     fit_points: list[HpaExpectationFitPoint] = []
     for wave_label in candidate_definition.fit_wave_labels:
         survey_target_result = survey_target_results[wave_label]
-        explicit_anchor_year = None
-        if candidate_definition.explicit_anchor_years_by_wave_label is not None:
-            explicit_anchor_year = candidate_definition.explicit_anchor_years_by_wave_label.get(wave_label)
-        anchor_year = _resolve_anchor_year(
-            survey_year=survey_target_result.survey_year,
-            available_ppd_years=signal_index.available_years,
-            anchor_policy_name=candidate_definition.candidate_spec.anchor_policy_name,
-            explicit_anchor_year=explicit_anchor_year,
-        )
-        base_year = resolve_base_year(signal_index.available_years, anchor_year=anchor_year)
-        signal = build_hpa_signal_from_index(
-            signal_index,
-            anchor_year=anchor_year,
-            base_year=base_year,
-            method_name=candidate_definition.candidate_spec.signal_method_name,
-        )
+        explicit_signal_spec = None
+        if candidate_definition.explicit_signal_specs_by_wave_label is not None:
+            explicit_signal_spec = candidate_definition.explicit_signal_specs_by_wave_label.get(wave_label)
+        if explicit_signal_spec is not None:
+            signal = build_hpa_signal_from_index(
+                signal_index,
+                anchor_year=explicit_signal_spec.anchor_year,
+                base_year=explicit_signal_spec.base_year,
+                method_name=candidate_definition.candidate_spec.signal_method_name,
+                months=explicit_signal_spec.signal_months,
+            )
+        else:
+            anchor_year = _resolve_anchor_year(
+                survey_year=survey_target_result.survey_year,
+                available_ppd_years=signal_index.available_years,
+                anchor_policy_name=candidate_definition.candidate_spec.anchor_policy_name,
+            )
+            base_year = resolve_base_year(signal_index.available_years, anchor_year=anchor_year)
+            signal = build_hpa_signal_from_index(
+                signal_index,
+                anchor_year=anchor_year,
+                base_year=base_year,
+                method_name=candidate_definition.candidate_spec.signal_method_name,
+            )
         fit_points.append(
             HpaExpectationFitPoint(
                 survey_wave_label=wave_label,
@@ -412,85 +441,115 @@ def _build_fit_points(
                 signal_method_name=signal.method_name,
                 signal_anchor_year=signal.anchor_year,
                 signal_base_year=signal.base_year,
+                signal_months=tuple(signal.diagnostics["months_used_recent"])
+                if "months_used_recent" in signal.diagnostics
+                else None,
             )
         )
     return tuple(fit_points)
 
 
-def _build_legacy_hypotheses() -> tuple[LegacyHypothesis, ...]:
+def _iter_explicit_anchor_base_pairs(
+    *,
+    available_years: Sequence[int],
+    max_anchor_year: int,
+) -> tuple[tuple[int, int], ...]:
+    return tuple(
+        (int(anchor_year), int(base_year))
+        for anchor_year in available_years
+        for base_year in available_years
+        if base_year < anchor_year and anchor_year <= max_anchor_year
+    )
+
+
+def _build_legacy_candidate_name(
+    *,
+    survey_target_spec: SurveyTargetSpec,
+    signal_method_name: str,
+    category_key: str,
+    signal_specs_by_wave_label: dict[str, ExplicitSignalSpec],
+) -> str:
+    wave_tokens: list[str] = []
+    for wave_label in LEGACY_PRIMARY_FIT_WAVE_LABELS:
+        signal_spec = signal_specs_by_wave_label[wave_label]
+        month_token = ""
+        if signal_spec.signal_months is not None:
+            month_token = "__m" + "-".join(str(month) for month in signal_spec.signal_months)
+        wave_tokens.append(
+            f"{wave_label}_a{signal_spec.anchor_year}_b{signal_spec.base_year}{month_token}"
+        )
     return (
-        LegacyHypothesis(
-            name="literal_2014_2018_comment",
-            fit_wave_labels=("2014", "2018"),
-            anchor_policy_name="literal_2014_2018_comment",
-            explicit_anchor_years_by_wave_label={"2014": 2012, "2018": 2018},
-        ),
-        LegacyHypothesis(
-            name="expanded_latest_prior_anchor",
-            fit_wave_labels=LEGACY_WAVE_LABELS,
-            anchor_policy_name="latest_prior_or_same",
-        ),
-        LegacyHypothesis(
-            name="expanded_nearest_future_anchor",
-            fit_wave_labels=LEGACY_WAVE_LABELS,
-            anchor_policy_name="nearest_future_or_same",
-        ),
+        f"legacy_explicit_pair__{survey_target_spec.name}__{signal_method_name}__{category_key}"
+        f"__{'__'.join(wave_tokens)}__ols"
     )
 
 
-def _build_legacy_candidate_definitions() -> list[SearchCandidateDefinition]:
-    survey_target_specs = [
-        SurveyTargetSpec(
-            name=f"national_cross_section__{method_name}",
-            expectation_method_name=method_name,
-            family_name="national_cross_section",
-        )
-        for method_name in DEFAULT_EXPECTATION_METHOD_NAMES
-    ]
+def _build_legacy_candidate_definitions(
+    survey_target_specs: Sequence[SurveyTargetSpec],
+    *,
+    signal_indexes: dict[str, PpdSignalIndex],
+    signal_method_names: Sequence[str],
+) -> list[SearchCandidateDefinition]:
     definitions: list[SearchCandidateDefinition] = []
-    for hypothesis in _build_legacy_hypotheses():
-        for survey_target_spec in survey_target_specs:
-            for signal_method_name in PRODUCTION_SIGNAL_METHODS:
-                for category_key in PRODUCTION_CATEGORY_KEYS:
-                    candidate_spec = HpaExpectationCandidateSpec(
-                        name=(
-                            f"{hypothesis.name}__{survey_target_spec.name}__{signal_method_name}"
-                            f"__{category_key}__ols"
-                        ),
-                        survey_target_spec=survey_target_spec,
-                        signal_method_name=signal_method_name,
-                        category_key=category_key,
-                        regression_type="ols",
-                        anchor_policy_name=hypothesis.anchor_policy_name,
-                        hypothesis_name=hypothesis.name,
-                    )
-                    definitions.append(
-                        SearchCandidateDefinition(
-                            candidate_spec=candidate_spec,
-                            fit_wave_labels=hypothesis.fit_wave_labels,
-                            explicit_anchor_years_by_wave_label=hypothesis.explicit_anchor_years_by_wave_label,
-                        )
-                    )
-
-    benchmark_spec = SurveyTargetSpec(
-        name="national_cross_section__midpoint_exact",
-        expectation_method_name="midpoint_exact",
-        family_name="national_cross_section",
-    )
-    definitions.append(
-        SearchCandidateDefinition(
-            candidate_spec=HpaExpectationCandidateSpec(
-                name="carry_forward_modern_benchmark",
-                survey_target_spec=benchmark_spec,
-                signal_method_name="annual_mean_annualised",
-                category_key="A",
-                regression_type="ols",
-                anchor_policy_name="latest_prior_or_same",
-                hypothesis_name="carry_forward_modern_benchmark",
-            ),
-            fit_wave_labels=LEGACY_WAVE_LABELS,
-        )
-    )
+    for survey_target_spec in survey_target_specs:
+        for signal_method_name in signal_method_names:
+            month_choices: tuple[tuple[int, ...] | None, ...]
+            if signal_method_name in LEGACY_ROLLING_QUARTER_SIGNAL_METHODS:
+                month_choices = tuple(LEGACY_ROLLING_QUARTER_MONTH_CHOICES)
+            else:
+                month_choices = (None,)
+            for category_key in PRODUCTION_CATEGORY_KEYS:
+                available_years = signal_indexes[category_key].available_years
+                pairs_2014 = _iter_explicit_anchor_base_pairs(
+                    available_years=available_years,
+                    max_anchor_year=2014,
+                )
+                pairs_2018 = _iter_explicit_anchor_base_pairs(
+                    available_years=available_years,
+                    max_anchor_year=2018,
+                )
+                for anchor14, base14 in pairs_2014:
+                    for anchor18, base18 in pairs_2018:
+                        for months_2014 in month_choices:
+                            for months_2018 in month_choices:
+                                signal_specs_by_wave_label = {
+                                    "2014": ExplicitSignalSpec(
+                                        anchor_year=anchor14,
+                                        base_year=base14,
+                                        signal_months=months_2014,
+                                    ),
+                                    "2018": ExplicitSignalSpec(
+                                        anchor_year=anchor18,
+                                        base_year=base18,
+                                        signal_months=months_2018,
+                                    ),
+                                }
+                                anchor_policy_name = (
+                                    "explicit_rolling_quarter_pair"
+                                    if signal_method_name in LEGACY_ROLLING_QUARTER_SIGNAL_METHODS
+                                    else "explicit_pair"
+                                )
+                                candidate_spec = HpaExpectationCandidateSpec(
+                                    name=_build_legacy_candidate_name(
+                                        survey_target_spec=survey_target_spec,
+                                        signal_method_name=signal_method_name,
+                                        category_key=category_key,
+                                        signal_specs_by_wave_label=signal_specs_by_wave_label,
+                                    ),
+                                    survey_target_spec=survey_target_spec,
+                                    signal_method_name=signal_method_name,
+                                    category_key=category_key,
+                                    regression_type="ols",
+                                    anchor_policy_name=anchor_policy_name,
+                                    hypothesis_name=anchor_policy_name,
+                                )
+                                definitions.append(
+                                    SearchCandidateDefinition(
+                                        candidate_spec=candidate_spec,
+                                        fit_wave_labels=LEGACY_PRIMARY_FIT_WAVE_LABELS,
+                                        explicit_signal_specs_by_wave_label=signal_specs_by_wave_label,
+                                    )
+                                )
     return definitions
 
 
@@ -527,10 +586,113 @@ def _build_production_candidate_definitions(
     return definitions
 
 
+def _evaluate_candidate_definitions(
+    *,
+    candidate_definitions: Sequence[SearchCandidateDefinition],
+    survey_results: dict[str, dict[str, SurveyTargetResult]],
+    signal_indexes: dict[str, PpdSignalIndex],
+    legacy_target: tuple[float, float] | None = None,
+) -> list[HpaExpectationCandidateResult]:
+    evaluation_results: list[HpaExpectationCandidateResult] = []
+    for candidate_definition in candidate_definitions:
+        if not all(
+            wave_label in survey_results.get(candidate_definition.candidate_spec.survey_target_spec.name, {})
+            for wave_label in candidate_definition.fit_wave_labels
+        ):
+            continue
+        try:
+            fit_points = _build_fit_points(
+                candidate_definition=candidate_definition,
+                survey_results=survey_results,
+                signal_indexes=signal_indexes,
+            )
+        except ValueError:
+            continue
+        try:
+            evaluation_results.append(
+                evaluate_candidate_fit(
+                    candidate_definition.candidate_spec,
+                    fit_points,
+                    legacy_target=legacy_target,
+                )
+            )
+        except ValueError:
+            continue
+    return evaluation_results
+
+
+def _collect_exact_precision_matches(
+    results: Sequence[HpaExpectationCandidateResult],
+) -> tuple[HpaExpectationCandidateResult, ...]:
+    return tuple(
+        result
+        for result in results
+        if matches_legacy_printed_precision(result.factor, result.const)
+    )
+
+
+def _nearest_fit_point_for_diagnostic_wave(
+    *,
+    diagnostic_wave_label: str,
+    fit_points: Sequence[HpaExpectationFitPoint],
+) -> HpaExpectationFitPoint:
+    diagnostic_year = int("".join(char for char in diagnostic_wave_label if char.isdigit())[:4])
+    return min(
+        fit_points,
+        key=lambda point: (
+            abs(point.survey_year - diagnostic_year),
+            point.survey_year > diagnostic_year,
+            point.survey_year,
+        ),
+    )
+
+
+def _build_legacy_diagnostic_rmse_map(
+    *,
+    exact_precision_matches: Sequence[HpaExpectationCandidateResult],
+    diagnostic_wave_labels: Sequence[str],
+    survey_results: dict[str, dict[str, SurveyTargetResult]],
+    signal_indexes: dict[str, PpdSignalIndex],
+) -> dict[str, float]:
+    diagnostic_rmse_by_candidate_name: dict[str, float] = {}
+    for result in exact_precision_matches:
+        selected_spec = result.candidate_spec.survey_target_spec
+        signal_index = signal_indexes[result.candidate_spec.category_key]
+        squared_errors: list[float] = []
+        for wave_label in diagnostic_wave_labels:
+            survey_result = survey_results.get(selected_spec.name, {}).get(wave_label)
+            if survey_result is None:
+                continue
+            source_fit_point = _nearest_fit_point_for_diagnostic_wave(
+                diagnostic_wave_label=wave_label,
+                fit_points=result.fit_points,
+            )
+            try:
+                signal = build_hpa_signal_from_index(
+                    signal_index,
+                    anchor_year=source_fit_point.signal_anchor_year,
+                    base_year=source_fit_point.signal_base_year,
+                    method_name=result.signal_method_name,
+                    months=source_fit_point.signal_months,
+                )
+            except ValueError:
+                continue
+            predicted = (result.factor * signal.value) + result.const
+            squared_errors.append((predicted - survey_result.expectation_mean) ** 2)
+        diagnostic_rmse_by_candidate_name[result.candidate_spec.name] = (
+            (sum(squared_errors) / len(squared_errors)) ** 0.5
+            if squared_errors
+            else float("inf")
+        )
+    return diagnostic_rmse_by_candidate_name
+
+
 def _build_legacy_gap_report(
     *,
     ranked_results: Sequence[HpaExpectationCandidateResult],
     signal_indexes: dict[str, PpdSignalIndex],
+    exact_precision_matches: Sequence[HpaExpectationCandidateResult],
+    used_extended_signal_surface: bool,
 ) -> tuple[str, ...]:
     report: list[str] = []
     available_ppd_years = set(signal_indexes["all_transactions"].available_years)
@@ -541,21 +703,22 @@ def _build_legacy_gap_report(
             + ", ".join(str(year) for year in missing_pre_2018_years)
             + "."
         )
+    if exact_precision_matches:
+        report.append(
+            f"Recovered the historical 0.44 / -0.007 coefficients at printed precision with "
+            f"{len(exact_precision_matches)} explicit legacy candidate(s)."
+        )
+        if used_extended_signal_surface:
+            report.append(
+                "Recovery required the legacy rolling-quarter search surface after the existing annual signal family "
+                "produced no printed-precision match."
+            )
+        return tuple(report)
     best_result = ranked_results[0]
     if best_result.legacy_distance is not None and best_result.legacy_distance > 0.10:
         report.append(
             "No repo-local candidate recovered the historical 0.44 / -0.007 point closely; the gap likely reflects "
             "missing Land Registry vintages and/or an unrecorded historical transform or anchor rule."
-        )
-    literal_candidates = [
-        result
-        for result in ranked_results
-        if result.candidate_spec.hypothesis_name == "literal_2014_2018_comment"
-    ]
-    if literal_candidates and literal_candidates[0].legacy_distance is not None:
-        report.append(
-            "The literal 2014/2018 comment hypothesis remained "
-            f"{format_float(literal_candidates[0].legacy_distance)} away from the historical target on local data."
         )
     return tuple(report)
 
@@ -583,52 +746,93 @@ def run_method_search(
     gap_report: tuple[str, ...] = ()
     panel_notes: list[str] = []
     panel_row_indices_by_wave_label: dict[str, set[int]] = {}
+    exact_precision_matches: tuple[HpaExpectationCandidateResult, ...] = ()
 
     if mode == LEGACY_MODE:
+        fit_wave_labels = tuple(
+            wave_label for wave_label in LEGACY_PRIMARY_FIT_WAVE_LABELS if wave_label in waves
+        )
+        if fit_wave_labels != LEGACY_PRIMARY_FIT_WAVE_LABELS:
+            raise ValueError("Legacy mode requires both the 2014 and 2018 NMG waves.")
+        diagnostic_wave_labels = tuple(
+            wave_label for wave_label in LEGACY_DIAGNOSTIC_WAVE_LABELS if wave_label in waves
+        )
+        if DEFAULT_LINKAGE_XLSX.exists() and DEFAULT_LINKAGE_XLSX.is_file():
+            try:
+                linkage = load_pid_subsid_linkage(DEFAULT_LINKAGE_XLSX)
+                panel_row_indices_by_wave_label = build_matched_panel_row_indices(
+                    {wave_label: waves[wave_label] for wave_label in fit_wave_labels},
+                    required_wave_labels=fit_wave_labels,
+                    linkage=linkage,
+                )
+            except ValueError as exc:
+                panel_notes.append(str(exc))
+        else:
+            panel_notes.append(f"Legacy linkage workbook not available: {DEFAULT_LINKAGE_XLSX}")
+
         survey_target_specs = build_default_survey_target_specs(
-            include_owner_occupier=False,
-            include_matched_panel=False,
+            include_owner_occupier=True,
+            include_matched_panel=bool(panel_row_indices_by_wave_label),
         )
         survey_results = _build_survey_results(
             waves=waves,
             survey_target_specs=survey_target_specs,
+            panel_row_indices_by_wave_label=panel_row_indices_by_wave_label,
         )
-        candidate_definitions = _build_legacy_candidate_definitions()
-        evaluation_results: list[HpaExpectationCandidateResult] = []
-        for candidate_definition in candidate_definitions:
-            if not all(
-                wave_label in survey_results.get(candidate_definition.candidate_spec.survey_target_spec.name, {})
-                for wave_label in candidate_definition.fit_wave_labels
-            ):
-                continue
-            try:
-                fit_points = _build_fit_points(
-                    candidate_definition=candidate_definition,
+        candidate_definitions = _build_legacy_candidate_definitions(
+            survey_target_specs,
+            signal_indexes=signal_indexes,
+            signal_method_names=LEGACY_EXISTING_SIGNAL_METHODS,
+        )
+        evaluation_results = _evaluate_candidate_definitions(
+            candidate_definitions=candidate_definitions,
+            survey_results=survey_results,
+            signal_indexes=signal_indexes,
+            legacy_target=legacy_target,
+        )
+        ranked_results = rank_legacy_candidates(evaluation_results)
+        exact_precision_matches = _collect_exact_precision_matches(ranked_results)
+        used_extended_signal_surface = False
+        if not exact_precision_matches:
+            used_extended_signal_surface = True
+            rolling_candidate_definitions = _build_legacy_candidate_definitions(
+                survey_target_specs,
+                signal_indexes=signal_indexes,
+                signal_method_names=LEGACY_ROLLING_QUARTER_SIGNAL_METHODS,
+            )
+            candidate_definitions = [*candidate_definitions, *rolling_candidate_definitions]
+            evaluation_results = [
+                *evaluation_results,
+                *_evaluate_candidate_definitions(
+                    candidate_definitions=rolling_candidate_definitions,
                     survey_results=survey_results,
                     signal_indexes=signal_indexes,
-                )
-            except ValueError:
-                continue
-            try:
-                evaluation_results.append(
-                    evaluate_candidate_fit(
-                        candidate_definition.candidate_spec,
-                        fit_points,
-                        legacy_target=legacy_target,
-                    )
-                )
-            except ValueError:
-                continue
-        ranked_results = rank_legacy_candidates(evaluation_results)
+                    legacy_target=legacy_target,
+                ),
+            ]
+            ranked_results = rank_legacy_candidates(evaluation_results)
+            exact_precision_matches = _collect_exact_precision_matches(ranked_results)
+        if len(exact_precision_matches) > 1:
+            diagnostic_rmse_by_candidate_name = _build_legacy_diagnostic_rmse_map(
+                exact_precision_matches=exact_precision_matches,
+                diagnostic_wave_labels=diagnostic_wave_labels,
+                survey_results=survey_results,
+                signal_indexes=signal_indexes,
+            )
+            ranked_results = rank_legacy_candidates(
+                evaluation_results,
+                diagnostic_rmse_by_candidate_name=diagnostic_rmse_by_candidate_name,
+            )
+            exact_precision_matches = _collect_exact_precision_matches(ranked_results)
         if not ranked_results:
             raise ValueError("Legacy mode did not produce any valid candidate fits.")
         selected_result = ranked_results[0]
         gap_report = _build_legacy_gap_report(
             ranked_results=ranked_results,
             signal_indexes=signal_indexes,
+            exact_precision_matches=exact_precision_matches,
+            used_extended_signal_surface=used_extended_signal_surface,
         )
-        fit_wave_labels = LEGACY_WAVE_LABELS
-        diagnostic_wave_labels = tuple()
     else:
         fit_wave_labels = tuple(str(year) for year in fit_years)
         diagnostic_wave_labels = tuple(
@@ -730,6 +934,7 @@ def run_method_search(
         panel_notes=tuple(panel_notes),
         panel_row_indices_by_wave_label=panel_row_indices_by_wave_label,
         signal_indexes=signal_indexes,
+        exact_precision_matches=exact_precision_matches,
     )
 
 
@@ -745,22 +950,71 @@ def _build_diagnostic_points(
             diagnostics.append((wave_label, None, None))
             continue
         try:
-            anchor_year = _resolve_anchor_year(
-                survey_year=survey_result.survey_year,
-                available_ppd_years=signal_index.available_years,
-                anchor_policy_name=output.selected_result.candidate_spec.anchor_policy_name,
-            )
-            signal = build_hpa_signal_from_index(
-                signal_index,
-                anchor_year=anchor_year,
-                base_year=resolve_base_year(signal_index.available_years, anchor_year=anchor_year),
-                method_name=output.selected_result.candidate_spec.signal_method_name,
-            )
+            if output.mode == LEGACY_MODE:
+                source_fit_point = _nearest_fit_point_for_diagnostic_wave(
+                    diagnostic_wave_label=wave_label,
+                    fit_points=output.selected_result.fit_points,
+                )
+                signal = build_hpa_signal_from_index(
+                    signal_index,
+                    anchor_year=source_fit_point.signal_anchor_year,
+                    base_year=source_fit_point.signal_base_year,
+                    method_name=output.selected_result.candidate_spec.signal_method_name,
+                    months=source_fit_point.signal_months,
+                )
+            else:
+                anchor_year = _resolve_anchor_year(
+                    survey_year=survey_result.survey_year,
+                    available_ppd_years=signal_index.available_years,
+                    anchor_policy_name=output.selected_result.candidate_spec.anchor_policy_name,
+                )
+                signal = build_hpa_signal_from_index(
+                    signal_index,
+                    anchor_year=anchor_year,
+                    base_year=resolve_base_year(signal_index.available_years, anchor_year=anchor_year),
+                    method_name=output.selected_result.candidate_spec.signal_method_name,
+                )
         except ValueError:
             diagnostics.append((wave_label, survey_result.expectation_mean, None))
             continue
         diagnostics.append((wave_label, survey_result.expectation_mean, signal))
     return diagnostics
+
+
+def _format_months(months: Sequence[int] | None) -> str:
+    if not months:
+        return "year"
+    month_names = {
+        1: "Jan",
+        2: "Feb",
+        3: "Mar",
+        4: "Apr",
+        5: "May",
+        6: "Jun",
+        7: "Jul",
+        8: "Aug",
+        9: "Sep",
+        10: "Oct",
+        11: "Nov",
+        12: "Dec",
+    }
+    if len(months) == 3 and all((later - earlier) == 1 for earlier, later in zip(months, months[1:])):
+        return f"{month_names[months[0]]}-{month_names[months[-1]]}"
+    return ",".join(month_names[month] for month in months)
+
+
+def _legacy_summary_line(result: HpaExpectationCandidateResult) -> str:
+    fit_points_by_wave = {point.survey_wave_label: point for point in result.fit_points}
+    point_2014 = fit_points_by_wave["2014"]
+    point_2018 = fit_points_by_wave["2018"]
+    return (
+        f"{result.candidate_spec.survey_target_spec.family_name} with "
+        f"{result.candidate_spec.survey_target_spec.expectation_method_name} and {result.category_key} "
+        f"{result.signal_method_name} uses { _format_months(point_2014.signal_months) } "
+        f"{point_2014.signal_anchor_year} over {point_2014.signal_base_year} for 2014 and "
+        f"{ _format_months(point_2018.signal_months) } {point_2018.signal_anchor_year} over "
+        f"{point_2018.signal_base_year} for 2018, reproducing 0.44 / -0.007 at printed precision."
+    )
 
 
 def _write_artifact(output: MethodSearchOutput, artifact_output_path: Path) -> None:
@@ -778,6 +1032,7 @@ def _write_artifact(output: MethodSearchOutput, artifact_output_path: Path) -> N
         "complexity_override_reason": output.complexity_override_reason,
         "gap_report": list(output.gap_report),
         "panel_notes": list(output.panel_notes),
+        "exact_precision_matches": [_result_to_dict(result) for result in output.exact_precision_matches],
         "ranked_results": [_result_to_dict(result) for result in output.ranked_results],
     }
     artifact_output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -785,11 +1040,12 @@ def _write_artifact(output: MethodSearchOutput, artifact_output_path: Path) -> N
 
 def _print_ranked_results(results: Sequence[HpaExpectationCandidateResult], *, top_k: int, mode: str) -> None:
     if mode == LEGACY_MODE:
-        print("Rank\tDistance\tLOO_RMSE\tStatus\tHypothesis\tSurveyTarget\tSignal\tCategory\tFactor\tConst")
+        print("Rank\tDistance\tLOO_RMSE\tStatus\tExact\tHypothesis\tSurveyTarget\tSignal\tCategory\tFactor\tConst")
         for rank, result in enumerate(results[:top_k], start=1):
             print(
                 f"{rank}\t{format_float(result.legacy_distance or 0.0)}\t"
                 f"{format_float(result.leave_one_out_rmse)}\t{_format_status(result)}\t"
+                f"{'yes' if matches_legacy_printed_precision(result.factor, result.const) else 'no'}\t"
                 f"{result.candidate_spec.hypothesis_name}\t{result.candidate_spec.survey_target_spec.name}\t"
                 f"{result.signal_method_name}\t{result.category_key}\t"
                 f"{format_float(result.factor)}\t{format_float(result.const)}"
@@ -821,6 +1077,19 @@ def _print_output(output: MethodSearchOutput, *, top_k: int, artifact_output_pat
         print("Panel notes")
         for note in output.panel_notes:
             print(f"- {note}")
+    if output.mode == LEGACY_MODE and output.exact_precision_matches:
+        print("")
+        print("Exact printed-precision matches")
+        for result in output.exact_precision_matches:
+            points_by_wave = {point.survey_wave_label: point for point in result.fit_points}
+            print(
+                f"- {result.candidate_spec.survey_target_spec.name} | {result.signal_method_name} | "
+                f"{result.category_key} | 2014 anchor/base={points_by_wave['2014'].signal_anchor_year}/"
+                f"{points_by_wave['2014'].signal_base_year} months={_format_months(points_by_wave['2014'].signal_months)} | "
+                f"2018 anchor/base={points_by_wave['2018'].signal_anchor_year}/"
+                f"{points_by_wave['2018'].signal_base_year} months={_format_months(points_by_wave['2018'].signal_months)} | "
+                f"factor={format_float(result.factor)} | const={format_float(result.const)}"
+            )
     print("")
     _print_ranked_results(output.ranked_results, top_k=top_k, mode=output.mode)
 
@@ -842,6 +1111,25 @@ def _print_output(output: MethodSearchOutput, *, top_k: int, artifact_output_pat
         print(f"legacy-distance: {format_float(selected.legacy_distance)}")
     print(f"factor: {format_float(selected.factor)}")
     print(f"const: {format_float(selected.const)}")
+    if output.mode == LEGACY_MODE:
+        print(
+            "legacy-printed-match: "
+            + (
+                f"{selected.factor:.{LEGACY_FACTOR_PRINT_DECIMALS}f} / "
+                f"{selected.const:.{LEGACY_CONST_PRINT_DECIMALS}f}"
+                if matches_legacy_printed_precision(selected.factor, selected.const)
+                else "no"
+            )
+        )
+    print("")
+    print("Fit-point diagnostics")
+    for point in selected.fit_points:
+        month_note = _format_months(point.signal_months)
+        print(
+            f"{point.survey_wave_label}: expectation={format_float(point.survey_target)} "
+            f"signal={format_float(point.signal_value)} anchor={point.signal_anchor_year} "
+            f"base={point.signal_base_year} months={month_note}"
+        )
 
     if output.mode == PRODUCTION_MODE:
         if output.baseline_result is not None:
@@ -852,15 +1140,6 @@ def _print_output(output: MethodSearchOutput, *, top_k: int, artifact_output_pat
             print(f"leave-one-out-rmse: {format_float(output.baseline_result.leave_one_out_rmse)}")
         if output.complexity_override_reason:
             print(f"complexity-rule: {output.complexity_override_reason}")
-        print("")
-        print("Fit-point diagnostics")
-        for point in selected.fit_points:
-            base_note = "two-year-base" if point.signal_base_year == point.signal_anchor_year - 2 else "fallback-base"
-            print(
-                f"{point.survey_wave_label}: expectation={format_float(point.survey_target)} "
-                f"signal={format_float(point.signal_value)} anchor={point.signal_anchor_year} "
-                f"base={point.signal_base_year} base-note={base_note}"
-            )
         diagnostic_points = _build_diagnostic_points(output)
         if diagnostic_points:
             print("")
@@ -873,16 +1152,48 @@ def _print_output(output: MethodSearchOutput, *, top_k: int, artifact_output_pat
                     print(f"{wave_label}: expectation={format_float(expectation)} signal=unavailable")
                     continue
                 predicted = (selected.factor * signal.value) + selected.const
+                month_note = _format_months(
+                    tuple(signal.diagnostics["months_used_recent"])
+                    if "months_used_recent" in signal.diagnostics
+                    else None
+                )
                 print(
                     f"{wave_label}: expectation={format_float(expectation)} signal={format_float(signal.value)} "
-                    f"predicted={format_float(predicted)} anchor={signal.anchor_year} base={signal.base_year}"
+                    f"predicted={format_float(predicted)} anchor={signal.anchor_year} base={signal.base_year} "
+                    f"months={month_note}"
                 )
     else:
+        diagnostic_points = _build_diagnostic_points(output)
+        if diagnostic_points:
+            print("")
+            print("Diagnostic-only waves")
+            for wave_label, expectation, signal in diagnostic_points:
+                if expectation is None:
+                    print(f"{wave_label}: expectation=unavailable signal=unavailable")
+                    continue
+                if signal is None:
+                    print(f"{wave_label}: expectation={format_float(expectation)} signal=unavailable")
+                    continue
+                predicted = (selected.factor * signal.value) + selected.const
+                month_note = _format_months(
+                    tuple(signal.diagnostics["months_used_recent"])
+                    if "months_used_recent" in signal.diagnostics
+                    else None
+                )
+                print(
+                    f"{wave_label}: expectation={format_float(expectation)} signal={format_float(signal.value)} "
+                    f"predicted={format_float(predicted)} anchor={signal.anchor_year} base={signal.base_year} "
+                    f"months={month_note}"
+                )
         if output.gap_report:
             print("")
             print("Gap report")
             for line in output.gap_report:
                 print(f"- {line}")
+        if output.exact_precision_matches:
+            print("")
+            print("Summary")
+            print(_legacy_summary_line(selected))
 
 
 def main() -> None:

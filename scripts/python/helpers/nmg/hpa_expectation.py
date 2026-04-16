@@ -20,6 +20,8 @@ from scripts.python.helpers.nmg.parsing import parse_int, parse_positive_float
 EXPECTATION_DONT_KNOW_CODE = 10
 LEGACY_TARGET_FACTOR = 0.44
 LEGACY_TARGET_CONST = -0.007
+LEGACY_FACTOR_PRINT_DECIMALS = 2
+LEGACY_CONST_PRINT_DECIMALS = 3
 DEFAULT_EXPECTATION_METHOD_NAMES = (
     "midpoint_rounded",
     "midpoint_exact",
@@ -58,6 +60,8 @@ _SIGNAL_METHOD_SIMPLICITY_RANK = {
     "java_like_annualised": 0,
     "annual_mean_annualised": 1,
     "annual_mean_cumulative": 2,
+    "rolling_quarter_annualised": 3,
+    "rolling_quarter_cumulative": 4,
 }
 _CATEGORY_SIMPLICITY_RANK = {
     "A": 0,
@@ -73,6 +77,8 @@ _ANCHOR_POLICY_SIMPLICITY_RANK = {
     "latest_prior_or_same": 2,
     "nearest_future_or_same": 3,
     "nearest_available": 4,
+    "explicit_pair": 5,
+    "explicit_rolling_quarter_pair": 6,
 }
 
 
@@ -155,6 +161,7 @@ class HpaExpectationFitPoint:
     signal_method_name: str
     signal_anchor_year: int
     signal_base_year: int
+    signal_months: tuple[int, ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -644,6 +651,21 @@ def compute_legacy_distance(
     return sqrt(((factor - target_factor) ** 2) + ((const - target_const) ** 2))
 
 
+def matches_legacy_printed_precision(
+    factor: float,
+    const: float,
+    *,
+    target_factor: float = LEGACY_TARGET_FACTOR,
+    target_const: float = LEGACY_TARGET_CONST,
+    factor_decimals: int = LEGACY_FACTOR_PRINT_DECIMALS,
+    const_decimals: int = LEGACY_CONST_PRINT_DECIMALS,
+) -> bool:
+    return (
+        f"{factor:.{factor_decimals}f}" == f"{target_factor:.{factor_decimals}f}"
+        and f"{const:.{const_decimals}f}" == f"{target_const:.{const_decimals}f}"
+    )
+
+
 def evaluate_candidate_fit(
     candidate_spec: HpaExpectationCandidateSpec,
     fit_points: Sequence[HpaExpectationFitPoint],
@@ -689,13 +711,25 @@ def evaluate_candidate_fit(
 
 def rank_legacy_candidates(
     results: Iterable[HpaExpectationCandidateResult],
+    *,
+    diagnostic_rmse_by_candidate_name: dict[str, float] | None = None,
 ) -> list[HpaExpectationCandidateResult]:
+    diagnostic_lookup = diagnostic_rmse_by_candidate_name or {}
+
+    def diagnostic_rmse(result: HpaExpectationCandidateResult) -> float:
+        return diagnostic_lookup.get(result.candidate_spec.name, float("inf"))
+
     return sorted(
         results,
         key=lambda item: (
+            not matches_legacy_printed_precision(item.factor, item.const),
+            item.simplicity_rank
+            if matches_legacy_printed_precision(item.factor, item.const)
+            else tuple(),
+            diagnostic_rmse(item),
             item.legacy_distance if item.legacy_distance is not None else float("inf"),
-            item.leave_one_out_rmse,
             item.core_rmse,
+            item.leave_one_out_rmse,
             item.simplicity_rank,
             item.candidate_spec.name,
         ),
@@ -766,6 +800,7 @@ __all__ = [
     "infer_survey_year_from_wave_label",
     "load_nmg_wave_csv",
     "map_boe39_code_to_hpa",
+    "matches_legacy_printed_precision",
     "rank_legacy_candidates",
     "rank_production_candidates",
     "select_production_candidate",

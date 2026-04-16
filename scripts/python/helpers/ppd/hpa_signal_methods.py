@@ -211,6 +211,7 @@ def build_hpa_signal_from_index(
     anchor_year: int,
     base_year: int,
     method_name: str,
+    months: Sequence[int] | None = None,
 ) -> HpaSignal:
     year_gap = anchor_year - base_year
     if year_gap <= 0:
@@ -263,6 +264,40 @@ def build_hpa_signal_from_index(
             "months_used_base": recent_months,
             "category_key": index.category_key,
         }
+    elif method_name in {"rolling_quarter_annualised", "rolling_quarter_cumulative"}:
+        if months is None:
+            raise ValueError(f"{method_name} requires explicit months.")
+        resolved_months = tuple(int(month) for month in months)
+        if len(resolved_months) != 3:
+            raise ValueError(f"{method_name} requires exactly three months.")
+        if any(month < 1 or month > 12 for month in resolved_months):
+            raise ValueError(f"{method_name} months must be between 1 and 12.")
+        if any((later - earlier) != 1 for earlier, later in zip(resolved_months, resolved_months[1:])):
+            raise ValueError(f"{method_name} months must be contiguous.")
+        missing_pairs = [
+            (year, month)
+            for year in (base_year, anchor_year)
+            for month in resolved_months
+            if (year, month) not in index.monthly_means
+        ]
+        if missing_pairs:
+            missing_text = ", ".join(f"{year}-{month:02d}" for year, month in missing_pairs)
+            raise ValueError(f"{method_name} requires data for months: {missing_text}")
+        recent = sum(index.monthly_means[(anchor_year, month)] for month in resolved_months) / len(resolved_months)
+        base = sum(index.monthly_means[(base_year, month)] for month in resolved_months) / len(resolved_months)
+        if method_name == "rolling_quarter_annualised":
+            signal_value = _annualised_growth(recent, base, year_gap)
+        else:
+            signal_value = (recent / base) - 1.0
+        diagnostics = {
+            "anchor_year": anchor_year,
+            "base_year": base_year,
+            "anchor_mean": recent,
+            "base_mean": base,
+            "months_used_recent": list(resolved_months),
+            "months_used_base": list(resolved_months),
+            "category_key": index.category_key,
+        }
     else:
         raise ValueError(f"Unsupported HPA signal method: {method_name}")
 
@@ -281,6 +316,7 @@ def build_hpa_signal(
     anchor_year: int,
     base_year: int,
     method_name: str,
+    months: Sequence[int] | None = None,
 ) -> HpaSignal:
     index = build_ppd_signal_index(rows, category_key="direct_rows")
     return build_hpa_signal_from_index(
@@ -288,6 +324,7 @@ def build_hpa_signal(
         anchor_year=anchor_year,
         base_year=base_year,
         method_name=method_name,
+        months=months,
     )
 
 

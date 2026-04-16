@@ -17,6 +17,8 @@ from scripts.python.helpers.nmg.hpa_expectation import (
     get_expectation_method_spec,
     load_nmg_wave_csv,
     map_boe39_code_to_hpa,
+    matches_legacy_printed_precision,
+    rank_legacy_candidates,
     select_production_candidate,
 )
 
@@ -83,6 +85,11 @@ class TestNmgHpaExpectation(unittest.TestCase):
         self.assertEqual(classify_hpa_expectation_fit(0.44, -0.007).label, "preferred")
         self.assertEqual(classify_hpa_expectation_fit(1.0, 0.02).label, "admissible")
         self.assertEqual(classify_hpa_expectation_fit(-0.1, 0.0).label, "inadmissible")
+
+    def test_matches_legacy_printed_precision_uses_config_display_precision(self) -> None:
+        self.assertTrue(matches_legacy_printed_precision(0.4407356112, -0.0066328562))
+        self.assertFalse(matches_legacy_printed_precision(0.452, -0.0066328562))
+        self.assertFalse(matches_legacy_printed_precision(0.4407356112, -0.0059))
 
     def test_compute_fit_rmse_uses_all_anchor_years(self) -> None:
         rmse = compute_fit_rmse(
@@ -205,6 +212,113 @@ class TestNmgHpaExpectation(unittest.TestCase):
 
         self.assertEqual(selection.selected_result.candidate_spec.name, "preferred_huber")
         self.assertFalse(selection.complexity_override_applied)
+
+    def test_rank_legacy_candidates_prefers_simpler_exact_precision_match(self) -> None:
+        simpler_spec = HpaExpectationCandidateSpec(
+            name="simpler_exact_match",
+            survey_target_spec=SurveyTargetSpec(
+                name="national_cross_section__midpoint_exact",
+                expectation_method_name="midpoint_exact",
+                family_name="national_cross_section",
+            ),
+            signal_method_name="rolling_quarter_cumulative",
+            category_key="A",
+            regression_type="ols",
+            anchor_policy_name="explicit_rolling_quarter_pair",
+        )
+        more_complex_spec = HpaExpectationCandidateSpec(
+            name="more_complex_exact_match",
+            survey_target_spec=SurveyTargetSpec(
+                name="owner_occupier_cross_section__midpoint_exact_cap35",
+                expectation_method_name="midpoint_exact_cap35",
+                family_name="owner_occupier_cross_section",
+                housing_codes=frozenset({"1", "2"}),
+            ),
+            signal_method_name="rolling_quarter_cumulative",
+            category_key="A",
+            regression_type="ols",
+            anchor_policy_name="explicit_rolling_quarter_pair",
+        )
+        simpler_result = HpaExpectationCandidateResult(
+            candidate_spec=simpler_spec,
+            factor=0.4402,
+            const=-0.0066,
+            classification=classify_hpa_expectation_fit(0.4402, -0.0066),
+            core_rmse=0.01,
+            leave_one_out_rmse=0.02,
+            legacy_distance=0.0005,
+            fit_points=tuple(),
+        )
+        more_complex_result = HpaExpectationCandidateResult(
+            candidate_spec=more_complex_spec,
+            factor=0.4407,
+            const=-0.0067,
+            classification=classify_hpa_expectation_fit(0.4407, -0.0067),
+            core_rmse=0.009,
+            leave_one_out_rmse=0.019,
+            legacy_distance=0.0002,
+            fit_points=tuple(),
+        )
+
+        ranked = rank_legacy_candidates([more_complex_result, simpler_result])
+
+        self.assertEqual(ranked[0].candidate_spec.name, "simpler_exact_match")
+
+    def test_rank_legacy_candidates_uses_diagnostic_rmse_to_break_exact_tie(self) -> None:
+        first_spec = HpaExpectationCandidateSpec(
+            name="exact_match_a",
+            survey_target_spec=SurveyTargetSpec(
+                name="national_cross_section__midpoint_exact",
+                expectation_method_name="midpoint_exact",
+                family_name="national_cross_section",
+            ),
+            signal_method_name="rolling_quarter_cumulative",
+            category_key="A",
+            regression_type="ols",
+            anchor_policy_name="explicit_rolling_quarter_pair",
+        )
+        second_spec = HpaExpectationCandidateSpec(
+            name="exact_match_b",
+            survey_target_spec=SurveyTargetSpec(
+                name="national_cross_section__midpoint_exact",
+                expectation_method_name="midpoint_exact",
+                family_name="national_cross_section",
+            ),
+            signal_method_name="rolling_quarter_cumulative",
+            category_key="A",
+            regression_type="ols",
+            anchor_policy_name="explicit_rolling_quarter_pair",
+        )
+        first_result = HpaExpectationCandidateResult(
+            candidate_spec=first_spec,
+            factor=0.4402,
+            const=-0.0066,
+            classification=classify_hpa_expectation_fit(0.4402, -0.0066),
+            core_rmse=0.01,
+            leave_one_out_rmse=0.02,
+            legacy_distance=0.0005,
+            fit_points=tuple(),
+        )
+        second_result = HpaExpectationCandidateResult(
+            candidate_spec=second_spec,
+            factor=0.4409,
+            const=-0.0067,
+            classification=classify_hpa_expectation_fit(0.4409, -0.0067),
+            core_rmse=0.011,
+            leave_one_out_rmse=0.021,
+            legacy_distance=0.0007,
+            fit_points=tuple(),
+        )
+
+        ranked = rank_legacy_candidates(
+            [first_result, second_result],
+            diagnostic_rmse_by_candidate_name={
+                "exact_match_a": 0.020,
+                "exact_match_b": 0.010,
+            },
+        )
+
+        self.assertEqual(ranked[0].candidate_spec.name, "exact_match_b")
 
 
 if __name__ == "__main__":
