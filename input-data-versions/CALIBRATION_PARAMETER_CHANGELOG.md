@@ -47,6 +47,8 @@ python3 -m scripts.python.calibration.was.age_dist --dataset R8 --output-dir inp
 ```
 - Expected-result snippet:
   - file exists: `input-data-versions/v3.6/Age8-R8-Weighted.csv`
+- Source dataset window:
+  - WAS Round 8 household data collected between April 2020 and March 2022
 - Method chosen:
   - weighted WAS age histogram with R8 compatibility final bin `75-95`
 - Method-selection decision logic:
@@ -67,6 +69,8 @@ python3 -m scripts.python.calibration.was.btl_probability_per_income_percentile_
 ```
 - Expected-result snippet:
   - file exists: `input-data-versions/v3.6/BTLProbabilityPerIncomePercentileBin-R8.csv`
+- Source dataset window:
+  - WAS Round 8 household data collected between April 2020 and March 2022
 - Method chosen:
   - gross non-rent income percentile bins with BTL flag from positive gross rental income
 - Method-selection decision logic:
@@ -88,6 +92,8 @@ python3 -m scripts.python.calibration.was.income_age_joint_prob_dist --dataset R
 ```
 - Expected-result snippet:
   - file exists: `input-data-versions/v3.6/AgeGrossIncomeJointDist.csv`
+- Source dataset window:
+  - WAS Round 8 household data collected between April 2020 and March 2022
 - Method chosen:
   - filtered positive non-rent incomes, trimmed tails, weighted 2D histogram by age/income bins
 - Method-selection decision logic:
@@ -113,6 +119,8 @@ python3 -m scripts.python.calibration.was.wealth_income_joint_prob_dist --datase
 ```
 - Expected-result snippet:
   - file exists: `input-data-versions/v3.6/GrossIncomeNetWealthJointDist.csv`
+- Source dataset window:
+  - WAS Round 8 household data collected between April 2020 and March 2022
 - Method chosen:
   - positive-and-trimmed non-rent income filtering and positive wealth filtering, weighted log-space joint distributions
 - Method-selection decision logic:
@@ -430,6 +438,7 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
 - Outputs/keys produced: `DATA_INCOME_GIVEN_AGE` via `AgeGrossIncomeJointDist.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.income_age_joint_prob_dist --dataset R8 --output-dir input-data-versions/v1.0`
 - Expected result snippet: output file generated with weighted age-income density rows.
+- Source dataset window: WAS Round 8 household data collected between April 2020 and March 2022.
 - Method chosen: weighted log-income by age joint distribution with positive-and-trimmed income filtering.
 - Method-selection decision logic: `Objective=stability/robustness; Why=positive filtering and tail trimming stabilize bin estimates; Tradeoff=extreme tails are removed from calibration support.`
 - Rationale category: alteration-vs-legacy evidence and justification.
@@ -441,6 +450,7 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
 - Outputs/keys produced: `DATA_WEALTH_GIVEN_INCOME` via `GrossIncomeNetWealthJointDist.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.wealth_income_joint_prob_dist --dataset R8 --output-dir input-data-versions/v1.1`
 - Expected result snippet: `GrossIncomeNetWealthJointDist.csv` generated.
+- Source dataset window: WAS Round 8 household data collected between April 2020 and March 2022.
 - Method chosen: weighted joint distribution for gross income vs net wealth in log space.
 - Method-selection decision logic: `Objective=stability/robustness; Why=positive wealth constraints and filtered income support stable log-space joint densities; Tradeoff=non-positive wealth rows are excluded.`
 - Rationale category: alteration-vs-legacy evidence and justification.
@@ -452,6 +462,7 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
 - Outputs/keys produced: `DATA_BTL_PROBABILITY` via `BTLProbabilityPerIncomePercentileBin-R8.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.btl_probability_per_income_percentile_bin --dataset R8`
 - Expected result snippet: 100 percentile-bin rows plus BTL probability values.
+- Source dataset window: WAS Round 8 household data collected between April 2020 and March 2022.
 - Method chosen: percentile binning over gross non-rent income and rental-income positivity as BTL marker.
 - Method-selection decision logic: `Objective=target reproduction; Why=direct percentile-bin estimator aligns with required output table shape; Tradeoff=keeps a simple semantic indicator instead of model-heavy inference.`
 - Rationale category: direct method justification.
@@ -463,6 +474,7 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
 - Outputs/keys produced: `DATA_AGE_DISTRIBUTION` via `Age8-R8-Weighted.csv`
 - Exact run command: `python3 -m scripts.python.calibration.was.age_dist --dataset R8`
 - Expected result snippet: final bin uses `75-95` compatibility convention.
+- Source dataset window: WAS Round 8 household data collected between April 2020 and March 2022.
 - Method chosen: weighted age histogram by WAS age bands.
 - Method-selection decision logic: `Objective=backward compatibility; Why=R8 75-95 convention preserves downstream compatibility while updating dataset coverage; Tradeoff=retains legacy-style age-band structure.`
 - Rationale category: alteration-vs-legacy evidence and justification.
