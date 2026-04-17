@@ -1,17 +1,17 @@
-# Remaining Recalibration Data Sources For `v4.8`
+# Remaining Recalibration Data Sources For `v4.9`
 Author: Max Stoddard
 
-This maintained note tracks which `v4.8` parameters in `input-data-versions/v4.8/config.properties` still lack post-2020 recalibration or source-confirmation work. Use the live `v4.8` calibration ledgers in `input-data-versions/dashboard-input-version-history.json` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md` as the canonical source for promoted recalibrations, then keep this note aligned with whichever parameters still remain.
+This maintained note tracks which `v4.9` parameters in `input-data-versions/v4.9/config.properties` still lack post-2020 recalibration or source-confirmation work. Use the live `v4.9` calibration ledgers in `input-data-versions/dashboard-input-version-history.json` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md` as the canonical source for promoted recalibrations, then keep this note aligned with whichever parameters still remain.
 
 Maintenance note:
 - If a recalibration or validation task recalibrates, newly confirms, or otherwise removes a parameter from the remaining set, update this file in the same change.
-- The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the `v4.8` progress counts in `input-data-versions/AGENTS.md`.
+- The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the `v4.9` progress counts in `input-data-versions/AGENTS.md`.
 
-Total remaining parameters: `44`
+Total remaining parameters: `43`
 
 Audit note:
-- This note has been updated for `v4.8` after the promotion of `HOLD_PERIOD` in the version-history and calibration-changelog ledgers.
-- The grouping below was cross-checked against the current `input-data-versions/v4.8/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
+- This note has been updated for `v4.9` after the promotion of `BANK_AGE_LIMIT` in the version-history and calibration-changelog ledgers.
+- The grouping below was cross-checked against the current `input-data-versions/v4.9/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
 - One corrected point from that review: `BTL_PROBABILITY_MULTIPLIER` is source-backed by a WAS wave 3 note and is therefore grouped under `WAS wave 3 household data`.
 
 ## Explicit Source-Backed Groups
@@ -95,10 +95,6 @@ Audit note:
 - `BTL_INCOME_DRIVEN_CAP_GAIN_COEFF`
 - `BTL_CAPITAL_DRIVEN_CAP_GAIN_COEFF`
 - `BTL_MIX_DRIVEN_CAP_GAIN_COEFF`
-
-### TODO / missing calibration-source note
-1 parameter
-- `BANK_AGE_LIMIT`
 
 ### Config-only v4.1 bank policy alignment note
 3 parameters

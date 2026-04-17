@@ -1062,6 +1062,49 @@
           "decision_logic": "Objective=direct method justification; Why=user chose the published 2023-24 EHS AT3_6 all-owner-occupier mean as the authoritative recalibration source; Tradeoff=this supersedes the earlier 17.0 value instead of reconstructing a legacy raw-row method."
         }
       ]
+    },
+    {
+      "version_id": "v4.9",
+      "snapshot_folder": "v4.9",
+      "validation_dataset": "r8",
+      "description": "Recalibrated BANK_AGE_LIMIT to the public-proxy conservative mainstream benchmark of 75 using retained top-5 lender age-cap evidence.",
+      "updated_data_sources": [
+        "lloyds",
+        "nationwide",
+        "natwest",
+        "santander",
+        "barclays"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/boe/boe_bank_age_limit_calibration.py"
+      ],
+      "config_parameters": [
+        "BANK_AGE_LIMIT"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BANK_AGE_LIMIT",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-17T16:14:38Z after promoting the public-proxy BANK_AGE_LIMIT recalibration to 75. overallCompositeLoss=0.494137 versus v4.8=0.393724 (delta +0.100412). Family losses: Macro Credit and Market Activity=0.895112, Macro Prices, Leverage, and Affordability=0.499376, Household Distribution Realism=0.291029. Required metrics passing: advances to FTB, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to HM, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.8: advances to HM pass->fail. This release should be treated as a public-proxy BANK_AGE_LIMIT refresh that corrects the unrealistic legacy age cap but materially worsens tracked 2024 validation versus v4.8."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BANK_AGE_LIMIT"
+          ],
+          "improvement_summary": "Replaced the unresolved legacy BANK_AGE_LIMIT = 65 placeholder with a retained public-lender proxy benchmark of 75.",
+          "why_changed": "To remove a clearly unrealistic 65 cap for an overloaded mortgage-age parameter while staying within the available public 2024/near-2024 evidence and preserving a conservative mainstream benchmark.",
+          "method_chosen": "conservative_mainstream_mode = mode of explicit origination caps (70, 75, 75) and repay-by caps (80, 75, 75, 75, 80), yielding BANK_AGE_LIMIT = 75; rejected alternatives: hybrid_midpoint_round = 75 and repay_cap_mean_round = 77.",
+          "decision_logic": "Objective=direct method justification; Why=the approved conservative mode is the least misleading public proxy for the model's single overloaded scalar once 65 is rejected by the retained lender evidence; Tradeoff=the promoted value is not a direct market-wide 2024 maturity-age observation and the tracked validation worsens versus v4.8."
+        }
+      ]
     }
   ]
 }

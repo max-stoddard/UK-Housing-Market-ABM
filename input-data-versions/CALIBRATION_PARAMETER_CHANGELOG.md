@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.8`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.9`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -472,6 +472,37 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
   - `v4.5`
   - `v4.6`
 
+### `scripts/python/calibration/boe/boe_bank_age_limit_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_age_limit_method_search.py`
+- Shared helper path: `scripts/python/helpers/boe/bank_age_limit.py`
+- Outputs/keys produced: `BANK_AGE_LIMIT`
+- Command:
+```bash
+python3 -m scripts.python.experiments.boe.boe_bank_age_limit_method_search --output-dir input-data-versions/calibration-evidence/bank-age-limit-v4.9
+
+python3 -m scripts.python.calibration.boe.boe_bank_age_limit_calibration --output-dir input-data-versions/calibration-evidence/bank-age-limit-v4.9
+```
+- Expected-result snippet:
+  - `BANK_AGE_LIMIT = 75`
+  - rejected diagnostics:
+    - `hybrid_midpoint_round = 75`
+    - `repay_cap_mean_round = 77`
+- Method chosen:
+  - `conservative_mainstream_mode` = mode of explicit origination caps `70, 75, 75` and repay-by caps `80, 75, 75, 75, 80`
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the unique mode across explicit public origination and repay-side thresholds is the least misleading conservative proxy for the overloaded single-scalar model parameter; Tradeoff=public lender criteria do not provide a direct 2024 market-wide maturity-age distribution, so the promoted value is a proxy rather than a direct observation.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `scripts/python/experiments/boe/boe_bank_age_limit_method_search.py`
+  - `scripts/python/calibration/boe/boe_bank_age_limit_calibration.py`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/README.md`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitPublicSources.csv`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitMethodSearch.csv`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitCalibrationSummary.json`
+- Version(s) affected:
+  - `v4.9`
+
 ## Per-Version Changelog Entries (Append-Only)
 
 ### v1.0
@@ -899,3 +930,30 @@ python3 -m scripts.python.calibration.boe.boe_bank_parameter_calibration --bank-
   - `input-data-versions/validation/v4.8.json`
 - Version(s) affected:
   - `v4.8`
+
+### v4.9
+- Script path: `scripts/python/calibration/boe/boe_bank_age_limit_calibration.py`
+- Companion experiment path: `scripts/python/experiments/boe/boe_bank_age_limit_method_search.py`
+- Outputs/keys produced: `BANK_AGE_LIMIT`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.boe.boe_bank_age_limit_calibration --output-dir input-data-versions/calibration-evidence/bank-age-limit-v4.9`
+- Expected result snippet:
+  - `BANK_AGE_LIMIT = 75`
+  - rejected diagnostics:
+    - `hybrid_midpoint_round = 75`
+    - `repay_cap_mean_round = 77`
+- Method chosen:
+  - `conservative_mainstream_mode` = mode of explicit origination caps `70, 75, 75` and repay-by caps `80, 75, 75, 75, 80`
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the approved conservative mode keeps the overloaded scalar at the least misleading public mainstream benchmark after 65 is rejected by the retained 2024/near-2024 lender evidence; Tradeoff=this release uses a proxy built from public lender criteria rather than a direct market-wide 2024 maturity-age distribution, and the tracked validation regresses versus v4.8.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/README.md`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitPublicSources.csv`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitMethodSearch.csv`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitCalibrationSourceValues.csv`
+  - `input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitCalibrationSummary.json`
+  - `input-data-versions/validation/v4.9.json`
+- Version(s) affected:
+  - `v4.9`
