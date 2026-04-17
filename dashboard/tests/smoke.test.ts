@@ -3058,6 +3058,10 @@ assert.ok(
   'Validation page should track the selected metric sort mode'
 );
 assert.ok(
+  validationPageSource.includes("const DEFAULT_SORT_MODE: ValidationSortMode = 'highest_loss';"),
+  'Validation page should default the metric table to highest loss first'
+);
+assert.ok(
   validationPageSource.includes('openMetricIds'),
   'Validation page should track row-level provenance disclosure state'
 );

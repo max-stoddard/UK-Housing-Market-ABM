@@ -22,7 +22,7 @@ type ValidationSortMode =
   | 'least_inside_band'
   | 'status_severity';
 
-const DEFAULT_SORT_MODE: ValidationSortMode = 'family_then_metric';
+const DEFAULT_SORT_MODE: ValidationSortMode = 'highest_loss';
 
 function formatNumber(value: number | null, digits = 3): string {
   if (value === null) {
