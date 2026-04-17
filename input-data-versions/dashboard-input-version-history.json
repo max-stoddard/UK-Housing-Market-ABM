@@ -1105,6 +1105,46 @@
           "decision_logic": "Objective=direct method justification; Why=the approved conservative mode is the least misleading public proxy for the model's single overloaded scalar once 65 is rejected by the retained lender evidence; Tradeoff=the promoted value is not a direct market-wide 2024 maturity-age observation and the tracked validation worsens versus v4.8."
         }
       ]
+    },
+    {
+      "version_id": "v4.10",
+      "snapshot_folder": "v4.10",
+      "validation_dataset": "r8",
+      "description": "Recalibrated BANK_ICR_HARD_MIN to the public-proxy 1.25 lender floor using retained Paragon 2024 criteria with UK Finance Q1-Q4 2024 ICRs as context only.",
+      "updated_data_sources": [
+        "paragon",
+        "uk_finance"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/btl/bank_icr_hard_min_calibration.py"
+      ],
+      "config_parameters": [
+        "BANK_ICR_HARD_MIN"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BANK_ICR_HARD_MIN",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-17T17:30:35Z after promoting the public-proxy BANK_ICR_HARD_MIN recalibration to 1.25 in v4.10. overallCompositeLoss=0.494066 versus v4.9=0.494137 (delta -0.000070). Family losses: Macro Credit and Market Activity=0.928062, Macro Prices, Leverage, and Affordability=0.501296, Household Distribution Realism=0.273454. Required metrics passing: advances to FTB, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to HM, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.9: none. This release should be treated as a public-proxy BANK_ICR_HARD_MIN refresh that resolves the blocked legacy source note while leaving tracked 2024 validation essentially unchanged versus v4.9. The tracked validation suite does not directly validate the ICR floor; it validates downstream model behavior."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BANK_ICR_HARD_MIN"
+          ],
+          "improvement_summary": "Replaced the unresolved legacy BANK_ICR_HARD_MIN = 1.2 note with a retained public-lender proxy floor of 1.25 from Paragon's 2024 criteria.",
+          "why_changed": "To move BANK_ICR_HARD_MIN onto a defensible 2024 lender-side source without pretending that the available public evidence is a weighted market-wide estimate, while keeping the effective live floor at max(1.25, 1.2) = 1.25 because CENTRAL_BANK_ICR_HARD_MIN remains unchanged.",
+          "method_chosen": "literal_standard_floor_125 = minimum retained Paragon 2024 decision threshold across 1.25, 1.25, 1.30, 1.30, 1.40, 1.40, 1.45, 1.45; rejected alternatives: stress_mapped_floor = 1.22 and cross_segment_mean = 1.35; UK Finance Q1-Q4 2024 ICRs = 1.91, 1.96, 1.95, 2.01 retained as context only.",
+          "decision_logic": "Objective=direct method justification; Why=the literal 125% lender floor is the least assumption-heavy semantic match to the model's hard BTL underwriting rule once the mismatched CHL/CMI file is excluded and UK Finance outcomes are treated as context only; Tradeoff=the promoted value is a public proxy rather than a weighted market-wide threshold, and the stressed-rate versus live-rate mismatch remains a documented model limitation."
+        }
+      ]
     }
   ]
 }

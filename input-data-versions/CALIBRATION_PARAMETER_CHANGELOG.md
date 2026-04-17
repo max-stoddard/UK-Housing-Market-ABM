@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.9`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.10`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -503,6 +503,37 @@ python3 -m scripts.python.calibration.boe.boe_bank_age_limit_calibration --outpu
 - Version(s) affected:
   - `v4.9`
 
+### `scripts/python/calibration/btl/bank_icr_hard_min_calibration.py`
+- Companion experiment path: `scripts/python/experiments/btl/bank_icr_hard_min_method_search.py`
+- Shared helper path: `scripts/python/helpers/btl/bank_icr_hard_min.py`
+- Outputs/keys produced: `BANK_ICR_HARD_MIN`
+- Command:
+```bash
+python3 -m scripts.python.experiments.btl.bank_icr_hard_min_method_search --output-dir input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10
+
+python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output-dir input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10
+```
+- Expected-result snippet:
+  - `BANK_ICR_HARD_MIN = 1.25`
+  - rejected diagnostics:
+    - `stress_mapped_floor = 1.22`
+    - `cross_segment_mean = 1.35`
+- Method chosen:
+  - `literal_standard_floor_125` = minimum retained Paragon 2024 decision threshold across `1.25, 1.25, 1.30, 1.30, 1.40, 1.40, 1.45, 1.45`
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the literal 125% lender floor is the cleanest semantic match to the model's hard BTL underwriting rule while UK Finance Q1-Q4 ICRs stay context-only; Tradeoff=public sources do not provide a weighted 2024 market-wide threshold and the model keeps the existing live-rate denominator rather than a stressed-rate translation.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `scripts/python/experiments/btl/bank_icr_hard_min_method_search.py`
+  - `scripts/python/calibration/btl/bank_icr_hard_min_calibration.py`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/README.md`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinPublicSources.csv`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinMethodSearch.csv`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinCalibrationSummary.json`
+- Version(s) affected:
+  - `v4.10`
+
 ## Per-Version Changelog Entries (Append-Only)
 
 ### v1.0
@@ -957,3 +988,35 @@ python3 -m scripts.python.calibration.boe.boe_bank_age_limit_calibration --outpu
   - `input-data-versions/validation/v4.9.json`
 - Version(s) affected:
   - `v4.9`
+
+### v4.10
+- Script path: `scripts/python/calibration/btl/bank_icr_hard_min_calibration.py`
+- Companion experiment path: `scripts/python/experiments/btl/bank_icr_hard_min_method_search.py`
+- Shared helper path: `scripts/python/helpers/btl/bank_icr_hard_min.py`
+- Outputs/keys produced: `BANK_ICR_HARD_MIN`
+- Exact run command:
+  - `python3 -m scripts.python.experiments.btl.bank_icr_hard_min_method_search --output-dir input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10`
+  - `python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output-dir input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10`
+  - `bash input-data-versions/validate.sh v4.10 --output-dir tmp/validation/v4.10`
+- Expected result snippet:
+  - `BANK_ICR_HARD_MIN = 1.25`
+  - rejected diagnostics:
+    - `stress_mapped_floor = 1.22`
+    - `cross_segment_mean = 1.35`
+  - tracked validation:
+    - `overallCompositeLoss = 0.494066`
+- Method chosen:
+  - `literal_standard_floor_125` = minimum retained Paragon 2024 decision threshold across `1.25, 1.25, 1.30, 1.30, 1.40, 1.40, 1.45, 1.45`, with `UK Finance` Q1-Q4 2024 ICRs retained as context only and `CENTRAL_BANK_ICR_HARD_MIN` left unchanged at `1.2`
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=promoting the literal 125% lender floor resolves the blocked legacy BANK_ICR_HARD_MIN note with the least assumption-heavy 2024 public proxy while keeping the effective live floor at max(1.25, 1.2) = 1.25; Tradeoff=the promoted value is not a weighted market-wide estimate, the tracked validation suite only checks downstream behaviour, and the stressed-rate versus live-rate mismatch remains a documented model limitation.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/README.md`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinPublicSources.csv`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinMethodSearch.csv`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinCalibrationSourceValues.csv`
+  - `input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinCalibrationSummary.json`
+  - `input-data-versions/validation/v4.10.json`
+- Version(s) affected:
+  - `v4.10`
