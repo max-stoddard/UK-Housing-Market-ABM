@@ -1,0 +1,101 @@
+{
+  "parameterKey": "BANK_AGE_LIMIT",
+  "selectedConfigValues": {
+    "BANK_AGE_LIMIT": 75
+  },
+  "targetYear": 2024,
+  "sourcePath": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/bank-age-limit-v4.9/BankAgeLimitPublicSources.csv",
+  "method": {
+    "candidateId": "conservative_mainstream_mode",
+    "methodLabel": "Mode of explicit origination and repay-side public thresholds",
+    "rawValue": 75.0,
+    "roundedValue": 75,
+    "selectedByDefault": true,
+    "rationale": "Selected default: the unique mode across explicit public thresholds keeps the overloaded scalar at the conservative mainstream benchmark."
+  },
+  "diagnostics": {
+    "explicitOriginationCaps": [
+      70,
+      75,
+      75
+    ],
+    "explicitRepayCaps": [
+      80,
+      75,
+      75,
+      75,
+      80
+    ],
+    "combinedExplicitThresholds": [
+      70,
+      75,
+      75,
+      80,
+      75,
+      75,
+      75,
+      80
+    ],
+    "originationCapMean": 73.33333333333333,
+    "repayCapMean": 77.0,
+    "hybridMidpointRaw": 75.16666666666666,
+    "rejectedCandidates": [
+      {
+        "candidateId": "hybrid_midpoint_round",
+        "rawValue": 75.16666666666666,
+        "roundedValue": 75,
+        "methodLabel": "Midpoint of origination-cap mean and repay-cap mean, rounded",
+        "rationale": "Rejected: this adds an extra averaging layer while providing no practical advantage over the selected conservative benchmark."
+      },
+      {
+        "candidateId": "repay_cap_mean_round",
+        "rawValue": 77.0,
+        "roundedValue": 77,
+        "methodLabel": "Mean of non-BTL repay-by caps, rounded",
+        "rationale": "Rejected: repay-side-only averaging pushes the single scalar above the conservative benchmark for a parameter that also gates origination."
+      }
+    ]
+  },
+  "sourceRows": [
+    {
+      "provider": "Lloyds Banking Group (Lloyds Bank)",
+      "application_age_cap": null,
+      "repay_by_cap": 80,
+      "source_url": "https://www.lloydsbank.com/mortgages/mortgage-types/getting-a-mortgage-when-retired.html",
+      "source_as_of": "accessed 2026-04-17; publication date not shown on cited page",
+      "notes": "No separate hard upper application-age cap is clearly stated on the cited customer page; used repay-by cap only."
+    },
+    {
+      "provider": "Nationwide Building Society",
+      "application_age_cap": 70,
+      "repay_by_cap": 75,
+      "source_url": "https://www.nationwide-intermediary.co.uk/lending-criteria/general",
+      "source_as_of": "accessed 2026-04-17; publication date not shown on cited page",
+      "notes": "Approved origination-side proxy uses 70 from the public criteria context and 75 as the repay-by cap."
+    },
+    {
+      "provider": "NatWest Group (NatWest)",
+      "application_age_cap": 75,
+      "repay_by_cap": 75,
+      "source_url": "https://www.intermediary.natwest.com/intermediary-solutions/lending-criteria.html",
+      "source_as_of": "accessed 2026-04-17; publication date not shown on cited page",
+      "notes": "Used as a mainstream 75 benchmark on both sides for the public proxy."
+    },
+    {
+      "provider": "Santander UK",
+      "application_age_cap": 75,
+      "repay_by_cap": 75,
+      "source_url": "https://www.santander.co.uk/about-santander/media-centre/press-releases/santander-reveals-one-in-five-first-time-buyers-is-now",
+      "source_as_of": "2024-04-17",
+      "notes": "Press release note states Santander's maximum lending age is 75."
+    },
+    {
+      "provider": "Barclays",
+      "application_age_cap": null,
+      "repay_by_cap": 80,
+      "source_url": "https://www.barclays.co.uk/help/mortgages/eligibility/age-limit/",
+      "source_as_of": "accessed 2026-04-17; publication date not shown on cited page",
+      "notes": "No separate hard upper application-age cap is clearly stated on the cited customer page; used repay-by cap only."
+    }
+  ]
+}
