@@ -42,6 +42,7 @@ Results/**
 
 AGENTS.md
 AGENT*.md
+/agents/
 ignore_me*
 CLAUDE.md
 TODO.md
