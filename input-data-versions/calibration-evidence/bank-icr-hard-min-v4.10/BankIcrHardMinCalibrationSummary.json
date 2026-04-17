@@ -1,0 +1,211 @@
+{
+  "parameterKey": "BANK_ICR_HARD_MIN",
+  "selectedConfigValues": {
+    "BANK_ICR_HARD_MIN": 1.25
+  },
+  "targetYear": 2024,
+  "sourcePath": "input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinPublicSources.csv",
+  "configPath": "input-data-versions/v4.9/config.properties",
+  "method": {
+    "candidateId": "literal_standard_floor_125",
+    "methodLabel": "Literal minimum published decision-row ICR floor",
+    "rawValue": 1.25,
+    "roundedValue": 1.25,
+    "selectedByDefault": true,
+    "rationale": "Selected default: promote the literal 125% lender floor because it is the cleanest semantic match to the model's hard underwriting rule."
+  },
+  "diagnostics": {
+    "bankInitialRate": 0.0564953144,
+    "representativeStressRateFraction": 0.055,
+    "decisionIcrFractions": [
+      1.25,
+      1.25,
+      1.3,
+      1.3,
+      1.4,
+      1.4,
+      1.45,
+      1.45
+    ],
+    "contextIcrFractions": [
+      1.91,
+      1.96,
+      1.95,
+      2.01
+    ],
+    "excludedRows": [
+      {
+        "role": "excluded",
+        "document_path": "private-datasets/misc/CMI-BTL-ProductGuide.pdf",
+        "document_label": "CMI-BTL-ProductGuide.pdf",
+        "source_as_of": "2022-05-30",
+        "publisher": "CHL Mortgages",
+        "segment": "Excluded file mismatch",
+        "icr_fraction": null,
+        "stress_rate_fraction": null,
+        "notes": "On-disk file appears to be a 30 May 2022 CHL Mortgages guide rather than a 2024 CMI artifact so it is excluded from the proxy decision."
+      }
+    ],
+    "rejectedCandidates": [
+      {
+        "candidateId": "stress_mapped_floor",
+        "rawValue": 1.2169150792441648,
+        "roundedValue": 1.22,
+        "methodLabel": "Map 125% at the retained representative stress rate onto BANK_INITIAL_RATE",
+        "rationale": "Rejected: this adds a rate-translation layer and makes the result depend on a diagnostic stress-rate choice rather than the published ratio."
+      },
+      {
+        "candidateId": "cross_segment_mean",
+        "rawValue": 1.35,
+        "roundedValue": 1.35,
+        "methodLabel": "Mean of retained cross-segment decision-row ICR thresholds",
+        "rationale": "Rejected: equal-weighting visible segments invents a market mix and would likely over-tighten the representative bank."
+      }
+    ]
+  },
+  "sourceRows": [
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "SSC basic-rate taxpayer (20%)",
+      "icr_fraction": 1.25,
+      "stress_rate_fraction": 0.055,
+      "notes": "Published lower-bound standard-property lender floor retained as the selected default benchmark."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "SSC limited company",
+      "icr_fraction": 1.25,
+      "stress_rate_fraction": 0.055,
+      "notes": "Published lower-bound standard-property lender floor retained as the selected default benchmark."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "HMO or multi-unit or all other property basic-rate taxpayer (20%)",
+      "icr_fraction": 1.3,
+      "stress_rate_fraction": 0.055,
+      "notes": "Retained for the rejected cross-segment mean diagnostic only."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "HMO or multi-unit or all other property limited company",
+      "icr_fraction": 1.3,
+      "stress_rate_fraction": 0.055,
+      "notes": "Retained for the rejected cross-segment mean diagnostic only."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "SSC higher-rate taxpayer (40%)",
+      "icr_fraction": 1.4,
+      "stress_rate_fraction": 0.055,
+      "notes": "Retained as visible heterogeneity above the selected default benchmark."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "SSC additional-rate taxpayer (45%)",
+      "icr_fraction": 1.4,
+      "stress_rate_fraction": 0.055,
+      "notes": "Retained as visible heterogeneity above the selected default benchmark."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "HMO or multi-unit or all other property higher-rate taxpayer (40%)",
+      "icr_fraction": 1.45,
+      "stress_rate_fraction": 0.055,
+      "notes": "Retained as visible heterogeneity above the selected default benchmark."
+    },
+    {
+      "role": "decision",
+      "document_path": "private-datasets/misc/Paragon Portfolio buy-to-let product guide.pdf",
+      "document_label": "Paragon Portfolio Buy-to-Let Product Guide",
+      "source_as_of": "2024-05-15",
+      "publisher": "Paragon Bank",
+      "segment": "HMO or multi-unit or all other property additional-rate taxpayer (45%)",
+      "icr_fraction": 1.45,
+      "stress_rate_fraction": 0.055,
+      "notes": "Retained as visible heterogeneity above the selected default benchmark."
+    },
+    {
+      "role": "context",
+      "document_path": "private-datasets/ukf/Buy to let Mortgage Market Update Q1.pdf",
+      "document_label": "UK Finance Buy to let Mortgage Market Update Q1 2024",
+      "source_as_of": "2024 Q1",
+      "publisher": "UK Finance",
+      "segment": "Average observed market ICR",
+      "icr_fraction": 1.91,
+      "stress_rate_fraction": null,
+      "notes": "Observed market outcome used only as a sanity check that underwriting outcomes sit well above the selected floor."
+    },
+    {
+      "role": "context",
+      "document_path": "private-datasets/ukf/Buy to let Mortgage Market Update Q2.pdf",
+      "document_label": "UK Finance Buy to let Mortgage Market Update Q2 2024",
+      "source_as_of": "2024 Q2",
+      "publisher": "UK Finance",
+      "segment": "Average observed market ICR",
+      "icr_fraction": 1.96,
+      "stress_rate_fraction": null,
+      "notes": "Observed market outcome used only as a sanity check that underwriting outcomes sit well above the selected floor."
+    },
+    {
+      "role": "context",
+      "document_path": "private-datasets/ukf/Buy to let Mortgage Market Update Q3.pdf",
+      "document_label": "UK Finance Buy to let Mortgage Market Update Q3 2024",
+      "source_as_of": "2024 Q3",
+      "publisher": "UK Finance",
+      "segment": "Average observed market ICR",
+      "icr_fraction": 1.95,
+      "stress_rate_fraction": null,
+      "notes": "Observed market outcome used only as a sanity check that underwriting outcomes sit well above the selected floor."
+    },
+    {
+      "role": "context",
+      "document_path": "private-datasets/ukf/Buy to let Mortgage Market Update Q4.pdf",
+      "document_label": "UK Finance Buy to let Mortgage Market Update Q4 2024",
+      "source_as_of": "2024 Q4",
+      "publisher": "UK Finance",
+      "segment": "Average observed market ICR",
+      "icr_fraction": 2.01,
+      "stress_rate_fraction": null,
+      "notes": "Observed market outcome used only as a sanity check that underwriting outcomes sit well above the selected floor."
+    },
+    {
+      "role": "excluded",
+      "document_path": "private-datasets/misc/CMI-BTL-ProductGuide.pdf",
+      "document_label": "CMI-BTL-ProductGuide.pdf",
+      "source_as_of": "2022-05-30",
+      "publisher": "CHL Mortgages",
+      "segment": "Excluded file mismatch",
+      "icr_fraction": null,
+      "stress_rate_fraction": null,
+      "notes": "On-disk file appears to be a 30 May 2022 CHL Mortgages guide rather than a 2024 CMI artifact so it is excluded from the proxy decision."
+    }
+  ]
+}
