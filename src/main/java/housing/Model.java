@@ -121,6 +121,8 @@ public class Model {
         // Perform config.N_SIMS simulations
         for (nSimulation = 1; nSimulation <= config.N_SIMS; nSimulation += 1) {
 
+            prng.setSeed(simulationSeed(config.SEED, nSimulation));
+
             // For each simulation, open files for writing single-run results
             recorder.openSingleRunFiles(nSimulation, config.recordQualityBandPrice, config.derivedParams.N_QUALITIES);
             transactionRecorder.openSingleRunFiles(nSimulation, config.recordTransactions,
@@ -165,6 +167,10 @@ public class Model {
 
         //Stop the program when finished
         System.exit(0);
+    }
+
+    static int simulationSeed(int baseSeed, int runIndex) {
+        return baseSeed + runIndex - 1;
     }
 
     private static void init() {

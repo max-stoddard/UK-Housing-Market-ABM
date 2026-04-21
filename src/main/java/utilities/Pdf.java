@@ -55,26 +55,38 @@ public class Pdf {
         initInverseCDF();
     }
 
-    public void setPdf(final BinnedDataDouble data) {
+    public void setPdf(final BinnedDataDouble data) { setPdfFromBinnedData(data, DEFAULT_CDF_SAMPLES); }
+
+    public void setPdf(final BinnedDataDouble data, int NSamples) { setPdfFromBinnedData(data, NSamples); }
+
+    private void setPdfFromBinnedData(final BinnedDataDouble data, int NSamples) {
+        int firstNonZeroBin = findFirstNonZeroBin(data);
+        int lastNonZeroBin = findLastNonZeroBin(data);
+        if(firstNonZeroBin < 0 || lastNonZeroBin < 0) {
+            throw(new IllegalStateException("Binned data must contain at least one non-zero bin"));
+        }
         pdf = new DoubleUnaryOperator() {
             public double applyAsDouble(double operand) {
                 return data.getBinAt(operand)/data.getBinWidth();
             }};
-        start = data.getSupportLowerBound();
-        end = data.getSupportUpperBound();
-        nSamples = DEFAULT_CDF_SAMPLES;
+        start = data.getSupportLowerBound() + firstNonZeroBin*data.getBinWidth();
+        end = data.getSupportLowerBound() + (lastNonZeroBin + 1)*data.getBinWidth();
+        nSamples = NSamples;
         initInverseCDF();
     }
 
-    public void setPdf(final BinnedDataDouble data, int NSamples) {
-        pdf = new DoubleUnaryOperator() {
-            public double applyAsDouble(double operand) {
-                return data.getBinAt(operand)/data.getBinWidth();
-            }};
-        start = data.getSupportLowerBound();
-        end = data.getSupportUpperBound();
-        nSamples = NSamples;
-        initInverseCDF();
+    private int findFirstNonZeroBin(final BinnedDataDouble data) {
+        for(int i=0; i<data.size(); ++i) {
+            if(Double.compare(data.get(i), 0.0) != 0) return(i);
+        }
+        return(-1);
+    }
+
+    private int findLastNonZeroBin(final BinnedDataDouble data) {
+        for(int i=data.size()-1; i>=0; --i) {
+            if(Double.compare(data.get(i), 0.0) != 0) return(i);
+        }
+        return(-1);
     }
 
     public double getSupportLowerBound() { return start; }
@@ -108,9 +120,10 @@ public class Pdf {
         double cp;          // cumulative proability
         double targetcp;    // target cumulative probability
         double x;           // x in P(x)
-        int INTEGRATION_STEPS = 2048;
+        int INTEGRATION_STEPS = 262144;
         double dcp_dx;
         int i;
+        double dx;
 
         inverseCDF = new double[nSamples];
         dx = (end-start)/INTEGRATION_STEPS;
@@ -152,7 +165,6 @@ public class Pdf {
     public double           start;      // lowest value of x that has a non-zero probability
     public double           end;        // highest value of x that has a non-zero probability
     double []               inverseCDF; // pre-computed equi-spaced points on the inverse CDF including 0 and 1
-    double                  dx;         // dx between samples
     int                     nSamples;   // number of sample points on the CDF
-    static final int        DEFAULT_CDF_SAMPLES = 100;
+    static final int        DEFAULT_CDF_SAMPLES = 100000;
 }
