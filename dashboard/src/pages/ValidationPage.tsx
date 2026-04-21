@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { EChartsOption } from 'echarts';
 import type {
-  ValidationFamilySummary,
   ValidationMetricSummary,
   ValidationOverviewPayload
 } from '../../shared/types';
@@ -14,7 +13,6 @@ import {
 } from '../lib/api';
 
 type ValidationSortMode =
-  | 'family_then_metric'
   | 'highest_loss'
   | 'lowest_loss'
   | 'metric_name'
@@ -54,6 +52,12 @@ function formatStatusLabel(status: ValidationMetricSummary['status']): string {
 
 function formatLoss(value: number | null): string {
   return value === null ? 'Unsupported' : formatNumber(value, 4);
+}
+
+function formatMetricWeight(value: number): string {
+  return value.toLocaleString('en-GB', {
+    maximumFractionDigits: 4
+  });
 }
 
 function formatLossScaleBasis(metric: ValidationMetricSummary): string | null {
@@ -198,16 +202,6 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
   };
 }
 
-function familyStatusTone(family: ValidationFamilySummary): 'pass' | 'warn' | 'fail' {
-  if (family.statusCounts.fail > 0) {
-    return 'fail';
-  }
-  if (family.statusCounts.warn > 0) {
-    return 'warn';
-  }
-  return 'pass';
-}
-
 function compareNullableNumbers(left: number | null, right: number | null, descending = false): number {
   if (left === null && right === null) {
     return 0;
@@ -236,24 +230,13 @@ function metricStatusSeverity(status: ValidationMetricSummary['status']): number
   }
 }
 
-function buildMetricSearchText(metric: ValidationMetricSummary, familyLabel: string): string {
-  return [
-    metric.label,
-    metric.metricId,
-    familyLabel,
-    metric.familyId,
-    metric.status,
-    metric.sourceLabel
-  ]
+function buildMetricSearchText(metric: ValidationMetricSummary): string {
+  return [metric.label, metric.metricId, metric.status, metric.sourceLabel, metric.sourceIndicatorLabel ?? '']
     .join(' ')
     .toLowerCase();
 }
 
-function sortMetrics(
-  metrics: ValidationMetricSummary[],
-  familyLabelById: Map<string, string>,
-  sortMode: ValidationSortMode
-): ValidationMetricSummary[] {
+function sortMetrics(metrics: ValidationMetricSummary[], sortMode: ValidationSortMode): ValidationMetricSummary[] {
   return [...metrics].sort((left, right) => {
     if (sortMode === 'highest_loss') {
       const lossComparison = compareNullableNumbers(left.metricLoss, right.metricLoss, true);
@@ -287,10 +270,9 @@ function sortMetrics(
       }
     }
 
-    const leftFamilyLabel = familyLabelById.get(left.familyId) ?? left.familyId;
-    const rightFamilyLabel = familyLabelById.get(right.familyId) ?? right.familyId;
-    if (leftFamilyLabel !== rightFamilyLabel) {
-      return leftFamilyLabel.localeCompare(rightFamilyLabel);
+    const weightComparison = right.metricWeight - left.metricWeight;
+    if (weightComparison !== 0) {
+      return weightComparison;
     }
     return left.label.localeCompare(right.label);
   });
@@ -302,7 +284,6 @@ export function ValidationPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isWaitingForApi, setIsWaitingForApi] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
-  const [selectedFamilyIds, setSelectedFamilyIds] = useState<string[]>([]);
   const [metricSearch, setMetricSearch] = useState<string>('');
   const [sortMode, setSortMode] = useState<ValidationSortMode>(DEFAULT_SORT_MODE);
   const [openMetricIds, setOpenMetricIds] = useState<string[]>([]);
@@ -360,11 +341,6 @@ export function ValidationPage() {
   }, [overview]);
 
   const summary = overview?.selectedSummary ?? null;
-  const familyLabelById = useMemo(
-    () => new Map(summary?.familySummaries.map((family) => [family.familyId, family.label]) ?? []),
-    [summary]
-  );
-  const activeFamilyIds = useMemo(() => new Set(selectedFamilyIds), [selectedFamilyIds]);
   const openMetricIdSet = useMemo(() => new Set(openMetricIds), [openMetricIds]);
 
   useEffect(() => {
@@ -377,24 +353,12 @@ export function ValidationPage() {
     }
 
     const searchTerm = metricSearch.trim().toLowerCase();
-    const familyFilteredMetrics =
-      activeFamilyIds.size === 0
-        ? summary.metrics
-        : summary.metrics.filter((metric) => activeFamilyIds.has(metric.familyId));
     const searchFilteredMetrics = searchTerm
-      ? familyFilteredMetrics.filter((metric) =>
-          buildMetricSearchText(metric, familyLabelById.get(metric.familyId) ?? metric.familyId).includes(searchTerm)
-        )
-      : familyFilteredMetrics;
+      ? summary.metrics.filter((metric) => buildMetricSearchText(metric).includes(searchTerm))
+      : summary.metrics;
 
-    return sortMetrics(searchFilteredMetrics, familyLabelById, sortMode);
-  }, [summary, activeFamilyIds, metricSearch, familyLabelById, sortMode]);
-
-  const handleFamilyToggle = (familyId: string) => {
-    setSelectedFamilyIds((current) =>
-      current.includes(familyId) ? current.filter((value) => value !== familyId) : [...current, familyId]
-    );
-  };
+    return sortMetrics(searchFilteredMetrics, sortMode);
+  }, [summary, metricSearch, sortMode]);
 
   const toggleMetricSources = (metricId: string) => {
     setOpenMetricIds((current) =>
@@ -435,7 +399,7 @@ export function ValidationPage() {
             <h3>Validation Loss Across Versions</h3>
             <p className="validation-card-subtitle">
               Lower validation loss means the model is closer to the external targets and more stable across seeds. The
-              selected point controls the category cards and metric results below.
+              selected point controls the metric results below.
             </p>
           </div>
           <label className="validation-selector">
@@ -459,45 +423,10 @@ export function ValidationPage() {
       </article>
 
       <article className="results-card">
-        <h3>Validation Categories</h3>
-        <p className="validation-card-subtitle">
-          Categories group related metrics so correlated indicators are not double-counted and so macro realism and
-          household realism stay balanced. Pass means the mean is inside the target band and at least 75% of seeds are
-          inside, Warn means the mean is close to the band and at least 50% of seeds are inside, Fail means the mean
-          is clearly outside the band or unstable, and Unsupported means the metric is shown for completeness but does
-          not yet have a usable external target so it does not contribute to loss.
-        </p>
-        <div className="validation-family-grid">
-          {summary?.familySummaries.map((family) => (
-            <button
-              type="button"
-              key={family.familyId}
-              className={`validation-family-card validation-family-card-${familyStatusTone(family)} ${
-                activeFamilyIds.has(family.familyId) ? 'validation-family-card-active' : ''
-              }`}
-              onClick={() => handleFamilyToggle(family.familyId)}
-              aria-pressed={activeFamilyIds.has(family.familyId)}
-            >
-              <p className="validation-family-eyebrow">{family.familyId}</p>
-              <h4>{family.label}</h4>
-              <p className="validation-family-loss">Loss {formatNumber(family.loss, 4)}</p>
-              <p className="validation-family-counts">
-                Pass {family.statusCounts.pass} · Warn {family.statusCounts.warn} · Fail {family.statusCounts.fail} ·{' '}
-                Unsupported {family.statusCounts.unsupported}
-              </p>
-              <p className="validation-family-selection">
-                {activeFamilyIds.has(family.familyId) ? 'Showing in the table filter' : 'Click to filter the table'}
-              </p>
-            </button>
-          ))}
-        </div>
-      </article>
-
-      <article className="results-card">
         <h3>Validation Results by Metric for {summary?.version ?? selectedVersion}</h3>
         <p className="validation-card-subtitle">
           Each row shows one validation metric, the target band it is checked against, the model summary across seeds,
-          the status, and how much that metric contributes to total validation loss.
+          the status, and the raw metric weight supplied in the validation payload.
         </p>
         <div className="results-controls validation-table-controls">
           <label>
@@ -506,13 +435,12 @@ export function ValidationPage() {
               type="search"
               value={metricSearch}
               onChange={(event) => setMetricSearch(event.target.value)}
-              placeholder="Search by metric, category, status, or source"
+              placeholder="Search by metric, status, or source"
             />
           </label>
           <label>
             <span>Sort by</span>
             <select value={sortMode} onChange={(event) => setSortMode(event.target.value as ValidationSortMode)}>
-              <option value="family_then_metric">Category, then metric</option>
               <option value="highest_loss">Highest loss first</option>
               <option value="lowest_loss">Lowest loss first</option>
               <option value="metric_name">Metric name A-Z</option>
@@ -521,42 +449,27 @@ export function ValidationPage() {
               <option value="status_severity">Status severity</option>
             </select>
           </label>
-          <div className="validation-control-summary">
-            {selectedFamilyIds.length === 0
-              ? 'Showing all categories'
-              : `Filtering to ${selectedFamilyIds.length} categor${selectedFamilyIds.length === 1 ? 'y' : 'ies'}`}
-          </div>
-          <button
-            type="button"
-            className="table-toggle"
-            onClick={() => setSelectedFamilyIds([])}
-            disabled={selectedFamilyIds.length === 0}
-          >
-            Show all categories
-          </button>
+          <div className="validation-control-summary">Showing {filteredMetrics.length} metrics</div>
         </div>
         {filteredMetrics.length === 0 ? (
-          <p className="info-banner validation-table-empty">
-            No validation metrics match the current category filter and search term.
-          </p>
+          <p className="info-banner validation-table-empty">No validation metrics match the current search term.</p>
         ) : (
           <div className="validation-table-wrap">
             <table className="validation-metrics-table">
               <thead>
                 <tr>
                   <th>Metric</th>
-                  <th>Category</th>
                   <th>Target band</th>
                   <th>Mean</th>
                   <th>p25-p75</th>
                   <th>Seeds inside band</th>
+                  <th>Weight</th>
                   <th>Loss</th>
                   <th>Status</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredMetrics.map((metric) => {
-                  const familyLabel = familyLabelById.get(metric.familyId) ?? metric.familyId;
                   const isSourcesOpen = openMetricIdSet.has(metric.metricId);
 
                   return (
@@ -586,16 +499,13 @@ export function ValidationPage() {
                           </div>
                         )}
                       </td>
-                      <td>
-                        <strong>{familyLabel}</strong>
-                        <div className="validation-family-meta">{metric.familyId}</div>
-                      </td>
                       <td>{formatTargetBand(metric)}</td>
                       <td>{formatNumber(metric.seedMean, 3)}</td>
                       <td>
                         {formatNumber(metric.p25, 3)} to {formatNumber(metric.p75, 3)}
                       </td>
                       <td>{formatInsideRate(metric.insideRate)}</td>
+                      <td>{formatMetricWeight(metric.metricWeight)}</td>
                       <td
                         className={`validation-loss-cell ${metric.metricLoss === null ? 'validation-loss-unsupported' : ''}`}
                       >

@@ -797,9 +797,7 @@ const expectedIds = [
 ];
 
 const unchangedNewlyAddedIds = [
-  'uk_housing_stock_totals',
   'household_consumption_fractions',
-  'hold_period_years',
   'initial_sale_markup_distribution',
   'price_reduction_probabilities',
   'sale_reduction_gaussian',
@@ -809,9 +807,7 @@ const unchangedNewlyAddedIds = [
   'bidup_multiplier',
   'rent_gross_yield',
   'downpayment_btl_profile',
-  'bank_rate_credit_response',
   'bank_lti_limits',
-  'bank_affordability_icr_limits'
 ] as const;
 
 const RESULTS_ROW_COUNT = 2001;
@@ -1225,10 +1221,10 @@ const validationOverview = getValidationOverview(repoRoot, 'v4.1');
 assert.equal(validationOverview.selectedVersion, 'v4.1');
 assert.ok(validationOverview.trend.points.length > 0);
 assert.ok(validationOverview.selectedSummary.metrics.some((metric) => metric.metricId === 'core_mortgageApprovals'));
-assert.ok(
-  validationOverview.selectedSummary.familySummaries.some(
-    (family) => family.familyId === 'household_distribution_realism'
-  )
+assert.equal(
+  Object.prototype.hasOwnProperty.call(validationOverview.selectedSummary, 'familySummaries'),
+  false,
+  'Validation overview should no longer expose family summaries in the dashboard payload'
 );
 
 const versionOrder = new Map(versions.map((version, index) => [version, index]));
@@ -1273,9 +1269,17 @@ assert.ok(
   approvalsMetric?.insideRate !== null && approvalsMetric.insideRate !== undefined,
   'Mortgage approvals should expose an inside-rate summary'
 );
+assert.equal(approvalsMetric?.metricWeight, 1, 'Mortgage approvals should expose the raw metric weight');
+assert.equal(
+  Object.prototype.hasOwnProperty.call(approvalsMetric ?? {}, 'familyId'),
+  false,
+  'Validation overview metrics should no longer expose family ids in the dashboard payload'
+);
 assert.ok(
-  validationOverview.selectedSummary.familySummaries.some((family) => family.statusCounts.pass >= 0),
-  'Validation overview should expose family status counts'
+  validationOverview.selectedSummary.metrics.every(
+    (metric) => typeof metric.metricWeight === 'number' && Number.isFinite(metric.metricWeight)
+  ),
+  'Validation overview should expose numeric metric weights for every validation metric'
 );
 
 const validationSummaryFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-summary-'));
@@ -1291,18 +1295,9 @@ fs.writeFileSync(
       seeds: [1, 2, 3, 4, 5, 6, 7, 8],
       window: { startIndex: 200, endIndex: 2000 },
       overallCompositeLoss: 0.5,
-      familySummaries: [
-        {
-          familyId: 'macro_credit_activity',
-          label: 'Macro Credit and Market Activity',
-          loss: 1.0,
-          statusCounts: { pass: 0, warn: 0, fail: 5, unsupported: 0 }
-        }
-      ],
       metrics: [
         {
           metricId: 'core_advancesToBTL',
-          familyId: 'macro_credit_activity',
           label: 'Advances to BTL',
           status: 'fail',
           requirement: 'required',
@@ -1344,7 +1339,8 @@ fs.writeFileSync(
           lossScaleBasis: 'source_value',
           normalizedDistance: 0.590878521852958,
           normalizedIqr: 0.077351898525006,
-          metricLoss: 1.5
+          metricLoss: 1.5,
+          metricWeight: 1
         }
       ]
     },
@@ -1362,18 +1358,9 @@ fs.writeFileSync(
       seeds: [1, 2, 3, 4, 5, 6, 7, 8],
       window: { startIndex: 200, endIndex: 2000 },
       overallCompositeLoss: 0.5,
-      familySummaries: [
-        {
-          familyId: 'macro_credit_activity',
-          label: 'Macro Credit and Market Activity',
-          loss: 1.0,
-          statusCounts: { pass: 0, warn: 0, fail: 2, unsupported: 3 }
-        }
-      ],
       metrics: [
         {
           metricId: 'core_mortgageApprovals',
-          familyId: 'macro_credit_activity',
           label: 'Mortgage Approvals',
           status: 'fail',
           requirement: 'required',
@@ -1398,6 +1385,17 @@ const modernSummary = readValidationSummary(validationSummaryFixtureRoot, 'v-mod
 assert.equal(modernSummary.metrics[0]?.sourceReferences.length ?? 0, 1, 'Validation parser should preserve source references');
 assert.equal(modernSummary.metrics[0]?.lossScaleBasis, 'source_value', 'Validation parser should expose loss scale basis');
 assert.equal(modernSummary.metrics[0]?.lossScale, 5.17125, 'Validation parser should expose loss scale values');
+assert.equal(modernSummary.metrics[0]?.metricWeight, 1, 'Validation parser should expose raw metric weights');
+assert.equal(
+  Object.prototype.hasOwnProperty.call(modernSummary.metrics[0] ?? {}, 'familyId'),
+  false,
+  'Validation parser should ignore removed metric family ids'
+);
+assert.equal(
+  Object.prototype.hasOwnProperty.call(modernSummary, 'familySummaries'),
+  false,
+  'Validation parser should ignore removed family summaries'
+);
 assert.equal(
   modernSummary.metrics[0]?.sourceReferences[0]?.sourceDocumentPath,
   'input-data-versions/validation-sources/2024/ukf/Buy to let Mortgage Market Update Q1.pdf',
@@ -1406,6 +1404,7 @@ assert.equal(
 const legacySummary = readValidationSummary(validationSummaryFixtureRoot, 'v-legacy');
 assert.equal(legacySummary.metrics[0]?.sourceReferences.length ?? 0, 0, 'Validation parser should default missing source references to an empty list');
 assert.equal(legacySummary.metrics[0]?.sourceIndicatorLabel ?? null, null, 'Legacy validation summaries should parse without source detail fields');
+assert.equal(legacySummary.metrics[0]?.metricWeight, 1, 'Legacy validation summaries should default missing metric weights to 1');
 
 const rangeAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'range');
 const throughRightAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'through_right');
@@ -3002,8 +3001,8 @@ assert.ok(
   'Validation page should render the plain-English validation trend heading'
 );
 assert.ok(
-  validationPageSource.includes('Validation Categories'),
-  'Validation page should render the renamed validation categories section'
+  !validationPageSource.includes('Validation Categories'),
+  'Validation page should remove the validation categories section'
 );
 assert.ok(
   validationPageSource.includes('Validation Results by Metric for'),
@@ -3018,8 +3017,12 @@ assert.ok(
   'Validation page should explain that the chart is a secondary decision aid'
 );
 assert.ok(
-  validationPageSource.includes('Click to filter the table'),
-  'Validation page should make the family cards interactive filters'
+  !validationPageSource.includes('Click to filter the table'),
+  'Validation page should remove the family-card table filters'
+);
+assert.ok(
+  !validationPageSource.includes('Family weight'),
+  'Validation page should remove validation family weight copy'
 );
 assert.ok(
   validationPageSource.includes('Search metrics'),
@@ -3030,8 +3033,8 @@ assert.ok(
   'Validation page should render metric table sort controls'
 );
 assert.ok(
-  validationPageSource.includes('Show all categories'),
-  'Validation page should allow resetting family filters'
+  !validationPageSource.includes('Show all categories'),
+  'Validation page should remove family filter reset controls'
 );
 assert.ok(
   validationPageSource.includes('Provenance & sources'),
@@ -3046,8 +3049,8 @@ assert.ok(
   'Validation page should render each metric loss from the validation payload'
 );
 assert.ok(
-  validationPageSource.includes('selectedFamilyIds'),
-  'Validation page should track selected validation family filters'
+  !validationPageSource.includes('selectedFamilyIds'),
+  'Validation page should stop tracking validation family filters'
 );
 assert.ok(
   validationPageSource.includes('metricSearch'),
@@ -3074,12 +3077,32 @@ assert.ok(
   'Validation page should render p25-p75 uncertainty labels'
 );
 assert.ok(
+  validationPageSource.includes('Weight'),
+  'Validation page should render the metric weight column'
+);
+assert.ok(
   validationPageSource.includes('validation-source-label'),
   'Validation page should render inline source labels for validation metrics'
 );
 assert.ok(
   validationPageSource.includes('sourceReferences'),
   'Validation page should render structured source references when available'
+);
+assert.ok(
+  validationPageSource.includes('metricWeight'),
+  'Validation page should render each metric weight from the validation payload'
+);
+assert.ok(
+  !validationPageSource.includes('lossWeight'),
+  'Validation page should stop rendering lossWeight fields'
+);
+assert.ok(
+  !validationPageSource.includes('familySummaries'),
+  'Validation page should stop depending on family summaries'
+);
+assert.ok(
+  !validationPageSource.includes('familyId'),
+  'Validation page should stop depending on metric family ids'
 );
 assert.ok(
   validationPageSource.includes('selectedVersion'),

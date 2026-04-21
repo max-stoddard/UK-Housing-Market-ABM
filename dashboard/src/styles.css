@@ -1090,92 +1090,6 @@ code {
   padding: 0.72rem 0.9rem;
 }
 
-.validation-family-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.8rem;
-}
-
-.validation-family-card {
-  width: 100%;
-  border-radius: 1rem;
-  padding: 1rem;
-  border: 1px solid rgba(17, 32, 24, 0.08);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(238, 241, 234, 0.92)),
-    linear-gradient(135deg, rgba(11, 114, 133, 0.06), transparent 60%);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition:
-    transform 140ms ease,
-    border-color 140ms ease,
-    box-shadow 140ms ease;
-}
-
-.validation-family-card:hover {
-  transform: translateY(-1px);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    0 10px 24px rgba(17, 32, 24, 0.08);
-}
-
-.validation-family-card:focus-visible {
-  outline: 2px solid #0b7285;
-  outline-offset: 2px;
-}
-
-.validation-family-card-active {
-  border-color: rgba(11, 114, 133, 0.42);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    0 0 0 2px rgba(11, 114, 133, 0.08);
-}
-
-.validation-family-card-pass {
-  border-color: rgba(47, 158, 68, 0.24);
-}
-
-.validation-family-card-warn {
-  border-color: rgba(217, 72, 15, 0.24);
-}
-
-.validation-family-card-fail {
-  border-color: rgba(193, 59, 40, 0.28);
-}
-
-.validation-family-eyebrow {
-  margin: 0 0 0.45rem;
-  color: var(--muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.validation-family-card h4 {
-  margin: 0 0 0.35rem;
-  font-size: 1rem;
-}
-
-.validation-family-loss,
-.validation-family-counts {
-  margin: 0;
-}
-
-.validation-family-counts {
-  margin-top: 0.5rem;
-  color: var(--muted);
-  font-size: 0.88rem;
-}
-
-.validation-family-selection {
-  margin: 0.7rem 0 0;
-  color: #0b7285;
-  font-size: 0.8rem;
-  font-weight: 700;
-}
-
 .validation-table-controls {
   align-items: end;
 }
@@ -1230,13 +1144,6 @@ code {
   color: var(--muted);
   font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Consolas', monospace;
   font-size: 0.78rem;
-}
-
-.validation-family-meta {
-  margin-top: 0.22rem;
-  color: var(--muted);
-  font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Consolas', monospace;
-  font-size: 0.75rem;
 }
 
 .validation-source-toggle {

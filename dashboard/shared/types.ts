@@ -250,23 +250,8 @@ export interface ValidationSourceReference {
   notes: string | null;
 }
 
-export interface ValidationStatusCounts {
-  pass: number;
-  warn: number;
-  fail: number;
-  unsupported: number;
-}
-
-export interface ValidationFamilySummary {
-  familyId: string;
-  label: string;
-  loss: number;
-  statusCounts: ValidationStatusCounts;
-}
-
 export interface ValidationMetricSummary {
   metricId: string;
-  familyId: string;
   label: string;
   status: ValidationMetricStatus;
   requirement: ValidationMetricRequirement;
@@ -296,6 +281,7 @@ export interface ValidationMetricSummary {
   normalizedDistance: number | null;
   normalizedIqr: number | null;
   metricLoss: number | null;
+  metricWeight: number;
 }
 
 export interface ValidationVersionSummary {
@@ -308,7 +294,6 @@ export interface ValidationVersionSummary {
     endIndex: number;
   };
   overallCompositeLoss: number;
-  familySummaries: ValidationFamilySummary[];
   metrics: ValidationMetricSummary[];
 }
 

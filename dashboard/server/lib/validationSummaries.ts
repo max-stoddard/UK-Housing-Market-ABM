@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   ValidationCompositeTrendPayload,
-  ValidationFamilySummary,
   ValidationMetricSummary,
   ValidationOverviewPayload,
   ValidationVersionSummary
@@ -91,27 +90,11 @@ function parseSourceReference(value: unknown, index: number) {
   };
 }
 
-function parseStatusCounts(value: unknown, message: string) {
-  const objectValue = assertObject(value, message);
-  return {
-    pass: assertNumber(objectValue.pass, `${message}.pass`),
-    warn: assertNumber(objectValue.warn, `${message}.warn`),
-    fail: assertNumber(objectValue.fail, `${message}.fail`),
-    unsupported: assertNumber(objectValue.unsupported, `${message}.unsupported`)
-  };
-}
-
-function parseFamilySummary(value: unknown, index: number): ValidationFamilySummary {
-  const objectValue = assertObject(value, `familySummaries[${index}] must be an object`);
-  return {
-    familyId: assertString(objectValue.familyId, `familySummaries[${index}].familyId must be a string`),
-    label: assertString(objectValue.label, `familySummaries[${index}].label must be a string`),
-    loss: assertNumber(objectValue.loss, `familySummaries[${index}].loss must be a number`),
-    statusCounts: parseStatusCounts(
-      objectValue.statusCounts,
-      `familySummaries[${index}].statusCounts must be an object`
-    )
-  };
+function parseMetricWeight(value: unknown, index: number): number {
+  if (value === undefined) {
+    return 1;
+  }
+  return assertNumber(value, `metrics[${index}].metricWeight must be a number`);
 }
 
 function parseMetricSummary(value: unknown, index: number): ValidationMetricSummary {
@@ -128,7 +111,6 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
 
   return {
     metricId: assertString(objectValue.metricId, `metrics[${index}].metricId must be a string`),
-    familyId: assertString(objectValue.familyId, `metrics[${index}].familyId must be a string`),
     label: assertString(objectValue.label, `metrics[${index}].label must be a string`),
     status: assertString(objectValue.status, `metrics[${index}].status must be a string`) as ValidationMetricSummary['status'],
     requirement: assertString(
@@ -186,7 +168,8 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
       `metrics[${index}].normalizedDistance must be a number or null`
     ),
     normalizedIqr: assertNumberOrNull(objectValue.normalizedIqr, `metrics[${index}].normalizedIqr must be a number or null`),
-    metricLoss: assertNumberOrNull(objectValue.metricLoss, `metrics[${index}].metricLoss must be a number or null`)
+    metricLoss: assertNumberOrNull(objectValue.metricLoss, `metrics[${index}].metricLoss must be a number or null`),
+    metricWeight: parseMetricWeight(objectValue.metricWeight, index)
   };
 }
 
@@ -194,9 +177,6 @@ function parseValidationSummary(filePath: string): ValidationVersionSummary {
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
   const value = assertObject(raw, `${filePath} must contain a JSON object`);
   const windowValue = assertObject(value.window, `${filePath}.window must be an object`);
-  if (!Array.isArray(value.familySummaries)) {
-    throw new Error(`${filePath}.familySummaries must be an array`);
-  }
   if (!Array.isArray(value.metrics)) {
     throw new Error(`${filePath}.metrics must be an array`);
   }
@@ -213,7 +193,6 @@ function parseValidationSummary(filePath: string): ValidationVersionSummary {
       value.overallCompositeLoss,
       `${filePath}.overallCompositeLoss must be a number`
     ),
-    familySummaries: value.familySummaries.map((item, index) => parseFamilySummary(item, index)),
     metrics: value.metrics.map((item, index) => parseMetricSummary(item, index))
   };
 }
