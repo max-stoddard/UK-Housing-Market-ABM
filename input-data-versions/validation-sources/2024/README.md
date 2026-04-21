@@ -6,6 +6,7 @@ This folder contains the tracked source artifacts required to review and reprodu
 
 Contents:
 - `cis/`: frozen FPC June 2024 PDF and text extraction aid
+- `hmlr/`: archived HM Land Registry UK HPI full-file CSV and HPI validation evidence note
 - `ukf/`: UK Finance source PDFs and validation evidence notes for advances and rental yield
 - `boe/`: housing-tools workbook and spread evidence note
 - `mlar/`: MLAR workbook and owner-occupier debt-to-income evidence note

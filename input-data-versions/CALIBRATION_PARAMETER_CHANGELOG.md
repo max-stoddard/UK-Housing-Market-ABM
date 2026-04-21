@@ -767,12 +767,13 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
 
 ### v4.1
 - Script path: `N/A (config-only policy-alignment update)`
-- Outputs/keys produced: `BANK_LTV_HARD_MAX_FTB`, `BANK_LTV_HARD_MAX_HM`, `BANK_LTV_HARD_MAX_BTL`, `CENTRAL_BANK_LTV_HARD_MAX_HM`, `CENTRAL_BANK_LTV_HARD_MAX_BTL`
+- Outputs/keys produced: `BANK_LTV_HARD_MAX_FTB`, `BANK_LTV_HARD_MAX_HM`, `BANK_LTV_HARD_MAX_BTL`, `CENTRAL_BANK_LTV_HARD_MAX_FTB`, `CENTRAL_BANK_LTV_HARD_MAX_HM`, `CENTRAL_BANK_LTV_HARD_MAX_BTL`
 - Exact run command: `N/A (direct config-only policy alignment in input-data-versions/v4.1/config.properties)`
 - Expected result snippet:
   - `BANK_LTV_HARD_MAX_FTB = 0.95`
   - `BANK_LTV_HARD_MAX_HM = 0.95`
   - `BANK_LTV_HARD_MAX_BTL = 0.85`
+  - `CENTRAL_BANK_LTV_HARD_MAX_FTB = 0.95`
   - `CENTRAL_BANK_LTV_HARD_MAX_HM = 0.95`
   - `CENTRAL_BANK_LTV_HARD_MAX_BTL = 0.85`
 - Method chosen: direct config fork from `v4.0` with aligned representative-bank and central-bank hard LTV ceilings.
@@ -1004,7 +1005,7 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
     - `stress_mapped_floor = 1.22`
     - `cross_segment_mean = 1.35`
   - tracked validation:
-    - `overallCompositeLoss = 0.494066`
+    - `overallCompositeLoss = 0.601011`
 - Method chosen:
   - `literal_standard_floor_125` = minimum retained Paragon 2024 decision threshold across `1.25, 1.25, 1.30, 1.30, 1.40, 1.40, 1.45, 1.45`, with `UK Finance` Q1-Q4 2024 ICRs retained as context only and `CENTRAL_BANK_ICR_HARD_MIN` left unchanged at `1.2`
 - Method-selection decision logic:

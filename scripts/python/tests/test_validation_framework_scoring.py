@@ -61,10 +61,9 @@ class TestValidationFrameworkScoring(unittest.TestCase):
         self.assertAlmostEqual(scale, 0.12)
         self.assertEqual(basis, "target_band_upper")
 
-    def test_overall_loss_weights_macro_and_household_families(self) -> None:
+    def test_overall_loss_is_weighted_mean_of_metric_losses(self) -> None:
         loss = compute_overall_composite_loss(
-            macro_credit_activity_loss=0.2,
-            macro_prices_leverage_affordability_loss=0.4,
-            household_distribution_realism_loss=0.6,
+            metric_losses=[0.2, 0.4, 0.6],
+            metric_weights=[1.0, 1.0, 1.0],
         )
-        self.assertAlmostEqual(loss, 0.45)
+        self.assertAlmostEqual(loss, 0.4)

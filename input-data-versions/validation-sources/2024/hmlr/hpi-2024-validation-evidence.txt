@@ -1,0 +1,65 @@
+Author: Max Stoddard
+
+HM Land Registry validation evidence for the scored HPI metrics derived from:
+- input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv
+
+Published source anchor:
+- HM Land Registry UK HPI full file for December 2024
+- Release date: 19 February 2025
+
+Series used for `core_hpiMean` and `core_hpiStd`:
+- RegionName = United Kingdom
+- Field = IndexSA
+- Months = 2024-01 through 2024-12
+
+2024 IndexSA values:
+- 2024-01: 98.2
+- 2024-02: 98.3
+- 2024-03: 98.8
+- 2024-04: 99.4
+- 2024-05: 99.7
+- 2024-06: 99.7
+- 2024-07: 99.7
+- 2024-08: 101.0
+- 2024-09: 101.3
+- 2024-10: 101.4
+- 2024-11: 101.9
+- 2024-12: 102.2
+
+Rebased 2024 IndexSA values with January 2024 = 1.0:
+- 2024-01: 1.0
+- 2024-02: 1.0010183299389002
+- 2024-03: 1.0061099796334012
+- 2024-04: 1.0122199592668024
+- 2024-05: 1.015274949083503
+- 2024-06: 1.015274949083503
+- 2024-07: 1.015274949083503
+- 2024-08: 1.0285132382892057
+- 2024-09: 1.0315682281059063
+- 2024-10: 1.0325865580448064
+- 2024-11: 1.0376782077393077
+- 2024-12: 1.0407331975560081
+
+Validation comparison for the rebased 2024 series:
+- `core_hpiMean` = arithmetic mean of the rebased values = 1.0196877121520707
+- `core_hpiStd` = population standard deviation of the rebased values = 0.013499008027934953
+- Both target bands use a fixed +/-15% tolerance around the official derived scalar.
+
+Series used for `core_hpiCyclePeriod`:
+- RegionName = United Kingdom
+- Field = Index
+- Coverage = full available history through 2024-12
+
+Locked derivation method:
+1. Take the United Kingdom `Index` history through December 2024.
+2. Apply a 12-month moving average.
+3. Take natural logs of the smoothed series.
+4. Remove a linear trend with ordinary least squares.
+5. Compute the FFT power spectrum.
+6. Search only periods from 60 to 240 months.
+7. Take the period at the dominant admissible FFT peak.
+
+Validation comparison for the full-history cycle estimate:
+- `core_hpiCyclePeriod` = 167.5 months
+- `core_hpiCyclePeriod` = 13.958333333333334 years
+- Target band = +/-15% around the official derived scalar = [142.375, 192.625] months

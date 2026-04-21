@@ -18,11 +18,19 @@ from typing import Any
 from openpyxl import load_workbook
 
 from scripts.python.validation.model.extractors import HOUSEHOLD_DISTRIBUTION_SPECS
+from scripts.python.validation.model.hpi import (
+    compute_rebased_mean,
+    compute_rebased_std,
+    estimate_dominant_cycle_period_months,
+    load_hmlr_uk_full_file_series,
+)
 from scripts.python.validation.model.validation_catalog_2024 import (
     ADVANCES_TARGET_TOLERANCE,
-    FAMILY_DEFINITIONS,
-    FAMILY_WEIGHTS,
     FPC_SOURCE_2024_BY_METRIC_ID,
+    HPI_2024_CYCLE_PERIOD_MONTHS,
+    HPI_2024_REBASED_MEAN,
+    HPI_FULL_HISTORY_REBASED_STD,
+    HPI_TARGET_TOLERANCE,
     INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS,
     MARKET_SOURCE_2024_BY_METRIC_ID,
     OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES,
@@ -35,6 +43,7 @@ from scripts.python.validation.model.validation_catalog_2024 import (
 
 REVIEW_LEDGER_PATH = "scripts/python/validation/model/validation_catalog_2024_review.json"
 ONS_QWND_SNAPSHOT_PATH = "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json"
+HMLR_HPI_SOURCE_PATH = "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv"
 
 
 @dataclass(frozen=True)
@@ -80,6 +89,14 @@ def _serialize_household_metric(metric_id: str) -> dict[str, object]:
         "legacy_validation_module": metric.legacy_validation_module,
         "results_file_name": HOUSEHOLD_DISTRIBUTION_SPECS[metric_id].results_file_name,
     }
+
+
+def _scored_metric_ids() -> list[str]:
+    return [
+        metric_id
+        for metric_id, metric in TARGETS_BY_ID.items()
+        if metric.requirement == "required" and metric.target_band is not None
+    ]
 
 
 def _extract_single(pattern: str, text: str, *, cast: type = float) -> Any:
@@ -263,6 +280,24 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
     ons_qwnd_quarterly_values = load_ons_qwnd_snapshot(repo_root / ONS_QWND_SNAPSHOT_PATH)
     trailing_four_quarter_qwnd = _compute_trailing_four_quarter_qwnd(ons_qwnd_quarterly_values)
     oo_dti_quarterly_values = _compute_oo_dti_quarterly_values(oo_source_components, trailing_four_quarter_qwnd)
+    hpi_2024_sa_values = load_hmlr_uk_full_file_series(
+        repo_root / HMLR_HPI_SOURCE_PATH,
+        field_name="IndexSA",
+        start_year_month=(2024, 1),
+        end_year_month=(2024, 12),
+    )
+    hpi_full_sa_values = load_hmlr_uk_full_file_series(
+        repo_root / HMLR_HPI_SOURCE_PATH,
+        field_name="IndexSA",
+    )
+    rebased_hpi_2024_values = [float(value) for value in load_hmlr_uk_full_file_series(
+        repo_root / HMLR_HPI_SOURCE_PATH,
+        field_name="IndexSA",
+        start_year_month=(2024, 1),
+        end_year_month=(2024, 12),
+    )]
+    rebased_hpi_2024_values = [value / rebased_hpi_2024_values[0] for value in rebased_hpi_2024_values]
+    hpi_full_index_values = load_hmlr_uk_full_file_series(repo_root / HMLR_HPI_SOURCE_PATH, field_name="Index")
 
     source_fpc_core_metrics = {
         metric_id: {
@@ -309,12 +344,11 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
         "supported_fpc_metric_ids": list(SUPPORTED_FPC_METRIC_IDS),
         "unsupported_fpc_metric_ids": list(UNSUPPORTED_FPC_METRIC_IDS),
         "advances_target_tolerance": ADVANCES_TARGET_TOLERANCE,
-        "family_definitions_and_weights": {
-            "definitions": [
-                {"family_id": family.family_id, "label": family.label, "weight": family.weight}
-                for family in FAMILY_DEFINITIONS
-            ],
-            "weights": dict(FAMILY_WEIGHTS),
+        "metric_weighting_and_composite_aggregation": {
+            "scored_metric_ids": _scored_metric_ids(),
+            "required_metric_count": len(_scored_metric_ids()),
+            "metric_weight": 1.0,
+            "composite_rule": "weighted_mean",
         },
         "source_fpc_core_metrics": source_fpc_core_metrics,
         "source_ukf_advances_metrics": source_ukf_advances_metrics,
@@ -334,10 +368,35 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
             "annual_mean": float(fmean(oo_dti_quarterly_values)),
             "target_band": _band(min(oo_dti_quarterly_values), max(oo_dti_quarterly_values)),
         },
+        "source_market_hpi": {
+            "hpi_target_tolerance": HPI_TARGET_TOLERANCE,
+            "index_sa_2024_values": hpi_2024_sa_values,
+            "rebased_index_sa_2024_values": rebased_hpi_2024_values,
+            "annual_mean": compute_rebased_mean(hpi_2024_sa_values),
+            "full_history_std_window": {
+                "start": "2005-01",
+                "end": "2024-12",
+                "count": len(hpi_full_sa_values),
+            },
+            "full_history_std": compute_rebased_std(hpi_full_sa_values),
+            "cycle_period_months": estimate_dominant_cycle_period_months(hpi_full_index_values),
+            "mean_target_band": _band(
+                HPI_2024_REBASED_MEAN * (1.0 - HPI_TARGET_TOLERANCE),
+                HPI_2024_REBASED_MEAN * (1.0 + HPI_TARGET_TOLERANCE),
+            ),
+            "std_target_band": _band(
+                HPI_FULL_HISTORY_REBASED_STD * (1.0 - HPI_TARGET_TOLERANCE),
+                HPI_FULL_HISTORY_REBASED_STD * (1.0 + HPI_TARGET_TOLERANCE),
+            ),
+            "cycle_target_band": _band(
+                HPI_2024_CYCLE_PERIOD_MONTHS * (1.0 - HPI_TARGET_TOLERANCE),
+                HPI_2024_CYCLE_PERIOD_MONTHS * (1.0 + HPI_TARGET_TOLERANCE),
+            ),
+        },
         "metric_definitions_core": {
             metric_id: _serialize_core_metric(metric_id)
             for metric_id, metric in TARGETS_BY_ID.items()
-            if metric.kind == "core_indicator"
+            if metric.kind in {"core_indicator", "output_series"}
         },
         "metric_definitions_household_jsd": {
             metric_id: _serialize_household_metric(metric_id)

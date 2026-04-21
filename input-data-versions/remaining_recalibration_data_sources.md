@@ -7,10 +7,10 @@ Maintenance note:
 - If a recalibration or validation task recalibrates, newly confirms, or otherwise removes a parameter from the remaining set, update this file in the same change.
 - The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the `v4.10` progress counts in `input-data-versions/AGENTS.md`.
 
-Total remaining parameters: `42`
+Total remaining parameters: `36`
 
 Audit note:
-- This note has been updated for `v4.10` after the promotion of `BANK_ICR_HARD_MIN` in the version-history and calibration-changelog ledgers.
+- This note has been updated for `v4.10` after the promotion of `BANK_ICR_HARD_MIN` and a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers.
 - The grouping below was cross-checked against the current `input-data-versions/v4.10/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
 - One corrected point from that review: `BTL_PROBABILITY_MULTIPLIER` is source-backed by a WAS wave 3 note and is therefore grouped under `WAS wave 3 household data`.
 
@@ -73,10 +73,7 @@ Audit note:
 ## Parameters With No Explicit External Source Note
 
 ### Default or non-binding central-bank policy note
-10 parameters
-- `CENTRAL_BANK_LTV_HARD_MAX_FTB`
-- `CENTRAL_BANK_LTV_HARD_MAX_HM`
-- `CENTRAL_BANK_LTV_HARD_MAX_BTL`
+7 parameters
 - `CENTRAL_BANK_LTI_SOFT_MAX_FTB`
 - `CENTRAL_BANK_LTI_SOFT_MAX_HM`
 - `CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB`
@@ -91,12 +88,6 @@ Audit note:
 - `BTL_INCOME_DRIVEN_CAP_GAIN_COEFF`
 - `BTL_CAPITAL_DRIVEN_CAP_GAIN_COEFF`
 - `BTL_MIX_DRIVEN_CAP_GAIN_COEFF`
-
-### Config-only v4.1 bank policy alignment note
-3 parameters
-- `BANK_LTV_HARD_MAX_FTB`
-- `BANK_LTV_HARD_MAX_HM`
-- `BANK_LTV_HARD_MAX_BTL`
 
 ### No explicit source note in output-calibrated block
 4 parameters

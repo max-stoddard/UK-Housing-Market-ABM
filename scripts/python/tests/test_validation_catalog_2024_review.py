@@ -41,6 +41,22 @@ class TestValidationCatalog2024Review(unittest.TestCase):
         self.assertEqual(payload["core_advancesToHM"]["target_band"], {"lower": 20.4, "upper": 27.6})
         self.assertEqual(payload["core_advancesToBTL"]["target_band"], {"lower": 4.396, "upper": 5.947})
 
+    def test_hpi_review_payload_recomputes_rebased_and_cycle_metrics_from_local_source(self) -> None:
+        payload = build_live_review_data()["source_market_hpi"]
+        self.assertEqual(len(payload["index_sa_2024_values"]), 12)
+        self.assertEqual(len(payload["rebased_index_sa_2024_values"]), 12)
+        self.assertAlmostEqual(payload["rebased_index_sa_2024_values"][0], 1.0)
+        self.assertAlmostEqual(payload["annual_mean"], 1.0196877121520707)
+        self.assertEqual(
+            payload["full_history_std_window"],
+            {"start": "2005-01", "end": "2024-12", "count": 240},
+        )
+        self.assertAlmostEqual(payload["full_history_std"], 0.2766701944903836)
+        self.assertAlmostEqual(payload["cycle_period_months"], 167.5)
+        self.assertEqual(payload["mean_target_band"], {"lower": 0.86673455532926, "upper": 1.172640868974881})
+        self.assertEqual(payload["std_target_band"], {"lower": 0.23516966531682607, "upper": 0.3181707236639411})
+        self.assertEqual(payload["cycle_target_band"], {"lower": 142.375, "upper": 192.62499999999997})
+
     def test_spread_monthly_series_reads_twelve_2024_values_from_workbook(self) -> None:
         values = extract_spread_monthly_values_2024(
             Path("input-data-versions/validation-sources/2024/boe/housing-tools.xlsx")

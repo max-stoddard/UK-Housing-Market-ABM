@@ -5,6 +5,8 @@
 
 from __future__ import annotations
 
+import math
+import statistics
 import tempfile
 import unittest
 from pathlib import Path
@@ -14,6 +16,9 @@ from scripts.python.validation.model.extractors import (
     HOUSEHOLD_DISTRIBUTION_SPECS,
     extract_core_indicator_mean,
     extract_household_jsd,
+    extract_output_series_cycle_period,
+    extract_rebased_output_series_mean,
+    extract_rebased_output_series_std,
 )
 
 
@@ -31,6 +36,50 @@ class TestValidationFrameworkExtractors(unittest.TestCase):
             values = [1_000.0] * 200 + [52_000.0] * 1800
             path.write_text("\n".join(str(value) for value in values), encoding="utf-8")
             self.assertAlmostEqual(extract_core_indicator_mean(path, scale=0.001), 52.0)
+
+    def test_extract_rebased_output_series_mean_uses_first_window_value_as_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "Output-run1.csv"
+            sale_hpi_values = [99.0] * 200 + [2.0] + [4.0] * 1799 + [999.0] * 5
+            path.write_text(
+                "Sale HPI\n" + "\n".join(str(value) for value in sale_hpi_values) + "\n",
+                encoding="utf-8",
+            )
+            expected_mean = (1.0 + 1799.0 * 2.0) / 1800.0
+            self.assertAlmostEqual(
+                extract_rebased_output_series_mean(path, column_name="Sale HPI"),
+                expected_mean,
+            )
+
+    def test_extract_rebased_output_series_std_uses_population_std_after_rebasing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "Output-run1.csv"
+            sale_hpi_values = [77.0] * 200 + [2.0, 4.0, 6.0] * 600 + [888.0] * 5
+            path.write_text(
+                "Sale HPI\n" + "\n".join(str(value) for value in sale_hpi_values) + "\n",
+                encoding="utf-8",
+            )
+            rebased_window = [1.0, 2.0, 3.0] * 600
+            self.assertAlmostEqual(
+                extract_rebased_output_series_std(path, column_name="Sale HPI"),
+                statistics.pstdev(rebased_window),
+            )
+
+    def test_extract_output_series_cycle_period_detects_locked_fft_peak(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "Output-run1.csv"
+            values = []
+            for month in range(2005):
+                values.append(2.0 + 0.2 * math.sin((2.0 * math.pi * month) / 120.0))
+            path.write_text(
+                "Sale HPI\n" + "\n".join(f"{value:.12f}" for value in values) + "\n",
+                encoding="utf-8",
+            )
+            self.assertAlmostEqual(
+                extract_output_series_cycle_period(path, column_name="Sale HPI"),
+                120.0,
+                delta=6.0,
+            )
 
     def test_extract_household_jsd_returns_zero_for_identical_histograms(self) -> None:
         jsd = extract_household_jsd(

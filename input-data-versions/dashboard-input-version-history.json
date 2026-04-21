@@ -708,6 +708,7 @@
         "BANK_LTV_HARD_MAX_FTB",
         "BANK_LTV_HARD_MAX_HM",
         "BANK_LTV_HARD_MAX_BTL",
+        "CENTRAL_BANK_LTV_HARD_MAX_FTB",
         "CENTRAL_BANK_LTV_HARD_MAX_HM",
         "CENTRAL_BANK_LTV_HARD_MAX_BTL"
       ],
@@ -725,6 +726,10 @@
           "dataset_source": null
         },
         {
+          "config_parameter": "CENTRAL_BANK_LTV_HARD_MAX_FTB",
+          "dataset_source": null
+        },
+        {
           "config_parameter": "CENTRAL_BANK_LTV_HARD_MAX_HM",
           "dataset_source": null
         },
@@ -738,7 +743,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T10:26:26Z after the v4.1 LTV-cap alignment. overallCompositeLoss=0.446569. Family losses: Macro Credit and Market Activity=0.621725, Macro Prices, Leverage, and Affordability=1.156013, Household Distribution Realism=0.004269. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, rental yield, and interest rate spread. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T10:26:26Z after the v4.1 LTV-cap alignment. overallCompositeLoss=0.684077. Required metrics passing: Housing Transactions, Advances to FTB, Household Debt to Income, House Price to Household Disposable Income, House Price Growth, Income Distribution Realism, Housing Wealth Distribution Realism, and Financial Wealth Distribution Realism. Required metrics failing: Mortgage Approvals, Advances to Home Movers, Advances to BTL, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Interest Rate Spread. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -746,6 +751,7 @@
             "BANK_LTV_HARD_MAX_FTB",
             "BANK_LTV_HARD_MAX_HM",
             "BANK_LTV_HARD_MAX_BTL",
+            "CENTRAL_BANK_LTV_HARD_MAX_FTB",
             "CENTRAL_BANK_LTV_HARD_MAX_HM",
             "CENTRAL_BANK_LTV_HARD_MAX_BTL"
           ],
@@ -788,7 +794,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T10:26:37Z after promoting the Huber HPA expectation default. overallCompositeLoss=0.421590. Family losses: Macro Credit and Market Activity=0.515438, Macro Prices, Leverage, and Affordability=1.164346, Household Distribution Realism=0.003287. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, rental yield, and interest rate spread. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T10:26:37Z after promoting the Huber HPA expectation default. overallCompositeLoss=0.655058. Required metrics passing: Housing Transactions, Advances to FTB, Household Debt to Income, House Price to Household Disposable Income, House Price Growth, Income Distribution Realism, Housing Wealth Distribution Realism, and Financial Wealth Distribution Realism. Required metrics failing: Mortgage Approvals, Advances to Home Movers, Advances to BTL, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Interest Rate Spread. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -839,7 +845,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:39:36Z after promoting the BoE 2024 Bank Rate mean. overallCompositeLoss=0.191973. Family losses: Macro Credit and Market Activity=0.415124, Macro Prices, Leverage, and Affordability=0.328204, Household Distribution Realism=0.012282. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, interest rate spread, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:39:36Z after promoting the BoE 2024 Bank Rate mean. overallCompositeLoss=0.339373. Required metrics passing: Housing Transactions, Advances to FTB, Household Debt to Income, House Price to Household Disposable Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, Housing Wealth Distribution Realism, and Financial Wealth Distribution Realism. Required metrics failing: Mortgage Approvals, Advances to Home Movers, Advances to BTL, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, and Rental Yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -879,7 +885,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:43:12Z after promoting the 2024 mortgage-rate proxy mean. overallCompositeLoss=0.198547. Family losses: Macro Credit and Market Activity=0.407012, Macro Prices, Leverage, and Affordability=0.370125, Household Distribution Realism=0.008526. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, interest rate spread, and all three household-realism metrics. Required metrics warning: house price growth. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:43:12Z after promoting the 2024 mortgage-rate proxy mean. overallCompositeLoss=0.354519. Required metrics passing: Housing Transactions, Advances to FTB, Household Debt to Income, House Price to Household Disposable Income, Interest Rate Spread, Income Distribution Realism, Housing Wealth Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: House Price Growth. Required metrics failing: Mortgage Approvals, Advances to Home Movers, Advances to BTL, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, and Rental Yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -920,7 +926,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:47:07Z after promoting the pre-2025 delta-fit bank demand-response coefficient. overallCompositeLoss=0.204879. Family losses: Macro Credit and Market Activity=0.436580, Macro Prices, Leverage, and Affordability=0.372546, Household Distribution Realism=0.005196. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, interest rate spread, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, house price growth, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:47:07Z after promoting the pre-2025 delta-fit bank demand-response coefficient. overallCompositeLoss=0.368960. Required metrics passing: Housing Transactions, Advances to FTB, Household Debt to Income, House Price to Household Disposable Income, Interest Rate Spread, Income Distribution Realism, Housing Wealth Distribution Realism, and Financial Wealth Distribution Realism. Required metrics failing: Mortgage Approvals, Advances to Home Movers, Advances to BTL, House Price Growth, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, and Rental Yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -928,7 +934,7 @@
             "BANK_D_INTEREST_D_DEMAND"
           ],
           "improvement_summary": "Promoted the bank credit-response coefficient to the positive full-overlap spread-delta versus credit-delta fit.",
-          "why_changed": "To calibrate the demand-response term directly against the model’s own monthly update equation while rejecting the negative 2024-only fit.",
+          "why_changed": "To calibrate the demand-response term directly against the model\u2019s own monthly update equation while rejecting the negative 2024-only fit.",
           "method_chosen": "Through-origin fit on Delta spread_fraction = beta * Delta credit_per_household over the full 1995-2024 overlap, yielding BANK_D_INTEREST_D_DEMAND=5.471987263431394e-07; rejected 2024-only fit = -5.91912917550825e-06.",
           "decision_logic": "Objective=direct method justification; Why=the longer pre-2025 overlap yields a positive coefficient under the model-consistent delta equation while the 2024-only fit is negative and therefore not defensible as the live default; Tradeoff=the promoted coefficient is materially smaller than the legacy value and this intermediate version worsens several macro credit and affordability metrics versus v4.4."
         }
@@ -961,7 +967,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:50:50Z after promoting the 2024 VTUZ per-household credit-supply mean. overallCompositeLoss=0.191319. Family losses: Macro Credit and Market Activity=0.426685, Macro Prices, Leverage, and Affordability=0.329611, Household Distribution Realism=0.004491. Required metrics passing: housing transactions, advances to FTB, household debt to income, price-to-income, house price growth, interest rate spread, and all three household-realism metrics. Required metrics failing: mortgage approvals, advances to HM, advances to BTL, owner-occupier debt to income, and rental yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T12:50:50Z after promoting the 2024 VTUZ per-household credit-supply mean. overallCompositeLoss=0.355437. Required metrics passing: Housing Transactions, Advances to FTB, Household Debt to Income, House Price to Household Disposable Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, Housing Wealth Distribution Realism, and Financial Wealth Distribution Realism. Required metrics failing: Mortgage Approvals, Advances to Home Movers, Advances to BTL, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, and Rental Yield. The tracked validation summary no longer emits the legacy total-diff percentage fields."
       },
       "method_variations": [
         {
@@ -1009,7 +1015,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T17:34:28Z after promoting the official 2024 UK household and dwelling stock totals. overallCompositeLoss=0.395333 versus v4.6=0.191319 (delta +0.204014). Family losses: Macro Credit and Market Activity=0.668916, Macro Prices, Leverage, and Affordability=0.422276, Household Distribution Realism=0.245071. Required metrics passing: advances to FTB, advances to HM, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.6: housing transactions pass->fail, advances to HM fail->pass, household debt to income pass->fail, price-to-income pass->fail, and housing wealth distribution realism pass->fail. The corrected stock totals materially increase the implied houses-per-household target from 0.855681 to 1.072284, so this release should be treated as an official-source stock correction with a validation regression rather than a fit improvement. The prior v4.6 BoE per-household denominator remains intentionally unchanged in this version."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-15T17:34:28Z after promoting the official 2024 UK household and dwelling stock totals. overallCompositeLoss=0.474122 versus v4.6=0.355437 (delta +0.118685). Required metrics passing: Advances to FTB, Advances to Home Movers, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean and HPI Cycle Period. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Std, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.6: Housing Transactions pass->fail, Advances to Home Movers fail->pass, Household Debt to Income pass->fail, House Price to Household Disposable Income pass->fail, HPI Mean fail->warn, HPI Cycle Period fail->warn, and Housing Wealth Distribution Realism pass->fail. The corrected stock totals materially increase the implied houses-per-household target from 0.855681 to 1.072284, so this release should be treated as an official-source stock correction with a validation regression rather than a fit improvement. The prior v4.6 BoE per-household denominator remains intentionally unchanged in this version."
       },
       "method_variations": [
         {
@@ -1049,7 +1055,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-16T12:12:55Z after promoting the published EHS 2023-24 Annex Table 3.6 all-owner-occupier hold period. overallCompositeLoss=0.393724 versus v4.7=0.395333 (delta -0.001609). Family losses: Macro Credit and Market Activity=0.662376, Macro Prices, Leverage, and Affordability=0.423266, Household Distribution Realism=0.244627. Required metrics passing: advances to FTB, advances to HM, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.7: none. This release should be treated as an official EHS hold-period refresh with a small overall validation improvement but no required-metric status changes."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-16T12:12:55Z after promoting the published EHS 2023-24 Annex Table 3.6 all-owner-occupier hold period. overallCompositeLoss=0.481595 versus v4.7=0.474122 (delta +0.007473). Required metrics passing: Advances to FTB, Advances to Home Movers, House Price Growth, HPI Mean, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.7: HPI Mean warn->pass and HPI Cycle Period warn->fail. This release should be treated as an official EHS hold-period refresh with a small overall validation regression and two HPI status changes versus v4.7."
       },
       "method_variations": [
         {
@@ -1092,7 +1098,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-17T16:14:38Z after promoting the public-proxy BANK_AGE_LIMIT recalibration to 75. overallCompositeLoss=0.494137 versus v4.8=0.393724 (delta +0.100412). Family losses: Macro Credit and Market Activity=0.895112, Macro Prices, Leverage, and Affordability=0.499376, Household Distribution Realism=0.291029. Required metrics passing: advances to FTB, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to HM, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.8: advances to HM pass->fail. This release should be treated as a public-proxy BANK_AGE_LIMIT refresh that corrects the unrealistic legacy age cap but materially worsens tracked 2024 validation versus v4.8."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-17T16:14:38Z after promoting the public-proxy BANK_AGE_LIMIT recalibration to 75. overallCompositeLoss=0.597213 versus v4.8=0.481595 (delta +0.115618). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.8: Advances to Home Movers pass->fail and HPI Mean pass->warn. This release should be treated as a public-proxy BANK_AGE_LIMIT refresh that corrects the unrealistic legacy age cap but materially worsens tracked 2024 validation versus v4.8."
       },
       "method_variations": [
         {
@@ -1132,7 +1138,7 @@
         "income_diff_pct": null,
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
-        "note": "Tracked 2024 validation summary regenerated on 2026-04-17T17:30:35Z after promoting the public-proxy BANK_ICR_HARD_MIN recalibration to 1.25 in v4.10. overallCompositeLoss=0.494066 versus v4.9=0.494137 (delta -0.000070). Family losses: Macro Credit and Market Activity=0.928062, Macro Prices, Leverage, and Affordability=0.501296, Household Distribution Realism=0.273454. Required metrics passing: advances to FTB, house price growth, interest rate spread, income distribution realism, and financial wealth distribution realism. Required metrics failing: mortgage approvals, housing transactions, advances to HM, advances to BTL, household debt to income, house price to household disposable income, owner-occupier debt to income, rental yield, and housing wealth distribution realism. Status changes versus v4.9: none. This release should be treated as a public-proxy BANK_ICR_HARD_MIN refresh that resolves the blocked legacy source note while leaving tracked 2024 validation essentially unchanged versus v4.9. The tracked validation suite does not directly validate the ICR floor; it validates downstream model behavior."
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-17T17:30:35Z after promoting the public-proxy BANK_ICR_HARD_MIN recalibration to 1.25 in v4.10. overallCompositeLoss=0.601011 versus v4.9=0.597213 (delta +0.003799). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.9: none. This release should be treated as a public-proxy BANK_ICR_HARD_MIN refresh that resolves the blocked legacy source note while leaving tracked 2024 validation essentially unchanged versus v4.9. The tracked validation suite does not directly validate the ICR floor; it validates downstream model behavior."
       },
       "method_variations": [
         {

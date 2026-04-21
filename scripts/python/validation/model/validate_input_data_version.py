@@ -18,6 +18,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", required=True, help="Transient validation output directory")
     parser.add_argument("--maven-bin", default="mvn", help="Maven executable")
     parser.add_argument("--was-data-root", default=None, help="Optional WAS data root override")
+    parser.add_argument(
+        "--reuse-existing-output",
+        action="store_true",
+        help="Reuse existing per-seed outputs from --output-dir instead of rerunning the model",
+    )
     return parser.parse_args()
 
 
@@ -35,6 +40,7 @@ def main() -> None:
         output_dir=Path(args.output_dir),
         maven_bin=args.maven_bin,
         was_data_root=Path(args.was_data_root) if args.was_data_root else None,
+        reuse_existing_output=args.reuse_existing_output,
     )
     print(
         f"Published validation summary for {summary['version']} "

@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "version": "v3.3",
-  "generatedAt": "2026-04-15T10:25:30Z",
+  "generatedAt": "2026-04-20T19:41:57Z",
   "seeds": [
     1,
     2,
@@ -16,46 +16,10 @@
     "startIndex": 200,
     "endIndex": 2000
   },
-  "overallCompositeLoss": 0.5368010234678837,
-  "familySummaries": [
-    {
-      "familyId": "macro_credit_activity",
-      "label": "Macro Credit and Market Activity",
-      "loss": 0.7529282083606113,
-      "statusCounts": {
-        "pass": 1,
-        "warn": 0,
-        "fail": 4,
-        "unsupported": 0
-      }
-    },
-    {
-      "familyId": "macro_prices_leverage_affordability",
-      "label": "Macro Prices, Leverage, and Affordability",
-      "loss": 1.2181356618567938,
-      "statusCounts": {
-        "pass": 2,
-        "warn": 0,
-        "fail": 4,
-        "unsupported": 0
-      }
-    },
-    {
-      "familyId": "household_distribution_realism",
-      "label": "Household Distribution Realism",
-      "loss": 0.08807011182706481,
-      "statusCounts": {
-        "pass": 2,
-        "warn": 1,
-        "fail": 0,
-        "unsupported": 0
-      }
-    }
-  ],
+  "overallCompositeLoss": 0.7184148682910241,
   "metrics": [
     {
       "metricId": "core_mortgageApprovals",
-      "familyId": "macro_credit_activity",
       "label": "Mortgage Approvals",
       "requirement": "required",
       "units": "count/month",
@@ -87,11 +51,11 @@
       "normalizedDistance": 0.13660815328169582,
       "normalizedIqr": 0.015292440096027529,
       "metricLoss": 0.6404312633057027,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_housingTransactions",
-      "familyId": "macro_credit_activity",
       "label": "Housing Transactions",
       "requirement": "required",
       "units": "count/month",
@@ -123,11 +87,11 @@
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.014321423858537827,
       "metricLoss": 0.003580355964634457,
+      "metricWeight": 1.0,
       "status": "pass"
     },
     {
       "metricId": "core_advancesToFTB",
-      "familyId": "macro_credit_activity",
       "label": "Advances to FTB",
       "requirement": "required",
       "units": "count/month",
@@ -172,11 +136,11 @@
       "normalizedDistance": 0.05021852045908185,
       "normalizedIqr": 0.009627040918163696,
       "metricLoss": 0.5526252806886228,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_advancesToHM",
-      "familyId": "macro_credit_activity",
       "label": "Advances to Home Movers",
       "requirement": "required",
       "units": "count/month",
@@ -221,11 +185,11 @@
       "normalizedDistance": 0.27377278645833325,
       "normalizedIqr": 0.03348605324074083,
       "metricLoss": 0.7821442997685184,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_advancesToBTL",
-      "familyId": "macro_credit_activity",
       "label": "Advances to BTL",
       "requirement": "required",
       "units": "count/month",
@@ -306,11 +270,11 @@
       "normalizedDistance": 1.2735413477291648,
       "normalizedIqr": 0.049273977385652486,
       "metricLoss": 1.785859842075578,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_debtToIncome",
-      "familyId": "macro_prices_leverage_affordability",
       "label": "Household Debt to Income",
       "requirement": "required",
       "units": "%",
@@ -342,11 +306,11 @@
       "normalizedDistance": 0.2595291612688922,
       "normalizedIqr": 0.012515024082378357,
       "metricLoss": 0.7626579172894867,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_priceToIncome",
-      "familyId": "macro_prices_leverage_affordability",
       "label": "House Price to Household Disposable Income",
       "requirement": "required",
       "units": "ratio",
@@ -378,11 +342,11 @@
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.03328351080246921,
       "metricLoss": 0.008320877700617303,
+      "metricWeight": 1.0,
       "status": "pass"
     },
     {
       "metricId": "core_housePriceGrowth",
-      "familyId": "macro_prices_leverage_affordability",
       "label": "House Price Growth",
       "requirement": "required",
       "units": "%",
@@ -414,11 +378,158 @@
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.033141287878787895,
       "metricLoss": 0.008285321969696974,
+      "metricWeight": 1.0,
       "status": "pass"
     },
     {
+      "metricId": "core_hpiMean",
+      "label": "HPI Mean",
+      "requirement": "required",
+      "units": "rebased index",
+      "sourceLabel": "HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2024)",
+      "sourceIndicatorLabel": "Rebased UK seasonally adjusted HPI, 2024 annual mean",
+      "sourceDocumentPath": "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+      "sourceTextPath": "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt",
+      "sourceTable": "United Kingdom IndexSA rows for 2024-01 through 2024-12, rebased to 2024-01 = 1.0",
+      "sourcePage": 1,
+      "rawSourceValue": 1.0196877121520707,
+      "sourceValue": 1.0196877121520707,
+      "sourceAsOf": "2024 annual mean",
+      "sourceUnits": "rebased index",
+      "comparisonUnits": "rebased index",
+      "mappingStatus": "derived_match",
+      "bandMethod": "fixed_plus_minus_15pct_around_official_value",
+      "bandNotes": "2024 UK IndexSA values rebased to January 2024 = 1.0 before computing the annual mean. Target band is +/-15% around the official rebased mean.",
+      "sourceReferences": [
+        {
+          "label": "HM Land Registry UK HPI full file December 2024",
+          "sourceDocumentPath": "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+          "sourceTextPath": "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt",
+          "sourceTable": "United Kingdom IndexSA rows for 2024-01 through 2024-12",
+          "sourcePage": 1,
+          "sourceIndicatorLabel": "UK HPI IndexSA",
+          "rawSourceValue": 1.0196877121520707,
+          "sourceAsOf": "2024 annual mean after rebasing to January 2024",
+          "sourceUnits": "rebased index",
+          "notes": "Official IndexSA values are rebased to January 2024 = 1.0 before computing the 2024 mean."
+        }
+      ],
+      "targetBand": {
+        "lower": 0.86673455532926,
+        "upper": 1.172640868974881
+      },
+      "seedMean": 0.9711582092930782,
+      "p25": 0.9545959917981404,
+      "p75": 0.995274172948798,
+      "insideRate": 1.0,
+      "lossScale": 1.0196877121520707,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.0,
+      "normalizedIqr": 0.039892783511929944,
+      "metricLoss": 0.009973195877982486,
+      "metricWeight": 1.0,
+      "status": "pass"
+    },
+    {
+      "metricId": "core_hpiStd",
+      "label": "HPI Std",
+      "requirement": "required",
+      "units": "rebased index",
+      "sourceLabel": "HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2005 over 2005-01 to 2024-12)",
+      "sourceIndicatorLabel": "Rebased UK seasonally adjusted HPI, 2005-01 to 2024-12 population std",
+      "sourceDocumentPath": "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+      "sourceTextPath": "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt",
+      "sourceTable": "United Kingdom IndexSA rows for 2005-01 through 2024-12, rebased to 2005-01 = 1.0",
+      "sourcePage": 1,
+      "rawSourceValue": 0.2766701944903836,
+      "sourceValue": 0.2766701944903836,
+      "sourceAsOf": "2005-01 to 2024-12 population std",
+      "sourceUnits": "rebased index",
+      "comparisonUnits": "rebased index",
+      "mappingStatus": "derived_match",
+      "bandMethod": "fixed_plus_minus_15pct_around_official_value",
+      "bandNotes": "United Kingdom IndexSA values from 2005-01 through 2024-12 are rebased to January 2005 = 1.0 before computing the long-run population standard deviation. Target band is +/-15% around the official rebased std.",
+      "sourceReferences": [
+        {
+          "label": "HM Land Registry UK HPI full file December 2024",
+          "sourceDocumentPath": "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+          "sourceTextPath": "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt",
+          "sourceTable": "United Kingdom IndexSA rows for 2005-01 through 2024-12",
+          "sourcePage": 1,
+          "sourceIndicatorLabel": "UK HPI IndexSA",
+          "rawSourceValue": 0.2766701944903836,
+          "sourceAsOf": "2005-01 to 2024-12 population std after rebasing to January 2005",
+          "sourceUnits": "rebased index",
+          "notes": "Official IndexSA values from 2005-01 through 2024-12 are rebased to January 2005 = 1.0 before computing the long-run population std."
+        }
+      ],
+      "targetBand": {
+        "lower": 0.23516966531682607,
+        "upper": 0.3181707236639411
+      },
+      "seedMean": 0.3136421815810828,
+      "p25": 0.29813469293244016,
+      "p75": 0.32946925626979967,
+      "insideRate": 0.5,
+      "lossScale": 0.2766701944903836,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.0,
+      "normalizedIqr": 0.11325601369918661,
+      "metricLoss": 0.2783140034247967,
+      "metricWeight": 1.0,
+      "status": "warn"
+    },
+    {
+      "metricId": "core_hpiCyclePeriod",
+      "label": "HPI Cycle Period",
+      "requirement": "required",
+      "units": "months",
+      "sourceLabel": "HM Land Registry UK HPI full file December 2024 (UK Index history through 2024-12)",
+      "sourceIndicatorLabel": "UK HPI dominant cycle period",
+      "sourceDocumentPath": "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+      "sourceTextPath": "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt",
+      "sourceTable": "United Kingdom Index history through 2024-12; 12-month moving average, log transform, linear detrend, FFT dominant peak over 60..240 months",
+      "sourcePage": 1,
+      "rawSourceValue": 167.5,
+      "sourceValue": 167.5,
+      "sourceAsOf": "1968-04 to 2024-12 history, December 2024 release",
+      "sourceUnits": "months",
+      "comparisonUnits": "months",
+      "mappingStatus": "derived_match",
+      "bandMethod": "fixed_plus_minus_15pct_around_official_value",
+      "bandNotes": "Cycle period is derived from the archived United Kingdom Index history through December 2024 using the locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months. Target band is +/-15% around the official derived period.",
+      "sourceReferences": [
+        {
+          "label": "HM Land Registry UK HPI full file December 2024",
+          "sourceDocumentPath": "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+          "sourceTextPath": "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt",
+          "sourceTable": "United Kingdom Index history through 2024-12",
+          "sourcePage": 1,
+          "sourceIndicatorLabel": "UK HPI Index",
+          "rawSourceValue": 167.5,
+          "sourceAsOf": "1968-04 to 2024-12 history",
+          "sourceUnits": "months",
+          "notes": "Derived with a 12-month moving average, log transform, linear detrend, and FFT peak search over 60..240 months."
+        }
+      ],
+      "targetBand": {
+        "lower": 142.375,
+        "upper": 192.62499999999997
+      },
+      "seedMean": 127.78571428571429,
+      "p25": 127.78571428571429,
+      "p75": 127.78571428571429,
+      "insideRate": 0.0,
+      "lossScale": 167.5,
+      "lossScaleBasis": "source_value",
+      "normalizedDistance": 0.08710021321961617,
+      "normalizedIqr": 0.0,
+      "metricLoss": 0.5871002132196161,
+      "metricWeight": 1.0,
+      "status": "fail"
+    },
+    {
       "metricId": "core_ooDebtToIncome",
-      "familyId": "macro_prices_leverage_affordability",
       "label": "Owner-Occupier Debt to Income",
       "requirement": "required",
       "units": "%",
@@ -511,11 +622,11 @@
       "normalizedDistance": 0.17440882613546815,
       "normalizedIqr": 0.014581565469555554,
       "metricLoss": 0.678054217502857,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_rentalYield",
-      "familyId": "macro_prices_leverage_affordability",
       "label": "Rental Yield",
       "requirement": "required",
       "units": "%",
@@ -596,11 +707,11 @@
       "normalizedDistance": 0.5843622027747705,
       "normalizedIqr": 0.013852405870323535,
       "metricLoss": 1.0878253042423514,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "core_interestRateSpread",
-      "familyId": "macro_prices_leverage_affordability",
       "label": "Interest Rate Spread",
       "requirement": "required",
       "units": "percentage points",
@@ -681,11 +792,11 @@
       "normalizedDistance": 4.2601165338991,
       "normalizedIqr": 0.014215194146610079,
       "metricLoss": 4.763670332435753,
+      "metricWeight": 1.0,
       "status": "fail"
     },
     {
       "metricId": "income_distribution_jsd",
-      "familyId": "household_distribution_realism",
       "label": "Income Distribution Realism",
       "requirement": "required",
       "units": "JSD",
@@ -717,11 +828,11 @@
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.007863839842787528,
       "metricLoss": 0.001965959960696882,
+      "metricWeight": 1.0,
       "status": "pass"
     },
     {
       "metricId": "housing_wealth_distribution_jsd",
-      "familyId": "household_distribution_realism",
       "label": "Housing Wealth Distribution Realism",
       "requirement": "required",
       "units": "JSD",
@@ -753,11 +864,11 @@
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.03553710194336274,
       "metricLoss": 0.2588842754858407,
+      "metricWeight": 1.0,
       "status": "warn"
     },
     {
       "metricId": "financial_wealth_distribution_jsd",
-      "familyId": "household_distribution_realism",
       "label": "Financial Wealth Distribution Realism",
       "requirement": "required",
       "units": "JSD",
@@ -789,6 +900,7 @@
       "normalizedDistance": 0.0,
       "normalizedIqr": 0.01344040013862742,
       "metricLoss": 0.003360100034656855,
+      "metricWeight": 1.0,
       "status": "pass"
     }
   ]

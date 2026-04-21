@@ -13,6 +13,7 @@ Arguments:
 
 Options:
   --output-dir <path>     Transient output directory. Defaults to tmp/validation/<version>.
+  --reuse-existing-output Reuse existing per-seed outputs from --output-dir instead of rerunning the model.
 EOF
 }
 
@@ -25,6 +26,7 @@ input_version="$1"
 shift
 
 output_dir=""
+reuse_existing_output="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)
@@ -34,6 +36,10 @@ while [[ $# -gt 0 ]]; do
       fi
       output_dir="$2"
       shift 2
+      ;;
+    --reuse-existing-output)
+      reuse_existing_output="true"
+      shift
       ;;
     *)
       echo "Unknown option: $1" >&2
@@ -51,7 +57,15 @@ if [[ -z "${output_dir}" ]]; then
   output_dir="tmp/validation/${input_version}"
 fi
 
-python3 -m scripts.python.validation.model.validate_input_data_version \
-  --version "${input_version}" \
-  --seeds 1,2,3,4,5,6,7,8 \
+validation_args=(
+  -m scripts.python.validation.model.validate_input_data_version
+  --version "${input_version}"
+  --seeds 1,2,3,4,5,6,7,8
   --output-dir "${output_dir}"
+)
+
+if [[ "${reuse_existing_output}" == "true" ]]; then
+  validation_args+=(--reuse-existing-output)
+fi
+
+python3 "${validation_args[@]}"

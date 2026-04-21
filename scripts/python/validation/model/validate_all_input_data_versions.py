@@ -11,6 +11,7 @@ from pathlib import Path
 
 from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled
 from scripts.python.validation.model.runner import (
+    load_reused_validation_results,
     publish_validation_results,
     resolve_was_data_root,
     run_validation_seed,
@@ -36,6 +37,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--maven-bin", default="mvn", help="Maven executable")
     parser.add_argument(
         "--was-data-root", default=None, help="Optional WAS data root override"
+    )
+    parser.add_argument(
+        "--reuse-existing-output",
+        action="store_true",
+        help="Reuse existing per-seed outputs under --output-root/<version> instead of rerunning the model",
     )
     return parser.parse_args()
 
@@ -92,6 +98,7 @@ def run_validation_campaign(
     output_root: Path,
     maven_bin: str = "mvn",
     was_data_root: Path | None = None,
+    reuse_existing_output: bool = False,
 ) -> tuple[list[str], list[str]]:
     """Run and publish a multi-version validation refresh."""
 
@@ -101,6 +108,31 @@ def run_validation_campaign(
     resolved_was_data_root = resolve_was_data_root(
         repo_root=repo_root, explicit_root=was_data_root
     )
+    if reuse_existing_output:
+        published_versions: list[str] = []
+        failures: list[str] = []
+        for version in versions:
+            version_output_dir = output_root / version
+            try:
+                run_results = load_reused_validation_results(
+                    output_dir=version_output_dir,
+                    seeds=seeds,
+                    was_data_root=resolved_was_data_root,
+                )
+                publish_validation_results(
+                    repo_root=repo_root,
+                    version=version,
+                    seeds=seeds,
+                    output_dir=version_output_dir,
+                    run_results=run_results,
+                )
+                published_versions.append(version)
+                print(f"Published {version} from existing outputs")
+            except Exception as error:
+                failures.append(f"{version}: {error}")
+                print(f"Failed {version} from existing outputs: {error}")
+        return published_versions, failures
+
     ensure_project_compiled(repo_root, maven_bin=maven_bin)
 
     results_by_version: dict[str, list[dict[str, object]]] = {
@@ -180,6 +212,7 @@ def main() -> None:
         output_root=output_root,
         maven_bin=args.maven_bin,
         was_data_root=Path(args.was_data_root) if args.was_data_root else None,
+        reuse_existing_output=args.reuse_existing_output,
     )
 
     if failures:

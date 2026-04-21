@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
+from typing import Sequence
+
 from scripts.python.validation.model.schema import LossScaleBasis
-from scripts.python.validation.model.validation_catalog_2024 import FAMILY_WEIGHTS
 
 
 def compute_outside_distance(*, seed_mean: float, lower_bound: float, upper_bound: float) -> float:
@@ -109,14 +110,22 @@ def compute_metric_loss(
 
 def compute_overall_composite_loss(
     *,
-    macro_credit_activity_loss: float,
-    macro_prices_leverage_affordability_loss: float,
-    household_distribution_realism_loss: float,
+    metric_losses: Sequence[float],
+    metric_weights: Sequence[float] | None = None,
 ) -> float:
-    """Aggregate the three scored families into the overall composite loss."""
+    """Aggregate scored metrics into the overall composite loss."""
 
-    return (
-        FAMILY_WEIGHTS["macro_credit_activity"] * macro_credit_activity_loss
-        + FAMILY_WEIGHTS["macro_prices_leverage_affordability"] * macro_prices_leverage_affordability_loss
-        + FAMILY_WEIGHTS["household_distribution_realism"] * household_distribution_realism_loss
-    )
+    if not metric_losses:
+        raise ValueError("At least one scored metric loss is required")
+
+    if metric_weights is None:
+        metric_weights = [1.0] * len(metric_losses)
+    if len(metric_losses) != len(metric_weights):
+        raise ValueError("Metric losses and weights must have the same length")
+
+    total_weight = float(sum(metric_weights))
+    if total_weight <= 0.0:
+        raise ValueError("Total metric weight must be positive")
+
+    weighted_loss = sum(metric_loss * metric_weight for metric_loss, metric_weight in zip(metric_losses, metric_weights))
+    return weighted_loss / total_weight

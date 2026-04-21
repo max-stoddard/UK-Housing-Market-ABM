@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import csv
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -14,13 +15,14 @@ from typing import Mapping, Sequence
 import numpy as np
 
 from scripts.python.helpers.common.abm_policy_sweep import build_snapshot_local_config_text, ensure_project_compiled
-from scripts.python.validation.model.extractors import extract_core_indicator_mean, extract_household_metric_from_results
+from scripts.python.validation.model.extractors import (
+    extract_core_indicator_mean,
+    extract_household_metric_from_results,
+    extract_output_series_metric_from_results,
+)
 from scripts.python.validation.model.publish import write_transient_artifacts, write_validation_summary
 from scripts.python.validation.model.schema import (
     CANONICAL_VALIDATION_SEEDS,
-    FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM,
-    FAMILY_MACRO_CREDIT_ACTIVITY,
-    FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
     VALIDATION_SCHEMA_VERSION,
     VALIDATION_WINDOW_END,
     VALIDATION_WINDOW_START,
@@ -36,7 +38,7 @@ from scripts.python.validation.model.scoring import (
     normalize_by_loss_scale,
     resolve_loss_scale,
 )
-from scripts.python.validation.model.validation_catalog_2024 import FAMILY_DEFINITIONS, TARGETS_BY_ID
+from scripts.python.validation.model.validation_catalog_2024 import TARGETS_BY_ID
 
 VALIDATION_RECORDING_OVERRIDES = {
     "recordTransactions": "false",
@@ -62,6 +64,7 @@ def run_validation_for_version(
     output_dir: Path,
     maven_bin: str = "mvn",
     was_data_root: Path | None = None,
+    reuse_existing_output: bool = False,
     allow_test_override: bool = False,
 ) -> dict:
     """Run canonical validation for one input-data version and publish artifacts."""
@@ -71,14 +74,21 @@ def run_validation_for_version(
         raise ValueError("Canonical validation requires seeds 1..8 unless an explicit test-only override is used")
 
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
-    run_results = run_snapshot_local_validation(
-        repo_root=repo_root,
-        version=version,
-        seeds=seeds,
-        output_dir=output_dir,
-        maven_bin=maven_bin,
-        was_data_root=resolved_was_data_root,
-    )
+    if reuse_existing_output:
+        run_results = load_reused_validation_results(
+            output_dir=output_dir,
+            seeds=seeds,
+            was_data_root=resolved_was_data_root,
+        )
+    else:
+        run_results = run_snapshot_local_validation(
+            repo_root=repo_root,
+            version=version,
+            seeds=seeds,
+            output_dir=output_dir,
+            maven_bin=maven_bin,
+            was_data_root=resolved_was_data_root,
+        )
     return publish_validation_results(
         repo_root=repo_root,
         version=version,
@@ -140,6 +150,41 @@ def run_snapshot_local_validation(
             )
         )
 
+    return seed_results
+
+
+def load_reused_validation_results(
+    *,
+    output_dir: Path,
+    seeds: Sequence[int],
+    was_data_root: Path,
+) -> list[dict[str, object]]:
+    """Reuse existing per-seed outputs instead of rerunning the model."""
+
+    cached_seed_results = _load_cached_seed_results(output_dir)
+    seed_results: list[dict[str, object]] = []
+    for seed in seeds:
+        seed_output_dir = output_dir / f"seed-{seed}"
+        if not seed_output_dir.exists():
+            raise RuntimeError(f"Missing existing validation output directory: {seed_output_dir}")
+        cached_entry = cached_seed_results.get(seed)
+        metrics = dict(cached_entry["metrics"]) if cached_entry is not None else {}
+        missing_metric_ids = [metric_id for metric_id in TARGETS_BY_ID if metric_id not in metrics]
+        if missing_metric_ids:
+            metrics.update(
+                _extract_seed_metrics(
+                    seed_output_dir=seed_output_dir,
+                    was_data_root=was_data_root,
+                    metric_ids=missing_metric_ids,
+                )
+            )
+        seed_results.append(
+            {
+                "seed": seed,
+                "outputDir": cached_entry["outputDir"] if cached_entry is not None else str(seed_output_dir),
+                "metrics": metrics,
+            }
+        )
     return seed_results
 
 
@@ -223,11 +268,8 @@ def build_validation_summary(
     target_lookup = targets_by_id or TARGETS_BY_ID
     metric_ids = _ordered_metric_ids(seed_results=seed_results, target_lookup=target_lookup)
     summary_metrics: list[dict] = []
-    family_status_counts: dict[str, dict[str, int]] = {
-        family.family_id: {"pass": 0, "warn": 0, "fail": 0, "unsupported": 0}
-        for family in FAMILY_DEFINITIONS
-    }
-    family_required_losses: dict[str, list[float]] = {family.family_id: [] for family in FAMILY_DEFINITIONS}
+    scored_metric_losses: list[float] = []
+    scored_metric_weights: list[float] = []
 
     for metric_id in metric_ids:
         target = _coerce_target_definition(metric_id, target_lookup.get(metric_id))
@@ -238,7 +280,6 @@ def build_validation_summary(
 
         metric_summary = {
             "metricId": target.metric_id,
-            "familyId": target.family_id,
             "label": target.label,
             "requirement": target.requirement,
             "units": target.units,
@@ -267,6 +308,7 @@ def build_validation_summary(
             "normalizedDistance": None,
             "normalizedIqr": None,
             "metricLoss": None,
+            "metricWeight": 0.0,
             "status": "unsupported",
         }
         if target.source_metadata is not None:
@@ -338,27 +380,14 @@ def build_validation_summary(
                 }
             )
             if target.requirement == "required":
-                family_required_losses[target.family_id].append(metric_loss)
+                metric_summary["metricWeight"] = 1.0
+                scored_metric_losses.append(metric_loss)
+                scored_metric_weights.append(1.0)
 
-        family_status_counts[target.family_id][metric_summary["status"]] += 1
         summary_metrics.append(metric_summary)
 
-    family_summaries = []
-    family_losses: dict[str, float] = {}
-    for family in FAMILY_DEFINITIONS:
-        losses = family_required_losses[family.family_id]
-        if not losses:
-            raise RuntimeError(f"Missing required metrics for family {family.family_id}")
-        family_loss = float(np.mean(losses))
-        family_losses[family.family_id] = family_loss
-        family_summaries.append(
-            {
-                "familyId": family.family_id,
-                "label": family.label,
-                "loss": family_loss,
-                "statusCounts": family_status_counts[family.family_id],
-            }
-        )
+    if not scored_metric_losses:
+        raise RuntimeError("Missing required metric losses for overall composite scoring")
 
     return {
         "schemaVersion": VALIDATION_SCHEMA_VERSION,
@@ -370,24 +399,34 @@ def build_validation_summary(
             "endIndex": VALIDATION_WINDOW_END,
         },
         "overallCompositeLoss": compute_overall_composite_loss(
-            macro_credit_activity_loss=family_losses[FAMILY_MACRO_CREDIT_ACTIVITY],
-            macro_prices_leverage_affordability_loss=family_losses[FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY],
-            household_distribution_realism_loss=family_losses[FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM],
+            metric_losses=scored_metric_losses,
+            metric_weights=scored_metric_weights,
         ),
-        "familySummaries": family_summaries,
         "metrics": summary_metrics,
     }
 
 
-def _extract_seed_metrics(*, seed_output_dir: Path, was_data_root: Path) -> dict[str, float]:
+def _extract_seed_metrics(
+    *,
+    seed_output_dir: Path,
+    was_data_root: Path,
+    metric_ids: Sequence[str] | None = None,
+) -> dict[str, float]:
     metrics: dict[str, float] = {}
-    for metric in TARGETS_BY_ID.values():
+    selected_metric_ids = list(metric_ids) if metric_ids is not None else list(TARGETS_BY_ID.keys())
+    for metric_id in selected_metric_ids:
+        metric = TARGETS_BY_ID[metric_id]
         if metric.kind == "core_indicator":
             if not metric.file_name:
                 raise RuntimeError(f"Missing core-indicator file mapping for {metric.metric_id}")
             metrics[metric.metric_id] = extract_core_indicator_mean(
                 seed_output_dir / metric.file_name,
                 scale=metric.scale,
+            )
+        elif metric.kind == "output_series":
+            metrics[metric.metric_id] = extract_output_series_metric_from_results(
+                metric_id=metric.metric_id,
+                results_dir=seed_output_dir,
             )
         elif metric.kind == "household_jsd":
             metrics[metric.metric_id] = extract_household_metric_from_results(
@@ -398,6 +437,27 @@ def _extract_seed_metrics(*, seed_output_dir: Path, was_data_root: Path) -> dict
         else:
             raise RuntimeError(f"Unsupported metric kind for {metric.metric_id}: {metric.kind}")
     return metrics
+
+
+def _load_cached_seed_results(output_dir: Path) -> dict[int, dict[str, object]]:
+    seed_results_path = output_dir / "validation_seed_results.csv"
+    if not seed_results_path.exists():
+        return {}
+
+    cached: dict[int, dict[str, object]] = {}
+    with seed_results_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            seed = int(row["seed"])
+            cached.setdefault(
+                seed,
+                {
+                    "outputDir": row.get("outputDir") or str(output_dir / f"seed-{seed}"),
+                    "metrics": {},
+                },
+            )
+            cached[seed]["metrics"][row["metricId"]] = float(row["value"])
+    return cached
 
 
 def _metric_seed_values(*, metric_id: str, seed_results: Sequence[dict[str, object]]) -> list[float]:
@@ -435,7 +495,7 @@ def _coerce_target_definition(metric_id: str, raw_target: object | None) -> Metr
     if not isinstance(raw_target, Mapping):
         raise RuntimeError(f"Missing target metadata for required metric {metric_id}")
 
-    required_fields = {"metric_id", "family_id", "label", "requirement", "units", "source_label", "kind"}
+    required_fields = {"metric_id", "label", "requirement", "units", "source_label", "kind"}
     missing_fields = sorted(field for field in required_fields if field not in raw_target)
     if missing_fields:
         raise RuntimeError(f"Missing target metadata for required metric {metric_id}: {missing_fields}")
@@ -443,7 +503,6 @@ def _coerce_target_definition(metric_id: str, raw_target: object | None) -> Metr
     target_band = raw_target.get("target_band")
     return MetricDefinition(
         metric_id=str(raw_target["metric_id"]),
-        family_id=str(raw_target["family_id"]),
         label=str(raw_target["label"]),
         requirement=str(raw_target["requirement"]),
         units=str(raw_target["units"]),

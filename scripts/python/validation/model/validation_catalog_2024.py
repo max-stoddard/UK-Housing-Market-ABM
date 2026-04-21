@@ -8,10 +8,6 @@ from __future__ import annotations
 from statistics import fmean
 
 from scripts.python.validation.model.schema import (
-    FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM,
-    FAMILY_MACRO_CREDIT_ACTIVITY,
-    FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
-    FamilyDefinition,
     MetricDefinition,
     MetricSourceMetadata,
     MetricSourceReference,
@@ -35,6 +31,9 @@ UNSUPPORTED_FPC_METRIC_IDS = (
     "core_advancesToFTB",
     "core_advancesToHM",
     "core_advancesToBTL",
+    "core_hpiMean",
+    "core_hpiStd",
+    "core_hpiCyclePeriod",
     "core_ooDebtToIncome",
     "core_rentalYield",
 )
@@ -134,6 +133,7 @@ UKF_BTL_2024_TEXT_PATH = "input-data-versions/validation-sources/2024/ukf/btl-mo
 UKF_BTL_2024_TABLE = "Latest 2024 Q* summary panels"
 
 ADVANCES_TARGET_TOLERANCE = 0.15
+HPI_TARGET_TOLERANCE = 0.15
 
 FTB_ANNUAL_LOANS = 334_000.0
 HM_ANNUAL_LOANS = 288_000.0
@@ -146,6 +146,13 @@ BTL_ANNUAL_LOANS = BTL_HOUSE_PURCHASE_Q1 + BTL_HOUSE_PURCHASE_Q2 + BTL_HOUSE_PUR
 
 def _annual_total_to_monthly_thousands(raw_value: float) -> float:
     return raw_value / 12.0 / 1_000.0
+
+
+def _plus_minus_tolerance_band(*, source_value: float, tolerance: float) -> TargetBand:
+    return TargetBand(
+        lower=source_value * (1.0 - tolerance),
+        upper=source_value * (1.0 + tolerance),
+    )
 
 
 UKF_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
@@ -280,6 +287,8 @@ UKF_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
 BOE_HOUSING_TOOLS_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx"
 BOE_HOUSING_TOOLS_TEXT_PATH = "input-data-versions/validation-sources/2024/boe/housing-tools-2024-validation-evidence.txt"
 BOE_HOUSING_TOOLS_SPREAD_TABLE = "Sheet 8. Spreads new mortgage lending"
+HMLR_HPI_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv"
+HMLR_HPI_TEXT_PATH = "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt"
 
 UKF_BTL_RENTAL_YIELD_TEXT_PATH = "input-data-versions/validation-sources/2024/ukf/btl-rental-yield-2024-validation-evidence.txt"
 UKF_BTL_RENTAL_YIELD_TABLE = "Page 2 summary panels"
@@ -295,6 +304,10 @@ INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS = (
     0.7203665256287551,
     0.41196363761794147,
 )
+HPI_2024_REBASED_MEAN = 1.0196877121520707
+HPI_2024_REBASED_STD = 0.013499008027934953
+HPI_FULL_HISTORY_REBASED_STD = 0.2766701944903836
+HPI_2024_CYCLE_PERIOD_MONTHS = 167.5
 RENTAL_YIELD_2024_QUARTERLY_VALUES = (6.88, 6.90, 6.93, 7.00)
 OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES = (
     80.29246428438624,
@@ -309,6 +322,73 @@ def _annual_mean(values: tuple[float, ...]) -> float:
 
 
 MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
+    "core_hpiMean": MetricSourceMetadata(
+        source_document_path=HMLR_HPI_DOCUMENT_PATH,
+        source_text_path=HMLR_HPI_TEXT_PATH,
+        source_table="United Kingdom IndexSA rows for 2024-01 through 2024-12, rebased to 2024-01 = 1.0",
+        source_page=1,
+        source_indicator_label="Rebased UK seasonally adjusted HPI, 2024 annual mean",
+        raw_source_value=HPI_2024_REBASED_MEAN,
+        normalized_source_value=HPI_2024_REBASED_MEAN,
+        source_units="rebased index",
+        comparison_units="rebased index",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_notes=(
+            "2024 UK IndexSA values rebased to January 2024 = 1.0 before computing the annual mean. "
+            "Target band is +/-15% around the official rebased mean."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="HM Land Registry UK HPI full file December 2024",
+                source_document_path=HMLR_HPI_DOCUMENT_PATH,
+                source_text_path=HMLR_HPI_TEXT_PATH,
+                source_table="United Kingdom IndexSA rows for 2024-01 through 2024-12",
+                source_page=1,
+                source_indicator_label="UK HPI IndexSA",
+                raw_source_value=HPI_2024_REBASED_MEAN,
+                source_as_of="2024 annual mean after rebasing to January 2024",
+                source_units="rebased index",
+                notes="Official IndexSA values are rebased to January 2024 = 1.0 before computing the 2024 mean.",
+            ),
+        ),
+    ),
+    "core_hpiStd": MetricSourceMetadata(
+        source_document_path=HMLR_HPI_DOCUMENT_PATH,
+        source_text_path=HMLR_HPI_TEXT_PATH,
+        source_table="United Kingdom IndexSA rows for 2005-01 through 2024-12, rebased to 2005-01 = 1.0",
+        source_page=1,
+        source_indicator_label="Rebased UK seasonally adjusted HPI, 2005-01 to 2024-12 population std",
+        raw_source_value=HPI_FULL_HISTORY_REBASED_STD,
+        normalized_source_value=HPI_FULL_HISTORY_REBASED_STD,
+        source_units="rebased index",
+        comparison_units="rebased index",
+        source_as_of="2005-01 to 2024-12 population std",
+        mapping_status="derived_match",
+        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_notes=(
+            "United Kingdom IndexSA values from 2005-01 through 2024-12 are rebased to January 2005 = 1.0 before "
+            "computing the long-run population standard deviation. Target band is +/-15% around the official rebased std."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="HM Land Registry UK HPI full file December 2024",
+                source_document_path=HMLR_HPI_DOCUMENT_PATH,
+                source_text_path=HMLR_HPI_TEXT_PATH,
+                source_table="United Kingdom IndexSA rows for 2005-01 through 2024-12",
+                source_page=1,
+                source_indicator_label="UK HPI IndexSA",
+                raw_source_value=HPI_FULL_HISTORY_REBASED_STD,
+                source_as_of="2005-01 to 2024-12 population std after rebasing to January 2005",
+                source_units="rebased index",
+                notes=(
+                    "Official IndexSA values from 2005-01 through 2024-12 are rebased to January 2005 = 1.0 before "
+                    "computing the long-run population std."
+                ),
+            ),
+        ),
+    ),
     "core_interestRateSpread": MetricSourceMetadata(
         source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
         source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
@@ -375,6 +455,42 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
                 source_as_of="2024 Q4",
                 source_units="percentage points",
                 notes="Mean of Oct-Dec 2024 monthly values from the workbook series.",
+            ),
+        ),
+    ),
+    "core_hpiCyclePeriod": MetricSourceMetadata(
+        source_document_path=HMLR_HPI_DOCUMENT_PATH,
+        source_text_path=HMLR_HPI_TEXT_PATH,
+        source_table=(
+            "United Kingdom Index history through 2024-12; 12-month moving average, log transform, "
+            "linear detrend, FFT dominant peak over 60..240 months"
+        ),
+        source_page=1,
+        source_indicator_label="UK HPI dominant cycle period",
+        raw_source_value=HPI_2024_CYCLE_PERIOD_MONTHS,
+        normalized_source_value=HPI_2024_CYCLE_PERIOD_MONTHS,
+        source_units="months",
+        comparison_units="months",
+        source_as_of="1968-04 to 2024-12 history, December 2024 release",
+        mapping_status="derived_match",
+        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_notes=(
+            "Cycle period is derived from the archived United Kingdom Index history through December 2024 using the "
+            "locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months. "
+            "Target band is +/-15% around the official derived period."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="HM Land Registry UK HPI full file December 2024",
+                source_document_path=HMLR_HPI_DOCUMENT_PATH,
+                source_text_path=HMLR_HPI_TEXT_PATH,
+                source_table="United Kingdom Index history through 2024-12",
+                source_page=1,
+                source_indicator_label="UK HPI Index",
+                raw_source_value=HPI_2024_CYCLE_PERIOD_MONTHS,
+                source_as_of="1968-04 to 2024-12 history",
+                source_units="months",
+                notes="Derived with a 12-month moving average, log transform, linear detrend, and FFT peak search over 60..240 months.",
             ),
         ),
     ),
@@ -540,30 +656,9 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
     ),
 }
 
-FAMILY_DEFINITIONS: tuple[FamilyDefinition, ...] = (
-    FamilyDefinition(
-        family_id=FAMILY_MACRO_CREDIT_ACTIVITY,
-        label="Macro Credit and Market Activity",
-        weight=0.25,
-    ),
-    FamilyDefinition(
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
-        label="Macro Prices, Leverage, and Affordability",
-        weight=0.25,
-    ),
-    FamilyDefinition(
-        family_id=FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM,
-        label="Household Distribution Realism",
-        weight=0.50,
-    ),
-)
-
-FAMILY_WEIGHTS = {family.family_id: family.weight for family in FAMILY_DEFINITIONS}
-
 TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     MetricDefinition(
         metric_id="core_mortgageApprovals",
-        family_id=FAMILY_MACRO_CREDIT_ACTIVITY,
         label="Mortgage Approvals",
         requirement="required",
         units="count/month",
@@ -576,7 +671,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_housingTransactions",
-        family_id=FAMILY_MACRO_CREDIT_ACTIVITY,
         label="Housing Transactions",
         requirement="required",
         units="count/month",
@@ -589,7 +683,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_advancesToFTB",
-        family_id=FAMILY_MACRO_CREDIT_ACTIVITY,
         label="Advances to FTB",
         requirement="required",
         units="count/month",
@@ -602,7 +695,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_advancesToHM",
-        family_id=FAMILY_MACRO_CREDIT_ACTIVITY,
         label="Advances to Home Movers",
         requirement="required",
         units="count/month",
@@ -615,7 +707,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_advancesToBTL",
-        family_id=FAMILY_MACRO_CREDIT_ACTIVITY,
         label="Advances to BTL",
         requirement="required",
         units="count/month",
@@ -628,7 +719,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_debtToIncome",
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
         label="Household Debt to Income",
         requirement="required",
         units="%",
@@ -640,7 +730,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_priceToIncome",
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
         label="House Price to Household Disposable Income",
         requirement="required",
         units="ratio",
@@ -652,7 +741,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_housePriceGrowth",
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
         label="House Price Growth",
         requirement="required",
         units="%",
@@ -663,8 +751,52 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         file_name="coreIndicator-housePriceGrowth.csv",
     ),
     MetricDefinition(
+        metric_id="core_hpiMean",
+        label="HPI Mean",
+        requirement="required",
+        units="rebased index",
+        source_label="HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2024)",
+        kind="output_series",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_hpiMean"],
+        target_band=_plus_minus_tolerance_band(
+            source_value=HPI_2024_REBASED_MEAN,
+            tolerance=HPI_TARGET_TOLERANCE,
+        ),
+        file_name="Output-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="core_hpiStd",
+        label="HPI Std",
+        requirement="required",
+        units="rebased index",
+        source_label=(
+            "HM Land Registry UK HPI full file December 2024 "
+            "(UK IndexSA rebased to January 2005 over 2005-01 to 2024-12)"
+        ),
+        kind="output_series",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_hpiStd"],
+        target_band=_plus_minus_tolerance_band(
+            source_value=HPI_FULL_HISTORY_REBASED_STD,
+            tolerance=HPI_TARGET_TOLERANCE,
+        ),
+        file_name="Output-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="core_hpiCyclePeriod",
+        label="HPI Cycle Period",
+        requirement="required",
+        units="months",
+        source_label="HM Land Registry UK HPI full file December 2024 (UK Index history through 2024-12)",
+        kind="output_series",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_hpiCyclePeriod"],
+        target_band=_plus_minus_tolerance_band(
+            source_value=HPI_2024_CYCLE_PERIOD_MONTHS,
+            tolerance=HPI_TARGET_TOLERANCE,
+        ),
+        file_name="Output-run1.csv",
+    ),
+    MetricDefinition(
         metric_id="core_ooDebtToIncome",
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
         label="Owner-Occupier Debt to Income",
         requirement="required",
         units="%",
@@ -679,7 +811,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_rentalYield",
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
         label="Rental Yield",
         requirement="required",
         units="%",
@@ -694,7 +825,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="core_interestRateSpread",
-        family_id=FAMILY_MACRO_PRICES_LEVERAGE_AFFORDABILITY,
         label="Interest Rate Spread",
         requirement="required",
         units="percentage points",
@@ -709,7 +839,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="income_distribution_jsd",
-        family_id=FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM,
         label="Income Distribution Realism",
         requirement="required",
         units="JSD",
@@ -720,7 +849,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="housing_wealth_distribution_jsd",
-        family_id=FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM,
         label="Housing Wealth Distribution Realism",
         requirement="required",
         units="JSD",
@@ -731,7 +859,6 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
     ),
     MetricDefinition(
         metric_id="financial_wealth_distribution_jsd",
-        family_id=FAMILY_HOUSEHOLD_DISTRIBUTION_REALISM,
         label="Financial Wealth Distribution Realism",
         requirement="required",
         units="JSD",
@@ -746,9 +873,12 @@ TARGETS_BY_ID = {metric.metric_id: metric for metric in TARGET_CATALOG}
 
 __all__ = [
     "ADVANCES_TARGET_TOLERANCE",
-    "FAMILY_DEFINITIONS",
-    "FAMILY_WEIGHTS",
     "FPC_SOURCE_2024_BY_METRIC_ID",
+    "HPI_2024_CYCLE_PERIOD_MONTHS",
+    "HPI_2024_REBASED_MEAN",
+    "HPI_2024_REBASED_STD",
+    "HPI_FULL_HISTORY_REBASED_STD",
+    "HPI_TARGET_TOLERANCE",
     "INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS",
     "MARKET_SOURCE_2024_BY_METRIC_ID",
     "OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES",

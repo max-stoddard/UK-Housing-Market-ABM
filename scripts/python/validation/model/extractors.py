@@ -43,6 +43,12 @@ from scripts.python.helpers.was.derived_columns import (
 )
 from scripts.python.helpers.was.io import read_results, read_was_data
 from scripts.python.helpers.was.row_filters import filter_percentile_outliers, filter_positive_values
+from scripts.python.validation.model.hpi import (
+    compute_rebased_mean,
+    compute_rebased_std,
+    estimate_dominant_cycle_period_months,
+    load_output_series,
+)
 from scripts.python.validation.model.schema import VALIDATION_WINDOW_END, VALIDATION_WINDOW_START
 
 
@@ -56,6 +62,14 @@ class HouseholdDistributionSpec:
     bin_edges: tuple[float, ...]
     requires_income_floor: bool = False
     income_floor: float = 1_000.0
+
+
+@dataclass(frozen=True)
+class OutputSeriesMetricSpec:
+    """Locked extraction settings for one Output-run1.csv-backed metric."""
+
+    results_file_name: str
+    column_name: str
 
 
 HOUSEHOLD_DISTRIBUTION_SPECS: dict[str, HouseholdDistributionSpec] = {
@@ -103,20 +117,52 @@ HOUSEHOLD_DISTRIBUTION_SPECS: dict[str, HouseholdDistributionSpec] = {
     ),
 }
 
+OUTPUT_SERIES_SPECS: dict[str, OutputSeriesMetricSpec] = {
+    "core_hpiMean": OutputSeriesMetricSpec(
+        results_file_name="Output-run1.csv",
+        column_name="Sale HPI",
+    ),
+    "core_hpiStd": OutputSeriesMetricSpec(
+        results_file_name="Output-run1.csv",
+        column_name="Sale HPI",
+    ),
+    "core_hpiCyclePeriod": OutputSeriesMetricSpec(
+        results_file_name="Output-run1.csv",
+        column_name="Sale HPI",
+    ),
+}
+
 
 def extract_core_indicator_mean(csv_path: Path, *, scale: float = 1.0) -> float:
     """Read a core-indicator series and return its fixed validation-window mean."""
 
     values = load_core_indicator_values(csv_path)
-    window = select_post_burn_in_window(
-        values,
-        start_index=VALIDATION_WINDOW_START,
-        end_index=VALIDATION_WINDOW_END,
-    )
-    expected_count = VALIDATION_WINDOW_END - VALIDATION_WINDOW_START
-    if len(window) != expected_count:
-        raise RuntimeError(f"Incomplete validation window in {csv_path}")
+    window = _complete_validation_window(values=values, source_path=csv_path)
     return statistics.fmean(window) * scale
+
+
+def extract_rebased_output_series_mean(csv_path: Path, *, column_name: str) -> float:
+    """Read one output series and return the validation-window mean after rebasing."""
+
+    values = load_output_series(csv_path, column_name=column_name)
+    window = _complete_validation_window(values=values, source_path=csv_path)
+    return compute_rebased_mean(window)
+
+
+def extract_rebased_output_series_std(csv_path: Path, *, column_name: str) -> float:
+    """Read one output series and return the rebased validation-window population std."""
+
+    values = load_output_series(csv_path, column_name=column_name)
+    window = _complete_validation_window(values=values, source_path=csv_path)
+    return compute_rebased_std(window)
+
+
+def extract_output_series_cycle_period(csv_path: Path, *, column_name: str) -> float:
+    """Read one output series and return the locked dominant cycle-period estimate."""
+
+    values = load_output_series(csv_path, column_name=column_name)
+    window = _complete_validation_window(values=values, source_path=csv_path)
+    return estimate_dominant_cycle_period_months(window)
 
 
 def extract_household_jsd(
@@ -208,6 +254,20 @@ def _load_target_distribution_values(
     )
 
 
+def extract_output_series_metric_from_results(*, metric_id: str, results_dir: Path) -> float:
+    """Extract one Output-run1.csv-backed metric from a run output directory."""
+
+    spec = OUTPUT_SERIES_SPECS[metric_id]
+    csv_path = results_dir / spec.results_file_name
+    if metric_id == "core_hpiMean":
+        return extract_rebased_output_series_mean(csv_path, column_name=spec.column_name)
+    if metric_id == "core_hpiStd":
+        return extract_rebased_output_series_std(csv_path, column_name=spec.column_name)
+    if metric_id == "core_hpiCyclePeriod":
+        return extract_output_series_cycle_period(csv_path, column_name=spec.column_name)
+    raise RuntimeError(f"Unsupported output-series metric: {metric_id}")
+
+
 def _kl_divergence(left: np.ndarray, right: np.ndarray) -> float:
     total = 0.0
     for left_value, right_value in zip(left, right, strict=True):
@@ -217,3 +277,15 @@ def _kl_divergence(left: np.ndarray, right: np.ndarray) -> float:
             raise RuntimeError("JSD midpoint contains zero mass where input histogram is positive")
         total += left_value * math.log(left_value / right_value)
     return total
+
+
+def _complete_validation_window(*, values: Sequence[float], source_path: Path) -> list[float]:
+    window = select_post_burn_in_window(
+        values,
+        start_index=VALIDATION_WINDOW_START,
+        end_index=VALIDATION_WINDOW_END,
+    )
+    expected_count = VALIDATION_WINDOW_END - VALIDATION_WINDOW_START
+    if len(window) != expected_count:
+        raise RuntimeError(f"Incomplete validation window in {source_path}")
+    return window

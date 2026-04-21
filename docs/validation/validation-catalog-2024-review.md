@@ -48,6 +48,15 @@ The ONS snapshot is intentionally minimal. It vendors only the quarterly values 
 
 ### Market-Derived Metrics
 
+- `core_hpiMean` is reconstructed from the archived HMLR full-file UK `IndexSA` series for `2024-01 .. 2024-12`, rebased to `2024-01 = 1.0`, then reduced to:
+  - annual mean
+  - `±15%` target band around that annual mean
+- `core_hpiStd` is reconstructed from the archived HMLR full-file UK `IndexSA` series for `2005-01 .. 2024-12`, rebased to `2005-01 = 1.0`, then reduced to:
+  - long-run population std
+  - `±15%` target band around that long-run std
+- `core_hpiCyclePeriod` is reconstructed from the archived HMLR full-file UK `Index` history through `2024-12`, then reduced to:
+  - dominant cycle period
+  - `±15%` target band around that derived cycle period
 - `core_interestRateSpread` is reconstructed from the 2024 monthly BOE housing-tools workbook series, grouped into contiguous quarterly means, then reduced to:
   - annual mean
   - observed quarterly range target band
@@ -81,6 +90,16 @@ These are not single official source-table values. They are reviewed as:
 - acceptance band: methodology-owned `TargetBand(lower=0.0, upper=0.12)`
 
 The shared `0.12` upper bound is treated as an explicit methodology constant for the permanent 2024 framework. It is justified by the framework design choice to use a common JSD acceptance band across the household realism metrics, which all share the same fixed distribution-comparison semantics.
+
+## Metric Weighting
+
+The tracked validation contract now uses metric-only weighting:
+
+- every scored validation metric publishes `metricWeight = 1`
+- `overallCompositeLoss` is the weighted mean of scored `metricLoss` values
+- the tracked JSON and dashboard contract do not publish family/category summaries
+
+This means the composite is driven directly by the full set of scored metrics rather than by intermediate category aggregates.
 
 ## Methodology-Owned Bands
 

@@ -43,11 +43,14 @@
       "core_advancesToFTB",
       "core_advancesToHM",
       "core_advancesToBTL",
+      "core_hpiMean",
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
       "core_ooDebtToIncome",
       "core_rentalYield"
     ],
     "value_class": "derived_from_source",
-    "current_value": "Current core indicators without a clean June 2024 FPC mapping.",
+    "current_value": "Current validation metrics without a clean June 2024 FPC mapping.",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt",
@@ -62,6 +65,9 @@
       "core_advancesToFTB",
       "core_advancesToHM",
       "core_advancesToBTL",
+      "core_hpiMean",
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
       "core_ooDebtToIncome",
       "core_rentalYield"
     ],
@@ -95,9 +101,9 @@
     "notes": "This constant is not an official source value; it is the locked band-width rule for UK Finance advances metrics."
   },
   {
-    "review_id": "family_definitions_and_weights",
+    "review_id": "metric_weighting_and_composite_aggregation",
     "review_category": "constant",
-    "catalog_symbol": "FAMILY_DEFINITIONS and FAMILY_WEIGHTS",
+    "catalog_symbol": "Metric-only validation weighting",
     "metric_ids": [
       "core_mortgageApprovals",
       "core_housingTransactions",
@@ -107,6 +113,9 @@
       "core_debtToIncome",
       "core_priceToIncome",
       "core_housePriceGrowth",
+      "core_hpiMean",
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
       "core_ooDebtToIncome",
       "core_rentalYield",
       "core_interestRateSpread",
@@ -115,44 +124,45 @@
       "financial_wealth_distribution_jsd"
     ],
     "value_class": "methodology_constant",
-    "current_value": "Three scored families with weights 0.25, 0.25, 0.50.",
+    "current_value": "All scored validation metrics carry unit weight and overallCompositeLoss is their weighted mean.",
     "repo_source_paths": [
-      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/runner.py",
+      "scripts/python/validation/model/scoring.py",
       "docs/superpowers/specs/2026-04-13-2024-validation-framework-design.md",
       "docs/validation/validation-catalog-2024-review.md"
     ],
     "source_locator": {
-      "section": "Validation framework family weighting"
+      "section": "Metric-only validation weighting"
     },
     "recalculation_rule": null,
-    "methodology_rule": "Family membership and weights are methodology-owned constants from the 2024 validation framework design.",
+    "methodology_rule": "All scored validation metrics are weighted evenly with metricWeight=1.0 and the composite score is their weighted mean.",
     "expected_result": {
-      "definitions": [
-        {
-          "family_id": "macro_credit_activity",
-          "label": "Macro Credit and Market Activity",
-          "weight": 0.25
-        },
-        {
-          "family_id": "macro_prices_leverage_affordability",
-          "label": "Macro Prices, Leverage, and Affordability",
-          "weight": 0.25
-        },
-        {
-          "family_id": "household_distribution_realism",
-          "label": "Household Distribution Realism",
-          "weight": 0.5
-        }
+      "scored_metric_ids": [
+        "core_mortgageApprovals",
+        "core_housingTransactions",
+        "core_advancesToFTB",
+        "core_advancesToHM",
+        "core_advancesToBTL",
+        "core_debtToIncome",
+        "core_priceToIncome",
+        "core_housePriceGrowth",
+        "core_hpiMean",
+        "core_hpiStd",
+        "core_hpiCyclePeriod",
+        "core_ooDebtToIncome",
+        "core_rentalYield",
+        "core_interestRateSpread",
+        "income_distribution_jsd",
+        "housing_wealth_distribution_jsd",
+        "financial_wealth_distribution_jsd"
       ],
-      "weights": {
-        "macro_credit_activity": 0.25,
-        "macro_prices_leverage_affordability": 0.25,
-        "household_distribution_realism": 0.5
-      }
+      "required_metric_count": 17,
+      "metric_weight": 1.0,
+      "composite_rule": "weighted_mean"
     },
     "rounding_policy": "exact_numeric_match",
     "status": "verified",
-    "notes": "The audit treats family definitions and weights as methodology constants rather than source-derived values."
+    "notes": "The audit treats unit metric weights and weighted-mean aggregation as methodology constants rather than source-derived values."
   },
   {
     "review_id": "source_fpc_core_metrics",
@@ -236,7 +246,7 @@
       "core_advancesToBTL"
     ],
     "value_class": "derived_from_source",
-    "current_value": "UK Finance annual totals and quarterly BTL counts converted to monthly means and ±15% bands.",
+    "current_value": "UK Finance annual totals and quarterly BTL counts converted to monthly means and \u00b115% bands.",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "input-data-versions/validation-sources/2024/ukf/household-finance-review-2024-q4-validation-evidence.txt",
@@ -248,7 +258,7 @@
         "Latest 2024 Q* summary panels"
       ]
     },
-    "recalculation_rule": "Convert annual totals to monthly thousand counts and derive target bands by applying a ±15% tolerance, rounded to three decimals with Decimal ROUND_HALF_UP.",
+    "recalculation_rule": "Convert annual totals to monthly thousand counts and derive target bands by applying a \u00b115% tolerance, rounded to three decimals with Decimal ROUND_HALF_UP.",
     "methodology_rule": null,
     "expected_result": {
       "core_advancesToFTB": {
@@ -290,7 +300,84 @@
     },
     "rounding_policy": "derived monthly means exact; target bands rounded to three decimals with Decimal ROUND_HALF_UP",
     "status": "verified",
-    "notes": "This group covers both the source-value conversions and the methodology-owned ±15% band rule applied to UK Finance advances metrics."
+    "notes": "This group covers both the source-value conversions and the methodology-owned \u00b115% band rule applied to UK Finance advances metrics."
+  },
+  {
+    "review_id": "source_market_hpi",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID for HPI metrics",
+    "metric_ids": [
+      "core_hpiMean",
+      "core_hpiStd",
+      "core_hpiCyclePeriod"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Rebased 2024 UK HPI mean, long-run UK HPI std, and the long-history dominant cycle period derived from the archived HMLR full-file CSV.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/hpi.py",
+      "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+      "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "file": "United Kingdom rows from the archived December 2024 UK HPI full file"
+    },
+    "recalculation_rule": "Read the archived HMLR full-file CSV. For mean, take the 2024 United Kingdom IndexSA values, rebase them to January 2024 = 1.0, and compute the annual mean. For std, take the full available United Kingdom IndexSA history from 2005-01 through 2024-12, rebase it to January 2005 = 1.0, and compute the population std. For cycle period, take the full United Kingdom Index history through December 2024, apply a 12-month moving average, log transform, remove a linear trend, and take the dominant FFT peak over 60..240 months.",
+    "methodology_rule": null,
+    "expected_result": {
+      "hpi_target_tolerance": 0.15,
+      "index_sa_2024_values": [
+        98.2,
+        98.3,
+        98.8,
+        99.4,
+        99.7,
+        99.7,
+        99.7,
+        101.0,
+        101.3,
+        101.4,
+        101.9,
+        102.2
+      ],
+      "rebased_index_sa_2024_values": [
+        1.0,
+        1.0010183299389002,
+        1.0061099796334012,
+        1.0122199592668024,
+        1.0152749490835031,
+        1.0152749490835031,
+        1.0152749490835031,
+        1.0285132382892057,
+        1.0315682281059062,
+        1.0325865580448066,
+        1.0376782077393076,
+        1.0407331975560081
+      ],
+      "annual_mean": 1.0196877121520707,
+      "full_history_std_window": {
+        "start": "2005-01",
+        "end": "2024-12",
+        "count": 240
+      },
+      "full_history_std": 0.2766701944903836,
+      "cycle_period_months": 167.5,
+      "mean_target_band": {
+        "lower": 0.86673455532926,
+        "upper": 1.172640868974881
+      },
+      "std_target_band": {
+        "lower": 0.23516966531682607,
+        "upper": 0.3181707236639411
+      },
+      "cycle_target_band": {
+        "lower": 142.375,
+        "upper": 192.62499999999997
+      }
+    },
+    "rounding_policy": "full precision floating comparison against the locked repo method",
+    "status": "verified",
+    "notes": "The mean remains a 2024 annual metric, the std is now a full available-history volatility metric, and the cycle period remains a repo-derived official-source metric rather than a scalar published directly by HM Land Registry."
   },
   {
     "review_id": "source_market_interest_rate_spread",
@@ -419,12 +506,15 @@
       "core_debtToIncome",
       "core_priceToIncome",
       "core_housePriceGrowth",
+      "core_hpiMean",
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
       "core_ooDebtToIncome",
       "core_rentalYield",
       "core_interestRateSpread"
     ],
     "value_class": "methodology_constant",
-    "current_value": "Live runtime metric-definition fields for all core_indicator metrics.",
+    "current_value": "Live runtime metric-definition fields for all macro metrics backed by core indicators or Output-run1.csv.",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py"
     ],
@@ -520,6 +610,39 @@
           "upper": 2.0
         },
         "file_name": "coreIndicator-housePriceGrowth.csv",
+        "scale": 1.0
+      },
+      "core_hpiMean": {
+        "requirement": "required",
+        "units": "rebased index",
+        "source_label": "HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2024)",
+        "target_band": {
+          "lower": 0.86673455532926,
+          "upper": 1.172640868974881
+        },
+        "file_name": "Output-run1.csv",
+        "scale": 1.0
+      },
+      "core_hpiStd": {
+        "requirement": "required",
+        "units": "rebased index",
+        "source_label": "HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2005 over 2005-01 to 2024-12)",
+        "target_band": {
+          "lower": 0.23516966531682607,
+          "upper": 0.3181707236639411
+        },
+        "file_name": "Output-run1.csv",
+        "scale": 1.0
+      },
+      "core_hpiCyclePeriod": {
+        "requirement": "required",
+        "units": "months",
+        "source_label": "HM Land Registry UK HPI full file December 2024 (UK Index history through 2024-12)",
+        "target_band": {
+          "lower": 142.375,
+          "upper": 192.62499999999997
+        },
+        "file_name": "Output-run1.csv",
         "scale": 1.0
       },
       "core_ooDebtToIncome": {

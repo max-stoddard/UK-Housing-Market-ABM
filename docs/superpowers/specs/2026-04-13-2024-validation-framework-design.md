@@ -40,7 +40,7 @@ This is a bad fit for the current project goal: showing that successive input-da
 
 ## Design Summary
 
-The new framework is a family-based scorecard with a secondary composite score.
+The new framework is a metric-based scorecard with a secondary composite score.
 
 Core rules:
 - every input-data version is evaluated against 2024 targets
@@ -50,19 +50,17 @@ Core rules:
 - the composite score is a secondary summary and ranking tool
 - robustness is part of validity, not a separate optional diagnostic
 
-The framework is organised into fixed validation families:
-- macro credit and market activity
-- macro prices, leverage, and affordability
-- household distribution realism
-- stochastic robustness
-
-The first three families are the scored realism families. Stochastic robustness is a cross-cutting family: it is displayed explicitly in the scorecard, but it acts mainly through penalties and stability summaries applied across the scored families.
+The framework covers:
+- macro credit and market activity metrics
+- macro prices, leverage, and affordability metrics
+- household distribution realism metrics
+- cross-cutting stochastic robustness summaries carried by each metric
 
 The website uses the new framework only. The old three-metric validation trend is removed rather than shown side by side.
 
-## Validation Families
+## Validation Metrics
 
-### Family 1: Macro Credit And Market Activity
+### Macro Credit And Market Activity Metrics
 
 Purpose:
 - test whether the model reproduces the aggregate lending and transaction picture of the 2024 housing market
@@ -77,7 +75,7 @@ Initial metric set:
 Primary target source:
 - FPC or other official 2024 macro indicator releases where mapping is clean
 
-### Family 2: Macro Prices, Leverage, And Affordability
+### Macro Prices, Leverage, And Affordability Metrics
 
 Purpose:
 - test whether the model reproduces 2024 market conditions, leverage, and affordability pressures
@@ -93,7 +91,7 @@ Initial metric set:
 Primary target source:
 - FPC/core-indicator style releases first, with other official 2024 series allowed where needed
 
-### Family 3: Household Distribution Realism
+### Household Distribution Realism Metrics
 
 Purpose:
 - prevent a version from looking good on headline aggregates while remaining unrealistic at the household level
@@ -115,7 +113,7 @@ Initial locked source for this framework:
 - `WAS Round 8` is the starting household-realism source for the permanent framework because it is already integrated into the project and is the current household evidence base used during recalibration
 - replacing this source later is a methodology change, not a casual implementation detail
 
-### Family 4: Stochastic Robustness
+### Cross-Cutting Stochastic Robustness
 
 Purpose:
 - make seed stability part of the validation result rather than an informal afterthought
@@ -123,9 +121,9 @@ Purpose:
 Initial metric set:
 - fraction of seeds inside target band
 - seed spread for each metric
-- family-level instability penalties derived from metric-level seed variation
+- metric-level instability penalties derived from seed variation
 
-This family is not independent of the others. It is computed from the same 8-seed runs and explicitly penalises fragile versions. It is therefore a cross-cutting family in the methodology rather than a fourth equally weighted realism block.
+Robustness is not scored as a separate block. It is computed from the same 8-seed runs and directly modifies each metric loss.
 
 ## Metric Semantics
 
@@ -163,7 +161,6 @@ Targets are defined as acceptable bands, not single values.
 
 Each metric definition must include:
 - metric id
-- family id
 - 2024 source attribution
 - lower bound
 - upper bound
@@ -174,7 +171,7 @@ Band semantics:
 - inside the band means the metric is meeting the 2024 target
 - outside the band incurs a penalty based on distance from the nearest band edge
 
-The target catalog is methodology, not incidental configuration. Changes to target bands, metric membership, or family weights must be treated as explicit methodology changes.
+The target catalog is methodology, not incidental configuration. Changes to target bands, metric membership, or metric-weighting rules must be treated as explicit methodology changes.
 
 ## Scorecard Logic
 
@@ -212,15 +209,14 @@ The composite score exists to support:
 The composite must not replace the scorecard as the decision tool.
 
 Scoring principles:
-- score families, not raw indicators, to avoid double-counting correlated metrics
-- treat macro realism and household realism as equally important at the top level
+- score required metrics directly
+- treat every scored metric evenly at the top level
 - apply instability penalties so fragile one-seed-looking wins are not rewarded
 
 Recommended aggregation:
 1. compute per-metric normalized distance-to-band score
 2. apply metric-level stability penalty
-3. aggregate metrics into family scores
-4. aggregate family scores into the overall composite
+3. aggregate scored metrics into the overall composite with unit weights
 
 Exact per-metric loss:
 - `inside_rate = successful_seeds_inside_band / 8`
@@ -229,12 +225,10 @@ Exact per-metric loss:
 - `normalized_iqr = (p75 - p25) / band_width`
 - `metric_loss = normalized_distance + 0.25 * normalized_iqr + 0.50 * (1 - inside_rate)`
 
-Exact family aggregation:
-- family loss is the arithmetic mean of required member metric losses
-- diagnostic-only metrics are shown in the scorecard but do not contribute to the family loss
-
 Exact overall aggregation:
-- `overall_composite_loss = 0.25 * macro_credit_activity_loss + 0.25 * macro_prices_leverage_affordability_loss + 0.50 * household_distribution_realism_loss`
+- `overall_composite_loss = weighted_mean(metric_loss_i, metric_weight_i)`
+- current locked rule: every scored metric has `metric_weight = 1`
+- diagnostic-only or unsupported metrics are shown in the scorecard but do not contribute to the composite
 
 Interpretation:
 - lower composite loss is better
@@ -242,12 +236,11 @@ Interpretation:
 - robustness enters through `normalized_iqr` and `inside_rate`, not through a separate free-floating summary
 
 Top-level weighting:
-- macro families together account for half of the composite
-- household distribution realism accounts for the other half
-- robustness penalties directly modify metric and family scores rather than being given an independent equal top-level weight
+- all scored metrics contribute evenly to the composite
+- robustness penalties directly modify metric scores rather than being given an independent top-level weight
 
 Governance rule:
-- a strong overall composite must not override a clearly failing critical family
+- a strong overall composite must not override clearly failing critical metrics
 
 ## Distribution Metric Shape
 
@@ -298,7 +291,7 @@ The default supported mode is the canonical 8-seed run. The framework does not n
 Recommended module split:
 - one target catalog module for metric definitions and 2024 bands
 - one runner module for snapshot-local multi-seed execution
-- one extractor/scoring module for metric computation and family aggregation
+- one extractor/scoring module for metric computation and metric-only composite aggregation
 - one publisher module for writing tracked summary files for the dashboard
 - one bulk migration entrypoint for revalidating all input-data versions
 
@@ -339,7 +332,6 @@ Location:
 
 Recommended contents:
 - overall composite score
-- family scores
 - per-metric summaries
 - uncertainty summaries
 - target-band references
@@ -394,18 +386,16 @@ The dashboard validation page should be redesigned around the new framework as t
 
 Required views:
 - overall composite trend across versions
-- family summary cards
 - metric drill-down for a selected version
 - lightweight uncertainty presentation
 
 Recommended top-level layout:
 - a trend chart for the overall composite score across versions
-- a family-status strip or card row for the selected version
 - a details table or compact chart grid for individual metrics
 
 Required per-metric display fields:
 - metric name
-- family
+- metric weight
 - target band
 - multi-seed mean
 - `p25-p75` uncertainty band
@@ -422,7 +412,7 @@ Lightweight uncertainty rule:
 Recommended flow:
 1. validation scripts publish tracked summary JSON files
 2. dashboard server reads those summary files
-3. dashboard API exposes composite, family, and metric summary payloads
+3. dashboard API exposes composite and metric summary payloads
 4. frontend renders summaries without recomputing validation logic
 
 This keeps methodology in one place and avoids drift between script logic and UI logic.
@@ -451,7 +441,7 @@ Partial-run policy:
 Required automated coverage:
 - unit tests for band comparison and normalized distance scoring
 - unit tests for stability penalties
-- unit tests for family aggregation and overall composite aggregation
+- unit tests for metric-only composite aggregation
 - fixture tests for summary JSON generation from synthetic seed outputs
 - regression tests for dashboard API payload shape
 - one end-to-end validation test on a small known example
@@ -479,78 +469,73 @@ This appendix locks the initial metric catalog for planning.
 ### Required Macro Metrics
 
 - `core_mortgageApprovals`
-  - family: macro credit and market activity
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_housingTransactions`
-  - family: macro credit and market activity
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_advancesToFTB`
-  - family: macro credit and market activity
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_advancesToHM`
-  - family: macro credit and market activity
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_advancesToBTL`
-  - family: macro credit and market activity
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_debtToIncome`
-  - family: macro prices, leverage, and affordability
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_priceToIncome`
-  - family: macro prices, leverage, and affordability
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
 - `core_housePriceGrowth`
-  - family: macro prices, leverage, and affordability
   - source: official 2024 macro indicator target
   - scalar: mean over periods `200:2000`
   - status: required
-
-### Diagnostic Macro Metrics
-
+- `core_hpiMean`
+  - source: official 2024 HPI target derived from the archived HMLR UK series
+  - scalar: mean over periods `200:2000`
+  - status: required
+- `core_hpiStd`
+  - source: official 2024 HPI target derived from the archived HMLR UK series
+  - scalar: mean over periods `200:2000`
+  - status: required
+- `core_hpiCyclePeriod`
+  - source: official 2024 HPI target derived from the archived HMLR UK series
+  - scalar: mean over periods `200:2000`
+  - status: required
 - `core_ooDebtToIncome`
-  - family: macro prices, leverage, and affordability
   - source: official or near-official 2024 target when mapping is strong
   - scalar: mean over periods `200:2000`
-  - status: diagnostic-only until mapping is confirmed
+  - status: required
 - `core_rentalYield`
-  - family: macro prices, leverage, and affordability
   - source: official or near-official 2024 target when mapping is strong
   - scalar: mean over periods `200:2000`
-  - status: diagnostic-only until mapping is confirmed
+  - status: required
 - `core_interestRateSpread`
-  - family: macro prices, leverage, and affordability
   - source: official or near-official 2024 target when mapping is strong
   - scalar: mean over periods `200:2000`
-  - status: diagnostic-only until mapping is confirmed
+  - status: required
 
 ### Required Household Metrics
 
 - `income_distribution_jsd`
-  - family: household distribution realism
   - source: `WAS Round 8`
   - scalar: Jensen-Shannon distance between normalized model and target income histograms using the framework's fixed bins and current validation filters
   - status: required
 - `housing_wealth_distribution_jsd`
-  - family: household distribution realism
   - source: `WAS Round 8`
   - scalar: Jensen-Shannon distance between normalized model and target housing-wealth histograms using the framework's fixed bins and current validation filters
   - status: required
 - `financial_wealth_distribution_jsd`
-  - family: household distribution realism
   - source: `WAS Round 8`
   - scalar: Jensen-Shannon distance between normalized model and target financial-wealth histograms using the framework's fixed bins and current validation filters
   - status: required

@@ -37,7 +37,6 @@ def write_transient_artifacts(*, output_dir: Path, summary: dict, seed_results: 
 def _write_metrics_csv(path: Path, metrics: Sequence[dict]) -> None:
     fieldnames = [
         "metricId",
-        "familyId",
         "label",
         "requirement",
         "status",
@@ -68,6 +67,7 @@ def _write_metrics_csv(path: Path, metrics: Sequence[dict]) -> None:
         "normalizedDistance",
         "normalizedIqr",
         "metricLoss",
+        "metricWeight",
     ]
     with path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -77,7 +77,6 @@ def _write_metrics_csv(path: Path, metrics: Sequence[dict]) -> None:
             writer.writerow(
                 {
                     "metricId": metric["metricId"],
-                    "familyId": metric["familyId"],
                     "label": metric["label"],
                     "requirement": metric["requirement"],
                     "status": metric["status"],
@@ -108,6 +107,7 @@ def _write_metrics_csv(path: Path, metrics: Sequence[dict]) -> None:
                     "normalizedDistance": metric.get("normalizedDistance"),
                     "normalizedIqr": metric.get("normalizedIqr"),
                     "metricLoss": metric.get("metricLoss"),
+                    "metricWeight": metric.get("metricWeight"),
                 }
             )
 
@@ -137,12 +137,11 @@ def _write_summary_markdown(path: Path, summary: dict) -> None:
         f"- Seeds: {', '.join(str(seed) for seed in summary['seeds'])}",
         f"- Overall composite loss: {summary['overallCompositeLoss']:.6f}",
         "",
-        "## Families",
+        "## Metrics",
     ]
-    for family in summary["familySummaries"]:
-        counts = family["statusCounts"]
+    for metric in summary["metrics"]:
         lines.append(
-            f"- {family['label']}: loss={family['loss']:.6f}, "
-            f"pass={counts['pass']}, warn={counts['warn']}, fail={counts['fail']}, unsupported={counts['unsupported']}"
+            f"- {metric['metricId']}: status={metric['status']}, "
+            f"loss={metric['metricLoss']}, weight={metric['metricWeight']}"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

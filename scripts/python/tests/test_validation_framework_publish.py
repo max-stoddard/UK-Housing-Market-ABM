@@ -25,10 +25,9 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             repo_root = Path(tmp_dir)
             summary = {
                 "version": "v-test",
-                "schemaVersion": 2,
+                "schemaVersion": 3,
                 "seeds": [1, 2, 3, 4, 5, 6, 7, 8],
                 "overallCompositeLoss": 0.25,
-                "familySummaries": [],
                 "metrics": [],
             }
             output_path = write_validation_summary(repo_root=repo_root, summary=summary)
@@ -62,6 +61,82 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             self.assertTrue((output_dir / "validation_summary.md").exists())
             self.assertTrue((repo_root / "input-data-versions" / "validation" / "v-test.json").exists())
 
+    def test_run_validation_for_version_can_reuse_existing_output_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            version_dir = repo_root / "input-data-versions" / "v-test"
+            version_dir.mkdir(parents=True)
+            (version_dir / "config.properties").write_text("SEED = 1\n", encoding="utf-8")
+            output_dir = repo_root / "tmp" / "validation" / "v-test"
+            for seed in range(1, 9):
+                (output_dir / f"seed-{seed}").mkdir(parents=True)
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                patch(
+                    "scripts.python.validation.model.runner._extract_seed_metrics",
+                    return_value=self._synthetic_metrics(),
+                ) as extract_mock,
+                patch(
+                    "scripts.python.validation.model.runner.run_snapshot_local_validation",
+                ) as run_mock,
+            ):
+                summary = run_validation_for_version(
+                    repo_root=repo_root,
+                    version="v-test",
+                    seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+                    output_dir=output_dir,
+                    reuse_existing_output=True,
+                )
+
+            self.assertEqual(summary["version"], "v-test")
+            self.assertEqual(extract_mock.call_count, 8)
+            run_mock.assert_not_called()
+            self.assertTrue((repo_root / "input-data-versions" / "validation" / "v-test.json").exists())
+
+    def test_run_validation_for_version_can_reuse_cached_seed_results_and_backfill_missing_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            version_dir = repo_root / "input-data-versions" / "v-test"
+            version_dir.mkdir(parents=True)
+            (version_dir / "config.properties").write_text("SEED = 1\n", encoding="utf-8")
+            output_dir = repo_root / "tmp" / "validation" / "v-test"
+            output_dir.mkdir(parents=True)
+            csv_lines = ["seed,metricId,value,outputDir"]
+            for seed in range(1, 9):
+                (output_dir / f"seed-{seed}").mkdir(parents=True)
+                csv_lines.append(f"{seed},core_mortgageApprovals,60.0,{output_dir / f'seed-{seed}'}")
+            (output_dir / "validation_seed_results.csv").write_text("\n".join(csv_lines) + "\n", encoding="utf-8")
+
+            def fake_extract_seed_metrics(*, metric_ids: list[str], **_: object) -> dict[str, float]:
+                metrics = self._synthetic_metrics()
+                return {metric_id: metrics[metric_id] for metric_id in metric_ids}
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                patch(
+                    "scripts.python.validation.model.runner._extract_seed_metrics",
+                    side_effect=fake_extract_seed_metrics,
+                ) as extract_mock,
+            ):
+                summary = run_validation_for_version(
+                    repo_root=repo_root,
+                    version="v-test",
+                    seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+                    output_dir=output_dir,
+                    reuse_existing_output=True,
+                )
+
+            self.assertEqual(summary["version"], "v-test")
+            self.assertEqual(extract_mock.call_count, 8)
+            self.assertNotIn("core_mortgageApprovals", extract_mock.call_args_list[0].kwargs["metric_ids"])
+
     def test_run_validation_for_version_requires_all_eight_canonical_seeds(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_root = Path(tmp_dir)
@@ -85,7 +160,6 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         required_targets = {
             "core_mortgageApprovals": {
                 "metric_id": "core_mortgageApprovals",
-                "family_id": "macro_credit_activity",
             }
         }
         with self.assertRaisesRegex(RuntimeError, "Missing target metadata"):
@@ -113,6 +187,7 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertEqual(metric["rawSourceValue"], 61325.0)
         self.assertEqual(metric["sourceValue"], 61.325)
         self.assertEqual(metric["mappingStatus"], "exact_match")
+        self.assertEqual(metric["metricWeight"], 1.0)
 
     def test_build_validation_summary_scores_ukf_backed_advances_metrics(self) -> None:
         summary = build_validation_summary(
@@ -175,6 +250,17 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertEqual(financial_wealth["lossScaleBasis"], "target_band_upper")
         self.assertAlmostEqual(financial_wealth["lossScale"], 0.12)
 
+    def test_build_validation_summary_uses_metric_only_composite_weighting(self) -> None:
+        summary = build_validation_summary(
+            version="v-test",
+            seed_results=self._synthetic_seed_results(),
+            seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+        )
+
+        scored_metrics = [metric for metric in summary["metrics"] if metric["metricWeight"] == 1.0]
+        expected_loss = sum(metric["metricLoss"] for metric in scored_metrics) / len(scored_metrics)
+        self.assertAlmostEqual(summary["overallCompositeLoss"], expected_loss)
+
     def test_resolve_was_data_root_uses_parent_checkout_when_worktree_lacks_private_datasets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir) / "project"
@@ -197,6 +283,9 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             "core_debtToIncome": 135.0,
             "core_priceToIncome": 8.0,
             "core_housePriceGrowth": 1.0,
+            "core_hpiMean": 1.02,
+            "core_hpiStd": 0.0135,
+            "core_hpiCyclePeriod": 170.0,
             "core_ooDebtToIncome": 110.0,
             "core_rentalYield": 4.0,
             "core_interestRateSpread": 1.5,
@@ -212,3 +301,6 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             }
             for seed in range(1, 9)
         ]
+
+    def _synthetic_metrics(self) -> dict[str, float]:
+        return self._synthetic_seed_results()[0]["metrics"]

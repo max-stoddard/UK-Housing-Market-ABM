@@ -27,6 +27,9 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
             "core_advancesToFTB",
             "core_advancesToHM",
             "core_advancesToBTL",
+            "core_hpiMean",
+            "core_hpiStd",
+            "core_hpiCyclePeriod",
             "core_interestRateSpread",
             "core_ooDebtToIncome",
             "core_rentalYield",
@@ -34,8 +37,9 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
 
         for version in versions:
             payload = json.loads((validation_dir / f"{version}.json").read_text(encoding="utf-8"))
-            self.assertEqual(payload["schemaVersion"], 2, msg=version)
+            self.assertEqual(payload["schemaVersion"], 3, msg=version)
             self.assertEqual(payload["seeds"], [1, 2, 3, 4, 5, 6, 7, 8], msg=version)
+            self.assertNotIn("familySummaries", payload, msg=version)
             metrics_by_id = {metric["metricId"]: metric for metric in payload["metrics"]}
             self.assertEqual(required_metric_ids - set(metrics_by_id), set(), msg=version)
 
@@ -51,6 +55,8 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
                     msg=f"{version} {metric_id}",
                 )
                 self.assertIsNotNone(metric["metricLoss"], msg=f"{version} {metric_id}")
+                self.assertEqual(metric["metricWeight"], 1.0, msg=f"{version} {metric_id}")
+                self.assertNotIn("familyId", metric, msg=f"{version} {metric_id}")
 
 
 if __name__ == "__main__":
