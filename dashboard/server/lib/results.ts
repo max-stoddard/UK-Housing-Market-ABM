@@ -313,8 +313,16 @@ const MICRO_SNAPSHOT_FILES = new Set([
   'HousingWealth-run1.csv',
   'NHousesOwned-run1.csv',
   'Age-run1.csv',
-  'SavingRate-run1.csv'
+  'SavingRate-run1.csv',
+  'TotalDebt-run1.csv',
+  'HousingStatus-run1.csv',
+  'NonHousingConsumption-run1.csv'
 ]);
+const MICRO_SNAPSHOT_FILE_PATTERNS = [
+  /^TotalDebt-run\d+\.csv$/,
+  /^HousingStatus-run\d+\.csv$/,
+  /^NonHousingConsumption-run\d+\.csv$/
+];
 
 const parsedOutputCache = new Map<string, CachedValue<ParsedOutputFile>>();
 const parsedCoreCache = new Map<string, CachedValue<ParsedCoreIndicatorFile>>();
@@ -605,7 +613,7 @@ function resolveFileType(fileName: string): ResultsFileType {
   if (TRANSACTION_FILES.has(fileName)) {
     return 'transaction';
   }
-  if (MICRO_SNAPSHOT_FILES.has(fileName)) {
+  if (MICRO_SNAPSHOT_FILES.has(fileName) || MICRO_SNAPSHOT_FILE_PATTERNS.some((pattern) => pattern.test(fileName))) {
     return 'micro_snapshot';
   }
   if (fileName === 'config.properties') {

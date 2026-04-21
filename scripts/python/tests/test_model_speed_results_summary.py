@@ -128,6 +128,34 @@ class TestModelSpeedResultsSummary(unittest.TestCase):
             places=6,
         )
 
+    def test_results_summary_ignores_appended_output_columns(self) -> None:
+        base_values = [float(index) for index in range(2001)]
+        housing_values = [value * 2000.0 for value in base_values]
+        mortgage_values = [value * 3000.0 for value in base_values]
+        debt_values = [value * 4.0 for value in base_values]
+        extra_values = [value * 5.0 for value in base_values]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            run_dir = Path(tmp_dir)
+            with (run_dir / "Output-run1.csv").open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle, delimiter=";")
+                writer.writerow(["Model time", "Sale AvSalePrice", "NetHousingWealth", "Unused"])
+                for index, (sale_price, extra_value) in enumerate(zip(base_values, extra_values)):
+                    writer.writerow([index, f"{sale_price:.6f}", f"{extra_value:.6f}", "0"])
+            self._write_core_file(run_dir, "coreIndicator-housingTransactions.csv", housing_values)
+            self._write_core_file(run_dir, "coreIndicator-mortgageApprovals.csv", mortgage_values)
+            self._write_core_file(run_dir, "coreIndicator-debtToIncome.csv", debt_values)
+
+            result = self._run_summary("--run-dir", str(run_dir))
+
+        self.assertEqual(result.returncode, 0, msg=result.stderr)
+        _, values = self._parse_summary_stdout(result.stdout)
+        self.assertAlmostEqual(
+            values["Average house prices (£1,000)"],
+            statistics.mean(value / 1000.0 for value in base_values[200:2000]),
+            places=6,
+        )
+
     def test_results_summary_fails_when_sale_price_column_is_missing(self) -> None:
         values = [float(index) for index in range(2001)]
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -179,11 +207,14 @@ class TestModelSpeedResultsSummary(unittest.TestCase):
         self.assertIn("Mortgage approvals (1,000): expected 1800 values", result.stderr)
 
     def test_results_summary_default_command_matches_current_v41_output(self) -> None:
+        expected_run_dir = (self.repo_root / "Results" / "v4.1-output").resolve()
+        if not expected_run_dir.is_dir():
+            self.skipTest(f"tracked benchmark fixture missing: {expected_run_dir}")
+
         result = self._run_summary()
 
         self.assertEqual(result.returncode, 0, msg=result.stderr)
         lines, values = self._parse_summary_stdout(result.stdout)
-        expected_run_dir = (self.repo_root / "Results" / "v4.1-output").resolve()
         self.assertEqual(lines[0], f"Run directory: {expected_run_dir}")
         self.assertEqual(lines[1], "Window: indices 200:2000 (periods 200..1999 inclusive, 1800 values)")
         self.assertAlmostEqual(values["Average house prices (£1,000)"], 269.873268, places=6)

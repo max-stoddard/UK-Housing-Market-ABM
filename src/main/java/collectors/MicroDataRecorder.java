@@ -19,8 +19,11 @@ public class MicroDataRecorder {
     private PrintWriter     outfileRentalIncome;
     private PrintWriter     outfileBankBalance;
     private PrintWriter     outfileHousingWealth;
+    private PrintWriter     outfileTotalDebt;
     private PrintWriter     outfileNHousesOwned;
+    private PrintWriter     outfileHousingStatus;
     private PrintWriter     outfileAge;
+    private PrintWriter     outfileConsumption;
     private PrintWriter     outfileSavingRate;
 
     private int             timeToStartMicroPrinting = 996;
@@ -38,8 +41,10 @@ public class MicroDataRecorder {
 
     public void openSingleRunSingleVariableFiles(int nRun, boolean recordHouseholdID, boolean recordEmploymentIncome,
                                                  boolean recordRentalIncome, boolean recordBankBalance,
-                                                 boolean recordHousingWealth, boolean recordNHousesOwned,
-                                                 boolean recordAge, boolean recordSavingRate) {
+                                                 boolean recordHousingWealth, boolean recordTotalDebt,
+                                                 boolean recordNHousesOwned, boolean recordHousingStatus,
+                                                 boolean recordAge, boolean recordConsumption,
+                                                 boolean recordSavingRate) {
         if (recordHouseholdID) {
             try {
                 outfileHouseholdID = new PrintWriter(outputFolder + "HouseholdID-run" + nRun
@@ -80,6 +85,14 @@ public class MicroDataRecorder {
                 e.printStackTrace();
             }
         }
+        if (recordTotalDebt) {
+            try {
+                outfileTotalDebt = new PrintWriter(outputFolder + "TotalDebt-run" + nRun
+                        + ".csv", "UTF-8");
+            } catch (FileNotFoundException | UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
+        }
         if (recordNHousesOwned) {
             try {
                 outfileNHousesOwned = new PrintWriter(outputFolder + "NHousesOwned-run" + nRun
@@ -88,9 +101,25 @@ public class MicroDataRecorder {
                 e.printStackTrace();
             }
         }
+        if (recordHousingStatus) {
+            try {
+                outfileHousingStatus = new PrintWriter(outputFolder + "HousingStatus-run" + nRun
+                        + ".csv", "UTF-8");
+            } catch (FileNotFoundException | UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
+        }
         if (recordAge) {
             try {
                 outfileAge = new PrintWriter(outputFolder + "Age-run" + nRun
+                        + ".csv", "UTF-8");
+            } catch (FileNotFoundException | UnsupportedEncodingException e) {
+                e.printStackTrace();
+            }
+        }
+        if (recordConsumption) {
+            try {
+                outfileConsumption = new PrintWriter(outputFolder + "NonHousingConsumption-run" + nRun
                         + ".csv", "UTF-8");
             } catch (FileNotFoundException | UnsupportedEncodingException e) {
                 e.printStackTrace();
@@ -108,8 +137,10 @@ public class MicroDataRecorder {
 
     void timeStampSingleRunSingleVariableFiles(int time, boolean recordHouseholdID, boolean recordEmploymentIncome,
                                                boolean recordRentalIncome, boolean recordBankBalance,
-                                               boolean recordHousingWealth, boolean recordNHousesOwned,
-                                               boolean recordAge, boolean recordSavingRate) {
+                                               boolean recordHousingWealth, boolean recordTotalDebt,
+                                               boolean recordNHousesOwned, boolean recordHousingStatus,
+                                               boolean recordAge, boolean recordConsumption,
+                                               boolean recordSavingRate) {
         if (time % freqOfMicroPrinting == 0 && time >= timeToStartMicroPrinting) {
             if (recordHouseholdID) {
                 if (time != timeToStartMicroPrinting) {
@@ -141,17 +172,35 @@ public class MicroDataRecorder {
                 }
                 outfileHousingWealth.print(time);
             }
+            if (recordTotalDebt) {
+                if (time != timeToStartMicroPrinting) {
+                    outfileTotalDebt.println("");
+                }
+                outfileTotalDebt.print(time);
+            }
             if (recordNHousesOwned) {
                 if (time != timeToStartMicroPrinting) {
                     outfileNHousesOwned.println("");
                 }
                 outfileNHousesOwned.print(time);
             }
+            if (recordHousingStatus) {
+                if (time != timeToStartMicroPrinting) {
+                    outfileHousingStatus.println("");
+                }
+                outfileHousingStatus.print(time);
+            }
             if (recordAge) {
                 if (time != timeToStartMicroPrinting) {
                     outfileAge.println("");
                 }
                 outfileAge.print(time);
+            }
+            if (recordConsumption) {
+                if (time != timeToStartMicroPrinting) {
+                    outfileConsumption.println("");
+                }
+                outfileConsumption.print(time);
             }
             if (recordSavingRate) {
                 if (time != timeToStartMicroPrinting) {
@@ -192,15 +241,33 @@ public class MicroDataRecorder {
         }
     }
 
+    void recordTotalDebt(int time, double totalDebt) {
+        if (time % freqOfMicroPrinting == 0 && time >= timeToStartMicroPrinting) {
+            outfileTotalDebt.format(Locale.ROOT, "; %.2f", totalDebt);
+        }
+    }
+
     void recordNHousesOwned(int time, int nHousesOwned) {
         if (time % freqOfMicroPrinting == 0 && time >= timeToStartMicroPrinting) {
             outfileNHousesOwned.format(Locale.ROOT, "; %d", nHousesOwned);
         }
     }
 
+    void recordHousingStatus(int time, int housingStatus) {
+        if (time % freqOfMicroPrinting == 0 && time >= timeToStartMicroPrinting) {
+            outfileHousingStatus.format(Locale.ROOT, "; %d", housingStatus);
+        }
+    }
+
     void recordAge(int time, double age) {
         if (time % freqOfMicroPrinting == 0 && time >= timeToStartMicroPrinting) {
             outfileAge.format(Locale.ROOT, "; %.2f", age);
+        }
+    }
+
+    void recordConsumption(int time, double consumption) {
+        if (time % freqOfMicroPrinting == 0 && time >= timeToStartMicroPrinting) {
+            outfileConsumption.format(Locale.ROOT, "; %.2f", consumption);
         }
     }
 
@@ -211,8 +278,9 @@ public class MicroDataRecorder {
     }
 
     public void finishRun(boolean recordHouseholdID, boolean recordEmploymentIncome, boolean recordRentalIncome,
-                          boolean recordBankBalance, boolean recordHousingWealth, boolean recordNHousesOwned,
-                          boolean recordAge, boolean recordSavingRate) {
+                          boolean recordBankBalance, boolean recordHousingWealth, boolean recordTotalDebt,
+                          boolean recordNHousesOwned, boolean recordHousingStatus, boolean recordAge,
+                          boolean recordConsumption, boolean recordSavingRate) {
         if (recordHouseholdID) {
             outfileHouseholdID.close();
         }
@@ -228,11 +296,20 @@ public class MicroDataRecorder {
         if (recordHousingWealth) {
             outfileHousingWealth.close();
         }
+        if (recordTotalDebt) {
+            outfileTotalDebt.close();
+        }
         if (recordNHousesOwned) {
             outfileNHousesOwned.close();
         }
+        if (recordHousingStatus) {
+            outfileHousingStatus.close();
+        }
         if (recordAge) {
             outfileAge.close();
+        }
+        if (recordConsumption) {
+            outfileConsumption.close();
         }
         if (recordSavingRate) {
             outfileSavingRate.close();

@@ -116,7 +116,11 @@ public class Recorder {
                     // Credit data
                     + "nStockMortgages; nNewFTBMortgages; nNewFTBMortgagesToBTL; nNewHMMortgages; "
                     + "nNewBTLMortgages; newFTBCredit; newHMCredit; newBTLCredit; newTotalCredit; creditStock; "
-                    + "interestRate");
+                    + "interestRate; "
+                    // Household cash-flow and wealth accounting
+                    + "nonHousingConsumption; rentalCashOutflow; downpaymentCashOutflow; "
+                    + "mortgagePrincipalPayment; mortgageInterestPayment; totalFinancialWealth; "
+                    + "totalHousingNetWealth; totalHousingGrossWealth");
         } catch (FileNotFoundException | UnsupportedEncodingException e) {
             e.printStackTrace();
         }
@@ -179,7 +183,8 @@ public class Recorder {
                         "%d; %d; %.4f; " +
                         "%.4f; %.4e; %.2f; %.2f; %.2f; %.4f; %d; %d; %d; %d; %d; %d; %d; %d; %d; %d; " +
                         "%.4f; %.4e; %.2f; %.2f; %.2f; %.4f; %d; %d; %d; %.4f; " +
-                        "%d; %d; %d; %d; %d; %.2f; %.2f; %.2f; %.2f; %.2f; %.6f", time,
+                        "%d; %d; %d; %d; %d; %.2f; %.2f; %.2f; %.2f; %.2f; %.6f; "
+                        + "%.2f; %.2f; %.2f; %.2f; %.2f; %.2f; %.2f; %.2f", time,
                 // Number of households of each type
                 Model.householdStats.getnNonBTLHomeless(),
                 Model.householdStats.getnBTLHomeless(),
@@ -237,7 +242,16 @@ public class Recorder {
                 Model.creditSupply.getNewCreditToBTL(),
                 Model.creditSupply.getNewCreditTotal(),
                 (Model.creditSupply.getTotalBTLCredit() + Model.creditSupply.getTotalOOCredit()),
-                Model.creditSupply.getInterestRate());
+                Model.creditSupply.getInterestRate(),
+                // Household cash-flow and wealth accounting
+                Model.householdStats.getNonHousingConsumption(),
+                Model.householdStats.getRentalCashOutflow(),
+                Model.householdStats.getDownpaymentCashOutflow(),
+                Model.householdStats.getMortgagePrincipalPayment(),
+                Model.householdStats.getMortgageInterestPayment(),
+                Model.householdStats.getTotalFinancialWealth(),
+                Model.householdStats.getTotalHousingNetWealth(),
+                Model.householdStats.getTotalHousingGrossWealth());
 
         // Write quality band prices to file
         if (recordQualityBandPrice) {

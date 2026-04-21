@@ -158,6 +158,27 @@ const USER_SET_PARAMETER_DEFS: ParameterDefinitionSeed[] = [
     type: 'boolean'
   },
   {
+    key: 'recordTotalDebt',
+    title: 'Record total debt',
+    description: 'Write household total debt data.',
+    group: 'General model control',
+    type: 'boolean'
+  },
+  {
+    key: 'recordHousingStatus',
+    title: 'Record housing status',
+    description: 'Write household housing status data.',
+    group: 'General model control',
+    type: 'boolean'
+  },
+  {
+    key: 'recordConsumption',
+    title: 'Record non-housing consumption',
+    description: 'Write household non-housing consumption data.',
+    group: 'General model control',
+    type: 'boolean'
+  },
+  {
     key: 'recordNHousesOwned',
     title: 'Record number of houses owned',
     description: 'Write household number-of-houses-owned data.',
@@ -561,6 +582,9 @@ function createWarnings(valuesByKey: Map<string, number | boolean>): ModelRunWar
     'recordRentalIncome',
     'recordBankBalance',
     'recordHousingWealth',
+    'recordTotalDebt',
+    'recordHousingStatus',
+    'recordConsumption',
     'recordNHousesOwned',
     'recordAge',
     'recordSavingRate'

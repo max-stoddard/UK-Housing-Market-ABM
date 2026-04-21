@@ -42,8 +42,11 @@ public class Config {
     public boolean recordRentalIncome;                  // True to write individual household monthly gross rental income data (after market clearing)
     public boolean recordBankBalance;                   // True to write individual household liquid wealth (bank balance) data (after market clearing)
     public boolean recordHousingWealth;                 // True to write individual household housing wealth data (after market clearing, assuming constant house prices!)
+    public boolean recordTotalDebt;                     // True to write individual household mortgage debt data (after market clearing)
     public boolean recordNHousesOwned;                  // True to write individual household number of houses owned data (after market clearing)
+    public boolean recordHousingStatus;                 // True to write individual household housing-status data (after market clearing)
     public boolean recordAge;                           // True to write individual household age of the household representative person
+    public boolean recordConsumption;                   // True to write individual household non-housing consumption data
     public boolean recordSavingRate;                    // True to write individual household saving rate data [1 - (taxExpenses + housing expenses(except deposits) + essentialConsumption + nonEssentialConsumption)/monthlyGrossTotalIncome]
 
     // Central Bank policy
@@ -304,13 +307,18 @@ public class Config {
                     // For boolean fields, parse the boolean with appropriate exception handling
                     } else if (field.getType().toString().equals("boolean")) {
                         try {
-                            if (prop.getProperty(field.getName()) == null) {throw new FieldNotInFileException(field);}
-                            if (prop.getProperty(field.getName()).equals("true") ||
-                                    prop.getProperty(field.getName()).equals("false")) {
-                                field.set(this, Boolean.parseBoolean(prop.getProperty(field.getName())));
+                            String propertyValue = prop.getProperty(field.getName());
+                            if (propertyValue == null) {
+                                if (isOptionalBooleanField(field.getName())) {
+                                    continue;
+                                }
+                                throw new FieldNotInFileException(field);
+                            }
+                            if (propertyValue.equals("true") || propertyValue.equals("false")) {
+                                field.set(this, Boolean.parseBoolean(propertyValue));
                             } else {
                                 throw new BooleanFormatException("For input string \"" +
-                                        prop.getProperty(field.getName()) + "\"");
+                                        propertyValue + "\"");
                             }
                         } catch (BooleanFormatException bfe) {
                             System.out.println("Exception " + bfe + " while trying to parse the field " +
@@ -349,6 +357,12 @@ public class Config {
         }
         // Finally, compute and set values for all derived parameters
         setDerivedParams();
+    }
+
+    private boolean isOptionalBooleanField(String fieldName) {
+        return fieldName.equals("recordTotalDebt")
+                || fieldName.equals("recordHousingStatus")
+                || fieldName.equals("recordConsumption");
     }
 
     /**

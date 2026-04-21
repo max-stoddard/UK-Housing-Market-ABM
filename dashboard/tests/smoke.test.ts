@@ -863,6 +863,7 @@ interface ResultsFixtureRunOptions {
   outputMode: 'full' | 'empty';
   includeConfig: boolean;
   includeTransactionFile: boolean;
+  microSnapshotFiles?: string[];
   emptyCoreFiles?: Set<string>;
   modifiedAtMs: number;
 }
@@ -936,6 +937,10 @@ function writeResultsFixtureRun(resultsRoot: string, options: ResultsFixtureRunO
     fs.writeFileSync(path.join(runPath, 'RentalTransactions-run1.csv'), 'modelTime;price\n0;1000\n', 'utf-8');
   }
 
+  for (const fileName of options.microSnapshotFiles ?? []) {
+    fs.writeFileSync(path.join(runPath, fileName), 'modelTime;value\n0;1\n', 'utf-8');
+  }
+
   const modifiedAt = new Date(options.modifiedAtMs);
   fs.utimesSync(runPath, modifiedAt, modifiedAt);
 }
@@ -958,6 +963,11 @@ function createResultsFixtureRepo(): ResultsFixtureContext {
     outputMode: 'full',
     includeConfig: true,
     includeTransactionFile: true,
+    microSnapshotFiles: [
+      'TotalDebt-run2.csv',
+      'HousingStatus-run2.csv',
+      'NonHousingConsumption-run2.csv'
+    ],
     modifiedAtMs: baseTime + 4000
   });
   writeResultsFixtureRun(resultsRoot, {
@@ -1003,6 +1013,9 @@ recordEmploymentIncome = true
 recordRentalIncome = true
 recordBankBalance = true
 recordHousingWealth = true
+recordTotalDebt = false
+recordHousingStatus = false
+recordConsumption = false
 recordNHousesOwned = true
 recordAge = true
 recordSavingRate = false
@@ -1964,6 +1977,15 @@ try {
     ),
     'Expected heavy transaction files to be manifest-only (not charted)'
   );
+  for (const fileName of ['TotalDebt-run2.csv', 'HousingStatus-run2.csv', 'NonHousingConsumption-run2.csv']) {
+    const manifestEntry = manifestFull.find((file) => file.fileName === fileName);
+    assert.equal(manifestEntry?.fileType, 'micro_snapshot', `Expected ${fileName} to be recognized as a micro snapshot`);
+    assert.equal(
+      manifestEntry?.coverageStatus,
+      'unsupported',
+      `Expected ${fileName} micro snapshot to remain manifest-only`
+    );
+  }
 
   const manifestEmpty = getResultsRunFiles(fixture.root, fixture.runIds.emptyOutput);
   assert.ok(
@@ -2094,7 +2116,12 @@ try {
   assert.equal(runOptions.executionEnabled, true, 'Expected execution flag to be forwarded by options payload');
   const disabledRunOptions = getModelRunOptions(modelRunFixtureRoot, undefined, false);
   assert.equal(disabledRunOptions.executionEnabled, false, 'Expected options payload to preserve disabled execution mode');
-  assert.equal(runOptions.parameters.length, 30, 'Expected all 30 USER SET parameters in options payload');
+  assert.equal(runOptions.parameters.length, 33, 'Expected all 33 USER SET parameters in options payload');
+  for (const key of ['recordTotalDebt', 'recordHousingStatus', 'recordConsumption']) {
+    const parameter = runOptions.parameters.find((item) => item.key === key);
+    assert.equal(parameter?.type, 'boolean', `Expected ${key} to be exposed as a boolean run option`);
+    assert.equal(parameter?.defaultValue, false, `Expected ${key} to default to false`);
+  }
   assert.equal(runOptions.defaultBaseline, 'v1.0', 'Expected latest stable baseline to exclude in-progress snapshots');
   assert.equal(runOptions.requestedBaseline, 'v1.0', 'Expected requested baseline default to latest stable snapshot');
   assert.ok(

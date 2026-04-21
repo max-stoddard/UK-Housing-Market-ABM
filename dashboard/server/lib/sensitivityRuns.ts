@@ -651,6 +651,9 @@ function createWarnings(valuesByKey: Map<string, number | boolean>): ModelRunWar
     'recordRentalIncome',
     'recordBankBalance',
     'recordHousingWealth',
+    'recordTotalDebt',
+    'recordHousingStatus',
+    'recordConsumption',
     'recordNHousesOwned',
     'recordAge',
     'recordSavingRate'

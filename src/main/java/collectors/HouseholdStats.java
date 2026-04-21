@@ -36,6 +36,23 @@ public class HouseholdStats {
     private double  rentingAnnualisedNetTotalIncome;
     private double  homelessAnnualisedNetTotalIncome;
 
+    // Fields for housing/non-housing cash outflows
+    private double  nonHousingConsumption;
+    private double  rentalCashOutflow;
+    private double  downpaymentCashOutflow;
+    private double  mortgagePrincipalPayment;
+    private double  mortgageInterestPayment;
+    private double  nonHousingConsumptionCounter;
+    private double  rentalCashOutflowCounter;
+    private double  downpaymentCashOutflowCounter;
+    private double  mortgagePrincipalPaymentCounter;
+    private double  mortgageInterestPaymentCounter;
+
+    // Fields for wealth accounting
+    private double  totalFinancialWealth;
+    private double  totalHousingNetWealth;
+    private double  totalHousingGrossWealth;
+
     // Other fields
     private double  sumStockYield; // Sum of stock gross rental yields of all currently occupied rental properties
     private int     nNonBTLBidsAboveExpAvSalePrice; // Number of normal (non-BTL) bids with desired housing expenditure above the exponential moving average sale price
@@ -53,6 +70,19 @@ public class HouseholdStats {
     public void init() {
         nNonBTLBidsAboveExpAvSalePriceCounter = 0;
         nBTLBidsAboveExpAvSalePriceCounter = 0;
+        nonHousingConsumption = 0.0;
+        rentalCashOutflow = 0.0;
+        downpaymentCashOutflow = 0.0;
+        mortgagePrincipalPayment = 0.0;
+        mortgageInterestPayment = 0.0;
+        nonHousingConsumptionCounter = 0.0;
+        rentalCashOutflowCounter = 0.0;
+        downpaymentCashOutflowCounter = 0.0;
+        mortgagePrincipalPaymentCounter = 0.0;
+        mortgageInterestPaymentCounter = 0.0;
+        totalFinancialWealth = 0.0;
+        totalHousingNetWealth = 0.0;
+        totalHousingGrossWealth = 0.0;
     }
 
     public void record() {
@@ -71,10 +101,14 @@ public class HouseholdStats {
         rentingAnnualisedNetTotalIncome = 0.0;
         homelessAnnualisedNetTotalIncome = 0.0;
         sumStockYield = 0.0;
+        totalFinancialWealth = 0.0;
+        totalHousingNetWealth = 0.0;
+        totalHousingGrossWealth = 0.0;
         // Time stamp householdStats microDataRecorders
         Model.microDataRecorder.timeStampSingleRunSingleVariableFiles(Model.getTime(), config.recordHouseholdID,
                 config.recordEmploymentIncome, config.recordRentalIncome, config.recordBankBalance,
-                config.recordHousingWealth, config.recordNHousesOwned, config.recordAge, config.recordSavingRate);
+                config.recordHousingWealth, config.recordTotalDebt, config.recordNHousesOwned,
+                config.recordHousingStatus, config.recordAge, config.recordConsumption, config.recordSavingRate);
         // Run through all households counting population in each type and summing their gross incomes
         for (Household h : Model.households) {
             if (h.behaviour.isPropertyInvestor()) {
@@ -114,6 +148,22 @@ public class HouseholdStats {
                     homelessAnnualisedNetTotalIncome += h.getMonthlyNetTotalIncome();
                 }
             }
+            double housingWealth = 0.0;
+            double housingGrossWealth = 0.0;
+            double totalDebt = 0.0;
+            for (Map.Entry<House, PaymentAgreement> entry : h.getHousePayments().entrySet()) {
+                House house = entry.getKey();
+                PaymentAgreement payment = entry.getValue();
+                if (payment instanceof MortgageAgreement && house.owner == h) {
+                    double houseValue = Model.housingMarketStats.getExpAvSalePriceForQuality(house.getQuality());
+                    housingWealth += houseValue - ((MortgageAgreement) payment).principal;
+                    housingGrossWealth += houseValue;
+                    totalDebt += ((MortgageAgreement) payment).principal;
+                }
+            }
+            totalFinancialWealth += h.getBankBalance();
+            totalHousingNetWealth += housingWealth;
+            totalHousingGrossWealth += housingGrossWealth;
             // Record household micro-data
             if (config.recordHouseholdID) {
                 Model.microDataRecorder.recordHouseholdID(Model.getTime(), h.id);
@@ -128,24 +178,28 @@ public class HouseholdStats {
                 Model.microDataRecorder.recordBankBalance(Model.getTime(), h.getBankBalance());
             }
             if (config.recordHousingWealth) {
-                // Housing wealth is computed as mark-to-market net housing wealth, thus looking at current average
-                // prices for houses of the same quality
-                double housingWealth = 0.0;
-                for (Map.Entry<House, PaymentAgreement> entry : h.getHousePayments().entrySet()) {
-                    House house = entry.getKey();
-                    PaymentAgreement payment = entry.getValue();
-                    if (payment instanceof MortgageAgreement && house.owner == h) {
-                        housingWealth += Model.housingMarketStats.getExpAvSalePriceForQuality(house.getQuality())
-                                - ((MortgageAgreement) payment).principal;
-                    }
-                }
                 Model.microDataRecorder.recordHousingWealth(Model.getTime(), housingWealth);
+            }
+            if (config.recordTotalDebt) {
+                Model.microDataRecorder.recordTotalDebt(Model.getTime(), totalDebt);
             }
             if (config.recordNHousesOwned) {
                 Model.microDataRecorder.recordNHousesOwned(Model.getTime(), h.getNProperties());
             }
+            if (config.recordHousingStatus) {
+                if (h.isInSocialHousing()) {
+                    Model.microDataRecorder.recordHousingStatus(Model.getTime(), 0);
+                } else if (h.isRenting()) {
+                    Model.microDataRecorder.recordHousingStatus(Model.getTime(), 1);
+                } else if (h.isHomeowner()) {
+                    Model.microDataRecorder.recordHousingStatus(Model.getTime(), 2);
+                }
+            }
             if (config.recordAge) {
                 Model.microDataRecorder.recordAge(Model.getTime(), h.getAge());
+            }
+            if (config.recordConsumption) {
+                Model.microDataRecorder.recordConsumption(Model.getTime(), h.getRecordedNonHousingConsumption());
             }
             if (config.recordSavingRate) {
                 Model.microDataRecorder.recordSavingRate(Model.getTime(), h.getSavingRate());
@@ -162,6 +216,16 @@ public class HouseholdStats {
         nBTLBidsAboveExpAvSalePrice = nBTLBidsAboveExpAvSalePriceCounter;
         nNonBTLBidsAboveExpAvSalePriceCounter = 0;
         nBTLBidsAboveExpAvSalePriceCounter = 0;
+        nonHousingConsumption = nonHousingConsumptionCounter;
+        rentalCashOutflow = rentalCashOutflowCounter;
+        downpaymentCashOutflow = downpaymentCashOutflowCounter;
+        mortgagePrincipalPayment = mortgagePrincipalPaymentCounter;
+        mortgageInterestPayment = mortgageInterestPaymentCounter;
+        nonHousingConsumptionCounter = 0.0;
+        rentalCashOutflowCounter = 0.0;
+        downpaymentCashOutflowCounter = 0.0;
+        mortgagePrincipalPaymentCounter = 0.0;
+        mortgageInterestPaymentCounter = 0.0;
     }
 
     /**
@@ -182,6 +246,26 @@ public class HouseholdStats {
         if (price >= Model.housingMarketStats.getExpAvSalePriceForQuality(0)) {
             nBTLBidsAboveExpAvSalePriceCounter++;
         }
+    }
+
+    public void addNonHousingConsumption(double amount) {
+        nonHousingConsumptionCounter += amount;
+    }
+
+    public void addRentalCashOutflow(double amount) {
+        rentalCashOutflowCounter += amount;
+    }
+
+    public void addDownpaymentCashOutflow(double amount) {
+        downpaymentCashOutflowCounter += amount;
+    }
+
+    public void addMortgagePrincipalPayment(double amount) {
+        mortgagePrincipalPaymentCounter += amount;
+    }
+
+    public void addMortgageInterestPayment(double amount) {
+        mortgageInterestPaymentCounter += amount;
     }
 
     //----- Getter/setter methods -----//
@@ -214,6 +298,15 @@ public class HouseholdStats {
             return 0.0;
         }
     }
+
+    double getNonHousingConsumption() { return nonHousingConsumption; }
+    double getRentalCashOutflow() { return rentalCashOutflow; }
+    double getDownpaymentCashOutflow() { return downpaymentCashOutflow; }
+    double getMortgagePrincipalPayment() { return mortgagePrincipalPayment; }
+    double getMortgageInterestPayment() { return mortgageInterestPayment; }
+    double getTotalFinancialWealth() { return totalFinancialWealth; }
+    double getTotalHousingNetWealth() { return totalHousingNetWealth; }
+    double getTotalHousingGrossWealth() { return totalHousingGrossWealth; }
 
     // Getters for other variables...
     // ... number of empty houses (total number of houses minus number of non-homeless households)

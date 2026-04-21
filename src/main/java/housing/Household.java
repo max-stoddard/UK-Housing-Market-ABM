@@ -38,6 +38,7 @@ public class Household implements IHouseOwner {
     private MersenneTwister                 prng;
     private double                          age; // Age of the household representative person
     private double                          bankBalance;
+    private double                          desiredConsumption;
     private double                          savingRate; // (disposableIncome - nonEssentialConsumption)/grossTotalIncome
     private boolean                         isFirstTimeBuyer;
     private boolean                         isBankrupt;
@@ -89,16 +90,19 @@ public class Household implements IHouseOwner {
         // Update desired purchase price
         desiredPurchasePrice = behaviour.updateDesiredPurchasePrice(annualGrossEmploymentIncome);
         // desiredPurchasePrice = behaviour.getAltDesiredPurchasePrice(annualGrossEmploymentIncome, behaviour.decideLTV(this));
+        // Record scheduled housing cash outflows before payments are made.
+        recordHousingCashFlows();
         // Add monthly disposable income (net total income minus essential consumption and housing expenses) to bank balance
         double monthlyDisposableIncome = getMonthlyDisposableIncome();
         bankBalance += monthlyDisposableIncome;
         // Consume according to gross annual income, capped by current bank balance (after disposable income has been
         // added) and by a maximum fraction of the gross annual income that can be consumed a month
-        double desiredConsumption = behaviour.getDesiredConsumption(bankBalance, getAnnualGrossTotalIncome(),
+        desiredConsumption = behaviour.getDesiredConsumption(bankBalance, getAnnualGrossTotalIncome(),
                 monthlyDisposableIncome);
         desiredConsumption = Math.min(desiredConsumption,
                 getAnnualGrossTotalIncome()*config.MAXIMUM_CONSUMPTION_FRACTION);
         bankBalance -= desiredConsumption;
+        Model.householdStats.addNonHousingConsumption(desiredConsumption + getMonthlyEssentialConsumption());
         // Compute saving rate
         savingRate = (monthlyDisposableIncome - desiredConsumption)/getMonthlyGrossTotalIncome();
         // Deal with bankruptcies
@@ -157,6 +161,30 @@ public class Household implements IHouseOwner {
     }
 
     /**
+     * Record scheduled housing cash outflows before any payment is made this month.
+     */
+    private void recordHousingCashFlows() {
+        for (Map.Entry<House, PaymentAgreement> entry : housePayments.entrySet()) {
+            House house = entry.getKey();
+            PaymentAgreement payment = entry.getValue();
+            if (payment instanceof RentalAgreement) {
+                Model.householdStats.addRentalCashOutflow(payment.nextPayment());
+            } else if (payment instanceof MortgageAgreement && house.owner == this && payment.nextPayment() > 0.0) {
+                MortgageAgreement mortgage = (MortgageAgreement) payment;
+                double interestPayment = mortgage.principal * mortgage.monthlyInterestRate;
+                double principalPayment;
+                if (mortgage.nPayments == 1) {
+                    principalPayment = mortgage.principal;
+                } else {
+                    principalPayment = Math.max(0.0, payment.nextPayment() - interestPayment);
+                }
+                Model.householdStats.addMortgageInterestPayment(interestPayment);
+                Model.householdStats.addMortgagePrincipalPayment(principalPayment);
+            }
+        }
+    }
+
+    /**
      * Subtracts the essential, necessary consumption and housing expenses (mortgage and rental payments) from the net
      * total income (employment income plus property income minus taxes)
      */
@@ -165,12 +193,16 @@ public class Household implements IHouseOwner {
         double monthlyDisposableIncome = getMonthlyNetTotalIncome();
         // Subtract essential, necessary consumption
         // TODO: ESSENTIAL_CONSUMPTION_FRACTION is not explained in the paper, all support is said to be consumed
-        monthlyDisposableIncome -= config.ESSENTIAL_CONSUMPTION_FRACTION*config.GOVERNMENT_MONTHLY_INCOME_SUPPORT;
+        monthlyDisposableIncome -= getMonthlyEssentialConsumption();
         // Subtract housing consumption
         for(PaymentAgreement payment: housePayments.values()) {
             monthlyDisposableIncome -= payment.makeMonthlyPayment();
         }
         return monthlyDisposableIncome;
+    }
+
+    private double getMonthlyEssentialConsumption() {
+        return config.ESSENTIAL_CONSUMPTION_FRACTION * config.GOVERNMENT_MONTHLY_INCOME_SUPPORT;
     }
 
     /**
@@ -320,6 +352,7 @@ public class Household implements IHouseOwner {
         MortgageAgreement mortgage = Model.bank.requestLoan(this, sale.getPrice(),
                 desiredDownPayment, home == null);
         bankBalance -= mortgage.downPayment;
+        Model.householdStats.addDownpaymentCashOutflow(mortgage.downPayment);
         housePayments.put(sale.getHouse(), mortgage);
         if (home == null) { // move in to house
             home = sale.getHouse();
@@ -682,6 +715,10 @@ public class Household implements IHouseOwner {
     }
 
     public double getSavingRate() { return savingRate; }
+
+    public double getDesiredConsumption() { return desiredConsumption; }
+
+    public double getRecordedNonHousingConsumption() { return desiredConsumption + getMonthlyEssentialConsumption(); }
 
     public double getDesiredPurchasePrice() { return desiredPurchasePrice; }
 
