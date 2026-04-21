@@ -11,10 +11,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.python.helpers.was.config import ROUND_8_DATA, WAVE_3_DATA
 from scripts.python.helpers.was.constants import WAS_NET_ANNUAL_RENTAL_INCOME
 from scripts.python.validation.model.extractors import (
     HOUSEHOLD_DISTRIBUTION_SPECS,
     extract_core_indicator_mean,
+    extract_household_metric_from_results,
     extract_household_jsd,
     extract_output_series_cycle_period,
     extract_rebased_output_series_mean,
@@ -93,3 +95,68 @@ class TestValidationFrameworkExtractors(unittest.TestCase):
     def test_income_distribution_spec_includes_net_rental_income_for_non_rent_derivation(self) -> None:
         income_spec = HOUSEHOLD_DISTRIBUTION_SPECS["income_distribution_jsd"]
         self.assertIn(WAS_NET_ANNUAL_RENTAL_INCOME, income_spec.use_columns)
+
+    def test_extract_household_metric_honors_explicit_was_dataset_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            results_dir = root / "Results" / "dataset-selection"
+            results_dir.mkdir(parents=True)
+            (results_dir / "MonthlyGrossEmploymentIncome-run1.csv").write_text(
+                "1000;100.0;200.0;300.0\n",
+                encoding="utf-8",
+            )
+
+            self._write_income_was_fixture(
+                root=root,
+                dataset=WAVE_3_DATA,
+                incomes=[1_200.0, 2_400.0, 3_600.0],
+            )
+            self._write_income_was_fixture(
+                root=root,
+                dataset=ROUND_8_DATA,
+                incomes=[8_000.0, 12_000.0, 16_000.0],
+            )
+
+            w3_jsd = extract_household_metric_from_results(
+                metric_id="income_distribution_jsd",
+                results_dir=results_dir,
+                was_data_root=root,
+                was_dataset=WAVE_3_DATA,
+            )
+            r8_jsd = extract_household_metric_from_results(
+                metric_id="income_distribution_jsd",
+                results_dir=results_dir,
+                was_data_root=root,
+                was_dataset=ROUND_8_DATA,
+            )
+
+            self.assertAlmostEqual(w3_jsd, 0.0)
+            self.assertGreater(r8_jsd, 0.0)
+
+    def _write_income_was_fixture(self, *, root: Path, dataset: str, incomes: list[float]) -> None:
+        if dataset == WAVE_3_DATA:
+            relative_path = "private-datasets/was/was_wave_3_hhold_eul_final.dta"
+            header = [
+                "w3xswgt",
+                "DVTotGIRw3",
+                "DVTotNIRw3",
+                "DVGrsRentAmtAnnualw3_aggr",
+                "DVNetRentAmtAnnualw3_aggr",
+            ]
+        else:
+            relative_path = "private-datasets/was/was_round_8_hhold_eul_may_2025.privdata"
+            header = [
+                "R8xshhwgt",
+                "DVTotGIRR8",
+                "DVTotInc_BHCR8",
+                "DVGrsRentAmtAnnualR8_aggr",
+                "DVNetRentAmtAnnualR8_aggr",
+            ]
+
+        path = root / relative_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        separator = "," if dataset == WAVE_3_DATA else "\t"
+        rows = [separator.join(header)]
+        for income in incomes:
+            rows.append(separator.join(["1.0", str(income), str(0.8 * income), "0.0", "0.0"]))
+        path.write_text("\n".join(rows) + "\n", encoding="utf-8")

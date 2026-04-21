@@ -1235,9 +1235,37 @@ assert.equal(validationOverview.selectedVersion, 'v4.1');
 assert.ok(validationOverview.trend.points.length > 0);
 assert.ok(validationOverview.selectedSummary.metrics.some((metric) => metric.metricId === 'core_mortgageApprovals'));
 assert.equal(
+  validationOverview.selectedSummary.validationTargetYear,
+  2024,
+  'Selected non-v0 validation summaries should default the target year to 2024 when metadata is absent'
+);
+assert.equal(
   Object.prototype.hasOwnProperty.call(validationOverview.selectedSummary, 'familySummaries'),
   false,
   'Validation overview should no longer expose family summaries in the dashboard payload'
+);
+assert.ok(
+  validationOverview.trend.points.some((point) => point.version === 'v0' && point.validationTargetYear === 2011),
+  'Validation overview trend should expose the 2011 target year for v0'
+);
+assert.ok(
+  validationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
+  'Validation overview trend should keep later versions on 2024 targets by default'
+);
+assert.equal(
+  validationOverview.trend.referenceLine?.version,
+  'v0',
+  'Validation overview trend should expose the original v0 calibration reference line'
+);
+assert.equal(
+  validationOverview.trend.referenceLine?.overallCompositeLoss,
+  readValidationSummary(repoRoot, 'v0').overallCompositeLoss,
+  'Validation overview trend reference line should default to the v0 composite loss'
+);
+assert.equal(
+  validationOverview.trend.referenceLine?.validationTargetYear,
+  2011,
+  'Validation overview trend reference line should retain the v0 2011 target year'
 );
 
 const versionOrder = new Map(versions.map((version, index) => [version, index]));
@@ -3028,6 +3056,11 @@ assert.ok(
   'Validation page should render the plain-English validation trend heading'
 );
 assert.ok(
+  validationPageSource.includes('2011 target bands') &&
+    validationPageSource.includes('later versions against tracked 2024'),
+  'Validation page should explain that v0 uses 2011 targets while later versions use 2024 targets'
+);
+assert.ok(
   !validationPageSource.includes('Validation Categories'),
   'Validation page should remove the validation categories section'
 );
@@ -3036,12 +3069,20 @@ assert.ok(
   'Validation page should render the renamed metric results section'
 );
 assert.ok(
+  validationPageSource.includes('selectedValidationTargetYear'),
+  'Validation page should render the selected validation target year in the metric results copy'
+);
+assert.ok(
   validationPageSource.includes('distance relative to target level'),
   'Validation page should explain how validation loss is calculated'
 );
 assert.ok(
   validationPageSource.includes('The line chart is a secondary overview'),
   'Validation page should explain that the chart is a secondary decision aid'
+);
+assert.ok(
+  validationPageSource.includes('referenceLineLabel') && validationPageSource.includes('Target evidence:'),
+  'Validation page should render the original v0 reference line and year-aware chart tooltip copy'
 );
 assert.ok(
   !validationPageSource.includes('Click to filter the table'),

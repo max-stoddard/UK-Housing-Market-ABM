@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -38,7 +39,7 @@ from scripts.python.validation.model.scoring import (
     normalize_by_loss_scale,
     resolve_loss_scale,
 )
-from scripts.python.validation.model.validation_catalog_2024 import TARGETS_BY_ID
+from scripts.python.validation.model.validation_profiles import ValidationProfile, resolve_validation_profile
 
 VALIDATION_RECORDING_OVERRIDES = {
     "recordTransactions": "false",
@@ -73,12 +74,14 @@ def run_validation_for_version(
     if seeds != canonical_seeds and not allow_test_override:
         raise ValueError("Canonical validation requires seeds 1..8 unless an explicit test-only override is used")
 
+    validation_profile = resolve_validation_profile(version)
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
     if reuse_existing_output:
         run_results = load_reused_validation_results(
             output_dir=output_dir,
             seeds=seeds,
             was_data_root=resolved_was_data_root,
+            validation_profile=validation_profile,
         )
     else:
         run_results = run_snapshot_local_validation(
@@ -88,6 +91,7 @@ def run_validation_for_version(
             output_dir=output_dir,
             maven_bin=maven_bin,
             was_data_root=resolved_was_data_root,
+            validation_profile=validation_profile,
         )
     return publish_validation_results(
         repo_root=repo_root,
@@ -95,6 +99,7 @@ def run_validation_for_version(
         seeds=seeds,
         output_dir=output_dir,
         run_results=run_results,
+        validation_profile=validation_profile,
     )
 
 
@@ -105,6 +110,7 @@ def publish_validation_results(
     seeds: Sequence[int],
     output_dir: Path,
     run_results: Sequence[dict[str, object]],
+    validation_profile: ValidationProfile | None = None,
 ) -> dict:
     """Publish tracked and transient outputs after all seed runs succeed."""
 
@@ -112,7 +118,20 @@ def publish_validation_results(
     if returned_seeds != sorted(seeds):
         raise ValueError("Tracked publication requires 8/8 successful seeds before publishing tracked JSON")
 
-    summary = build_validation_summary(version=version, seed_results=run_results, seeds=seeds)
+    resolved_profile = validation_profile or resolve_validation_profile(version)
+    reference_loss, reference_label = resolve_initial_calibration_reference_metadata(
+        repo_root=repo_root,
+        version=version,
+        validation_profile=resolved_profile,
+    )
+    summary = build_validation_summary(
+        version=version,
+        seed_results=run_results,
+        seeds=seeds,
+        validation_profile=resolved_profile,
+        initial_calibration_reference_loss=reference_loss,
+        initial_calibration_reference_label=reference_label,
+    )
     write_transient_artifacts(output_dir=output_dir, summary=summary, seed_results=run_results)
     write_validation_summary(repo_root=repo_root, summary=summary)
     return summary
@@ -126,6 +145,7 @@ def run_snapshot_local_validation(
     output_dir: Path,
     maven_bin: str,
     was_data_root: Path,
+    validation_profile: ValidationProfile,
 ) -> list[dict[str, object]]:
     """Execute the Java model snapshot-locally for each seed and extract metrics."""
 
@@ -147,6 +167,7 @@ def run_snapshot_local_validation(
                 output_dir=output_dir,
                 maven_bin=maven_bin,
                 was_data_root=was_data_root,
+                validation_profile=validation_profile,
             )
         )
 
@@ -158,6 +179,7 @@ def load_reused_validation_results(
     output_dir: Path,
     seeds: Sequence[int],
     was_data_root: Path,
+    validation_profile: ValidationProfile,
 ) -> list[dict[str, object]]:
     """Reuse existing per-seed outputs instead of rerunning the model."""
 
@@ -169,13 +191,16 @@ def load_reused_validation_results(
             raise RuntimeError(f"Missing existing validation output directory: {seed_output_dir}")
         cached_entry = cached_seed_results.get(seed)
         metrics = dict(cached_entry["metrics"]) if cached_entry is not None else {}
-        missing_metric_ids = [metric_id for metric_id in TARGETS_BY_ID if metric_id not in metrics]
+        missing_metric_ids = [
+            metric_id for metric_id in validation_profile.targets_by_id if metric_id not in metrics
+        ]
         if missing_metric_ids:
             metrics.update(
                 _extract_seed_metrics(
                     seed_output_dir=seed_output_dir,
                     was_data_root=was_data_root,
                     metric_ids=missing_metric_ids,
+                    validation_profile=validation_profile,
                 )
             )
         seed_results.append(
@@ -196,6 +221,7 @@ def run_validation_seed(
     output_dir: Path,
     maven_bin: str,
     was_data_root: Path,
+    validation_profile: ValidationProfile,
 ) -> dict[str, object]:
     """Run one snapshot-local validation seed and return its extracted metrics."""
 
@@ -235,7 +261,11 @@ def run_validation_seed(
     return {
         "seed": seed,
         "outputDir": str(seed_output_dir),
-        "metrics": _extract_seed_metrics(seed_output_dir=seed_output_dir, was_data_root=was_data_root),
+        "metrics": _extract_seed_metrics(
+            seed_output_dir=seed_output_dir,
+            was_data_root=was_data_root,
+            validation_profile=validation_profile,
+        ),
     }
 
 
@@ -258,15 +288,23 @@ def build_validation_summary(
     version: str,
     seed_results: Sequence[dict[str, object]],
     seeds: Sequence[int],
+    validation_profile: ValidationProfile | None = None,
     targets_by_id: Mapping[str, object] | None = None,
+    initial_calibration_reference_loss: float | None = None,
+    initial_calibration_reference_label: str | None = None,
 ) -> dict:
     """Build the dashboard-facing summary JSON from per-seed metric values."""
 
     if len(seed_results) != len(seeds):
         raise ValueError("Tracked publication requires 8/8 successful seeds before publishing tracked JSON")
 
-    target_lookup = targets_by_id or TARGETS_BY_ID
-    metric_ids = _ordered_metric_ids(seed_results=seed_results, target_lookup=target_lookup)
+    resolved_profile = validation_profile or resolve_validation_profile(version)
+    target_lookup = targets_by_id or resolved_profile.targets_by_id
+    metric_ids = _ordered_metric_ids(
+        seed_results=seed_results,
+        target_lookup=target_lookup,
+        target_catalog=resolved_profile.target_catalog,
+    )
     summary_metrics: list[dict] = []
     scored_metric_losses: list[float] = []
     scored_metric_weights: list[float] = []
@@ -389,9 +427,10 @@ def build_validation_summary(
     if not scored_metric_losses:
         raise RuntimeError("Missing required metric losses for overall composite scoring")
 
-    return {
+    summary = {
         "schemaVersion": VALIDATION_SCHEMA_VERSION,
         "version": version,
+        "validationTargetYear": resolved_profile.validation_target_year,
         "generatedAt": _utc_now_iso(),
         "seeds": list(seeds),
         "window": {
@@ -404,18 +443,25 @@ def build_validation_summary(
         ),
         "metrics": summary_metrics,
     }
+    if initial_calibration_reference_loss is not None and initial_calibration_reference_label is not None:
+        summary["initialCalibrationReferenceLoss"] = initial_calibration_reference_loss
+        summary["initialCalibrationReferenceLabel"] = initial_calibration_reference_label
+    return summary
 
 
 def _extract_seed_metrics(
     *,
     seed_output_dir: Path,
     was_data_root: Path,
+    validation_profile: ValidationProfile,
     metric_ids: Sequence[str] | None = None,
 ) -> dict[str, float]:
     metrics: dict[str, float] = {}
-    selected_metric_ids = list(metric_ids) if metric_ids is not None else list(TARGETS_BY_ID.keys())
+    selected_metric_ids = (
+        list(metric_ids) if metric_ids is not None else list(validation_profile.targets_by_id.keys())
+    )
     for metric_id in selected_metric_ids:
-        metric = TARGETS_BY_ID[metric_id]
+        metric = validation_profile.targets_by_id[metric_id]
         if metric.kind == "core_indicator":
             if not metric.file_name:
                 raise RuntimeError(f"Missing core-indicator file mapping for {metric.metric_id}")
@@ -433,6 +479,7 @@ def _extract_seed_metrics(
                 metric_id=metric.metric_id,
                 results_dir=seed_output_dir,
                 was_data_root=was_data_root,
+                was_dataset=validation_profile.was_dataset,
             )
         else:
             raise RuntimeError(f"Unsupported metric kind for {metric.metric_id}: {metric.kind}")
@@ -470,15 +517,118 @@ def _metric_seed_values(*, metric_id: str, seed_results: Sequence[dict[str, obje
     return values
 
 
-def _ordered_metric_ids(*, seed_results: Sequence[dict[str, object]], target_lookup: Mapping[str, object]) -> list[str]:
+def score_existing_summary_against_targets(
+    *,
+    summary: Mapping[str, object],
+    targets_by_id: Mapping[str, object],
+    target_catalog: Sequence[MetricDefinition] | None = None,
+) -> float:
+    """Rescore an existing tracked summary against the supplied validation targets."""
+
+    raw_metrics = summary.get("metrics")
+    if not isinstance(raw_metrics, Sequence):
+        raise RuntimeError("Existing validation summary is missing metrics")
+
+    metrics_by_id = {
+        str(metric["metricId"]): metric for metric in raw_metrics if isinstance(metric, Mapping) and "metricId" in metric
+    }
+    metric_ids = _ordered_metric_ids(
+        seed_results=(),
+        target_lookup=targets_by_id,
+        target_catalog=target_catalog,
+        metrics_by_id=metrics_by_id,
+    )
+    scored_metric_losses: list[float] = []
+    scored_metric_weights: list[float] = []
+
+    for metric_id in metric_ids:
+        target = _coerce_target_definition(metric_id, targets_by_id.get(metric_id))
+        if target.requirement != "required":
+            continue
+        if target.target_band is None:
+            raise RuntimeError(f"Missing target metadata for required metric {target.metric_id}")
+
+        existing_metric = metrics_by_id.get(metric_id)
+        if existing_metric is None:
+            raise RuntimeError(f"Existing validation summary is missing metric {metric_id}")
+
+        if existing_metric.get("insideRate") is None:
+            raise RuntimeError(f"Existing validation summary is missing insideRate for {metric_id}")
+
+        loss_scale, _ = resolve_loss_scale(
+            source_value=target.source_metadata.normalized_source_value if target.source_metadata else None,
+            lower_bound=target.target_band.lower,
+            upper_bound=target.target_band.upper,
+        )
+        scored_metric_losses.append(
+            compute_metric_loss(
+                seed_mean=float(existing_metric["seedMean"]),
+                p25=float(existing_metric["p25"]),
+                p75=float(existing_metric["p75"]),
+                lower_bound=target.target_band.lower,
+                upper_bound=target.target_band.upper,
+                inside_rate=float(existing_metric["insideRate"]),
+                loss_scale=loss_scale,
+            )
+        )
+        scored_metric_weights.append(1.0)
+
+    return compute_overall_composite_loss(
+        metric_losses=scored_metric_losses,
+        metric_weights=scored_metric_weights,
+    )
+
+
+def resolve_initial_calibration_reference_metadata(
+    *,
+    repo_root: Path,
+    version: str,
+    validation_profile: ValidationProfile,
+) -> tuple[float | None, str | None]:
+    """Resolve optional initial-calibration reference metadata for a published summary."""
+
+    reference_version = validation_profile.initial_calibration_reference_version
+    reference_label = validation_profile.initial_calibration_reference_label
+    if reference_version is None or reference_label is None or version != reference_version:
+        return None, None
+
+    reference_path = repo_root / "input-data-versions" / "validation" / f"{reference_version}.json"
+    if not reference_path.exists():
+        return None, None
+
+    summary = json.loads(reference_path.read_text(encoding="utf-8"))
+    return (
+        score_existing_summary_against_targets(
+            summary=summary,
+            targets_by_id=validation_profile.targets_by_id,
+            target_catalog=validation_profile.target_catalog,
+        ),
+        reference_label,
+    )
+
+
+def _ordered_metric_ids(
+    *,
+    seed_results: Sequence[dict[str, object]],
+    target_lookup: Mapping[str, object],
+    target_catalog: Sequence[MetricDefinition] | None = None,
+    metrics_by_id: Mapping[str, object] | None = None,
+) -> list[str]:
     seen = set()
     ordered = []
-    for metric in TARGETS_BY_ID.values():
+    catalog = target_catalog or tuple(
+        _coerce_target_definition(metric_id, raw_target) for metric_id, raw_target in target_lookup.items()
+    )
+    for metric in catalog:
         if metric.metric_id in target_lookup:
             ordered.append(metric.metric_id)
             seen.add(metric.metric_id)
-    for seed_result in seed_results:
-        for metric_id in seed_result["metrics"].keys():
+    if metrics_by_id is not None:
+        metric_id_iterables = [metrics_by_id.keys()]
+    else:
+        metric_id_iterables = [seed_result["metrics"].keys() for seed_result in seed_results]
+    for metric_ids in metric_id_iterables:
+        for metric_id in metric_ids:
             if metric_id not in seen:
                 if metric_id not in target_lookup:
                     raise RuntimeError(f"Missing target metadata for required metric {metric_id}")

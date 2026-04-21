@@ -1,0 +1,41 @@
+# 2011 mortgage-market validation evidence
+#
+# Author: Max Stoddard
+
+Purpose:
+- Public evidence bundle for the 2011 annual first-time buyer, home-mover, and
+  buy-to-let house-purchase mortgage totals used by the v0-only 2011 validation
+  profile.
+
+Tracked public references:
+- PropertyWire, `Lending figures suggest UK first time buyers are racing to beat tax deadline`
+  URL: https://www.propertywire.com/news/europe/mortgages-first-time-buyer/
+  Published: 13 February 2012
+  Extracted 2011 annual values:
+  - first-time buyers: `193,000` loans
+  - home movers: `316,500` loans
+- Mortgage Finance Gazette, `First-time buyers take advantage of stamp duty concession`
+  URL: https://www.mortgagefinancegazette.com/lending-news/first-time-buyers-take-advantage-of-stamp-duty-concession-13-02-2012/
+  Published: 13 February 2012
+  Cross-check values:
+  - first-time buyers: `193,000` loans
+  - home movers: `316,500` loans
+- Mortgage Strategy, `Number of B2L properties increased by 84,000 in 2011`
+  URL: https://www.mortgagestrategy.co.uk/news/number-of-b2l-properties-increased-by-84000-in-2011/
+  Published: 9 February 2012
+  Extracted 2011 annual value:
+  - buy-to-let house purchases: `84,000` properties bought with buy-to-let
+    mortgages
+
+Published target conversions:
+- `core_advancesToFTB`: `193,000 / 12 / 1,000 = 16.083333333333332`
+  thousand count/month; target band `+/-15%` => `13.671` to `18.496`
+- `core_advancesToHM`: `316,500 / 12 / 1,000 = 26.375`
+  thousand count/month; target band `+/-15%` => `22.419` to `30.331`
+- `core_advancesToBTL`: `84,000 / 12 / 1,000 = 7.0`
+  thousand count/month; target band `+/-15%` => `5.95` to `8.05`
+
+Notes:
+- The buy-to-let figure is intentionally the house-purchase count, not total BTL
+  lending, because the modern tracked metric validates BTL purchase activity
+  rather than all BTL originations.

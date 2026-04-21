@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from scripts.python.helpers.common.abm_policy_sweep import load_core_indicator_values, select_post_burn_in_window
+from scripts.python.helpers.was.config import ROUND_8_DATA, WAVE_3_DATA
 from scripts.python.helpers.was.constants import (
     WAS_BTL_HOUSES_TOTAL_VALUE,
     WAS_CASH_ISA_VALUE,
@@ -41,7 +42,7 @@ from scripts.python.helpers.was.derived_columns import (
     derive_liquid_financial_wealth_column,
     derive_non_rent_income_columns,
 )
-from scripts.python.helpers.was.io import read_results, read_was_data
+from scripts.python.helpers.was.io import read_results
 from scripts.python.helpers.was.row_filters import filter_percentile_outliers, filter_positive_values
 from scripts.python.validation.model.hpi import (
     compute_rebased_mean,
@@ -132,6 +133,52 @@ OUTPUT_SERIES_SPECS: dict[str, OutputSeriesMetricSpec] = {
     ),
 }
 
+WAS_DATA_FILE_BY_DATASET = {
+    WAVE_3_DATA: ("private-datasets/was/was_wave_3_hhold_eul_final.dta", ","),
+    ROUND_8_DATA: ("private-datasets/was/was_round_8_hhold_eul_may_2025.privdata", "\t"),
+}
+
+WAS_COLUMN_MAP_BY_DATASET = {
+    ROUND_8_DATA: {
+        WAS_WEIGHT: "R8xshhwgt",
+        WAS_GROSS_ANNUAL_INCOME: "DVTotGIRR8",
+        WAS_NET_ANNUAL_INCOME: "DVTotInc_BHCR8",
+        WAS_GROSS_ANNUAL_RENTAL_INCOME: "DVGrsRentAmtAnnualR8_aggr",
+        WAS_NET_ANNUAL_RENTAL_INCOME: "DVNetRentAmtAnnualR8_aggr",
+        WAS_TOTAL_PROPERTY_WEALTH: "HPropWR8",
+        WAS_PROPERTY_VALUE_SUM: "DVPropertyR8",
+        WAS_MAIN_RESIDENCE_VALUE: "DVHValueR8",
+        WAS_OTHER_HOUSES_TOTAL_VALUE: "DVHseValR8_sum",
+        WAS_BTL_HOUSES_TOTAL_VALUE: "DVBltValR8_sum",
+        WAS_NATIONAL_SAVINGS_VALUE: "DVFNSValR8_aggr",
+        WAS_CHILD_TRUST_FUND_VALUE: "DVCACTvR8_aggr",
+        WAS_CHILD_OTHER_SAVINGS_VALUE: "DVCASVVR8_aggr",
+        WAS_SAVINGS_ACCOUNTS_VALUE: "DVSaValR8_aggr",
+        WAS_CASH_ISA_VALUE: "DVCISAVR8_aggr",
+        WAS_CURRENT_ACCOUNT_CREDIT_VALUE: "DVCaCrValR8_aggr",
+        WAS_FORMAL_FINANCIAL_ASSETS: "DVFFAssetsR8_aggr",
+    },
+    WAVE_3_DATA: {
+        WAS_WEIGHT: "w3xswgt",
+        WAS_GROSS_ANNUAL_INCOME: "DVTotGIRw3",
+        WAS_NET_ANNUAL_INCOME: "DVTotNIRw3",
+        WAS_GROSS_ANNUAL_RENTAL_INCOME: "DVGrsRentAmtAnnualw3_aggr",
+        WAS_NET_ANNUAL_RENTAL_INCOME: "DVNetRentAmtAnnualw3_aggr",
+        WAS_TOTAL_PROPERTY_WEALTH: "HPROPWW3",
+        WAS_PROPERTY_VALUE_SUM: "DVPropertyW3",
+        WAS_MAIN_RESIDENCE_VALUE: "DVHValueW3",
+        WAS_OTHER_HOUSES_TOTAL_VALUE: "DVHseValW3_sum",
+        WAS_BTL_HOUSES_TOTAL_VALUE: "DVBltValW3_sum",
+        WAS_NATIONAL_SAVINGS_VALUE: "DVFNSValW3_aggr",
+        WAS_CHILD_TRUST_FUND_VALUE: "DVCACTvW3_aggr",
+        WAS_CHILD_OTHER_SAVINGS_VALUE: "DVCASVVW3_aggr",
+        WAS_SAVINGS_ACCOUNTS_VALUE: "DVSaValW3_aggr",
+        WAS_CASH_ISA_VALUE: "DVCISAVW3_aggr",
+        WAS_CURRENT_ACCOUNT_CREDIT_VALUE: "DVCaCrValW3_aggr",
+        WAS_FORMAL_FINANCIAL_ASSETS: "DVFFAssetsW3_aggr",
+    },
+}
+
 
 def extract_core_indicator_mean(csv_path: Path, *, scale: float = 1.0) -> float:
     """Read a core-indicator series and return its fixed validation-window mean."""
@@ -199,12 +246,22 @@ def build_normalized_histogram(
     return histogram / total_mass
 
 
-def extract_household_metric_from_results(*, metric_id: str, results_dir: Path, was_data_root: str | Path) -> float:
+def extract_household_metric_from_results(
+    *,
+    metric_id: str,
+    results_dir: Path,
+    was_data_root: str | Path,
+    was_dataset: str = ROUND_8_DATA,
+) -> float:
     """Extract a household JSD metric from one run output directory."""
 
     spec = HOUSEHOLD_DISTRIBUTION_SPECS[metric_id]
     model_values = _load_model_distribution_values(results_dir / spec.results_file_name, spec)
-    target_values, target_weights = _load_target_distribution_values(spec=spec, was_data_root=Path(was_data_root))
+    target_values, target_weights = _load_target_distribution_values(
+        spec=spec,
+        was_data_root=Path(was_data_root),
+        was_dataset=was_dataset,
+    )
     return extract_household_jsd(
         model_values=model_values,
         target_values=target_values,
@@ -227,8 +284,13 @@ def _load_target_distribution_values(
     *,
     spec: HouseholdDistributionSpec,
     was_data_root: Path,
+    was_dataset: str,
 ) -> tuple[list[float], list[float]]:
-    chunk = read_was_data(str(was_data_root), list(spec.use_columns))
+    chunk = _read_was_data_for_dataset(
+        root=was_data_root,
+        column_constants=list(spec.use_columns),
+        was_dataset=was_dataset,
+    )
 
     if spec.variable_name == GROSS_NON_RENT_INCOME:
         derive_non_rent_income_columns(chunk)
@@ -252,6 +314,28 @@ def _load_target_distribution_values(
         filtered[spec.variable_name].astype(float).tolist(),
         filtered[WAS_WEIGHT].astype(float).tolist(),
     )
+
+
+def _read_was_data_for_dataset(
+    *,
+    root: Path,
+    column_constants: list[str],
+    was_dataset: str,
+) -> pd.DataFrame:
+    if was_dataset not in WAS_DATA_FILE_BY_DATASET:
+        raise ValueError(f"Unsupported WAS dataset {was_dataset!r}")
+
+    relative_path, separator = WAS_DATA_FILE_BY_DATASET[was_dataset]
+    column_map = WAS_COLUMN_MAP_BY_DATASET[was_dataset]
+    use_columns = [column_map[column] for column in column_constants]
+    chunk = pd.read_csv(
+        root / relative_path,
+        usecols=use_columns,
+        sep=separator,
+    )
+    rename_map = {column_map[column]: column for column in column_constants}
+    chunk.rename(columns=rename_map, inplace=True)
+    return chunk
 
 
 def extract_output_series_metric_from_results(*, metric_id: str, results_dir: Path) -> float:

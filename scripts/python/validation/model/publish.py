@@ -134,11 +134,17 @@ def _write_summary_markdown(path: Path, summary: dict) -> None:
         f"# Validation Summary: {summary['version']}",
         "",
         f"- Generated at: {summary['generatedAt']}",
+        f"- Validation target year: {summary['validationTargetYear']}",
         f"- Seeds: {', '.join(str(seed) for seed in summary['seeds'])}",
         f"- Overall composite loss: {summary['overallCompositeLoss']:.6f}",
-        "",
-        "## Metrics",
     ]
+    if "initialCalibrationReferenceLoss" in summary and "initialCalibrationReferenceLabel" in summary:
+        lines.append(
+            "- Initial calibration reference: "
+            f"{summary['initialCalibrationReferenceLabel']} "
+            f"({summary['initialCalibrationReferenceLoss']:.6f})"
+        )
+    lines.extend(["", "## Metrics"])
     for metric in summary["metrics"]:
         lines.append(
             f"- {metric['metricId']}: status={metric['status']}, "

@@ -9,10 +9,11 @@ import argparse
 from pathlib import Path
 
 from scripts.python.validation.model.runner import run_validation_for_version
+from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run 2024 validation for one input-data version.")
+    parser = argparse.ArgumentParser(description="Run version-gated validation for one input-data version.")
     parser.add_argument("--version", required=True, help="Input-data version folder name, for example v4.1")
     parser.add_argument("--seeds", default="1,2,3,4,5,6,7,8", help="Comma-separated seed list")
     parser.add_argument("--output-dir", required=True, help="Transient validation output directory")
@@ -33,6 +34,7 @@ def parse_seed_list(seed_text: str) -> list[int]:
 def main() -> None:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[4]
+    validation_profile = resolve_validation_profile(args.version)
     summary = run_validation_for_version(
         repo_root=repo_root,
         version=args.version,
@@ -44,6 +46,7 @@ def main() -> None:
     )
     print(
         f"Published validation summary for {summary['version']} "
+        f"(targetYear={validation_profile.validation_target_year}) "
         f"with overallCompositeLoss={summary['overallCompositeLoss']:.6f}"
     )
 

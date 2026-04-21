@@ -1,0 +1,31 @@
+# 2011 HPI validation evidence
+#
+# Author: Max Stoddard
+
+Derived from:
+- input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv
+
+Tracked 2011 snapshots:
+- input-data-versions/validation-sources/2011/hmlr/uk-hpi-uk-series-through-2011-12.csv
+- input-data-versions/validation-sources/2011/hmlr/hpi-2011-derived-values.json
+
+Method:
+- Filter the archived full-file CSV down to the United Kingdom rows through
+  `2011-12`.
+- Reuse the existing HPI helper methodology that the 2024 profile already locks:
+  rebased mean, rebased population std, and dominant cycle period from the
+  filtered UK series.
+
+Derived values:
+- `core_hpiMean`: UK `IndexSA` from `2011-01` to `2011-12`, rebased to January
+  2011 = `1.0`, annual mean `0.9922839506172839`, target band `+/-15%`.
+- `core_hpiStd`: UK `IndexSA` from `2005-01` to `2011-12`, rebased to January
+  2005 = `1.0`, population std `0.06520815312915954`, target band `+/-15%`.
+- `core_hpiCyclePeriod`: UK `Index` history through `2011-12`, 12-month moving
+  average, log transform, linear detrend, FFT peak search over `60..240` months,
+  dominant cycle period `171.33333333333334`, target band `+/-15%`.
+
+Notes:
+- The source publication date is later than 2011, but the archived HMLR full-file
+  release contains the explicit historical UK series required to reconstruct the
+  2011 targets reproducibly.

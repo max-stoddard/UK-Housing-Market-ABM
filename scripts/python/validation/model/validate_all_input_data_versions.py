@@ -1,4 +1,4 @@
-"""CLI entrypoint for bulk 2024 validation across input-data versions.
+"""CLI entrypoint for bulk validation across input-data versions.
 
 @author: Max Stoddard
 """
@@ -16,11 +16,12 @@ from scripts.python.validation.model.runner import (
     resolve_was_data_root,
     run_validation_seed,
 )
+from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run 2024 validation for multiple input-data versions."
+        description="Run version-gated validation for multiple input-data versions."
     )
     parser.add_argument(
         "--versions", default="all", help="Comma-separated versions or 'all'"
@@ -108,6 +109,9 @@ def run_validation_campaign(
     resolved_was_data_root = resolve_was_data_root(
         repo_root=repo_root, explicit_root=was_data_root
     )
+    profiles_by_version = {
+        version: resolve_validation_profile(version) for version in versions
+    }
     if reuse_existing_output:
         published_versions: list[str] = []
         failures: list[str] = []
@@ -118,6 +122,7 @@ def run_validation_campaign(
                     output_dir=version_output_dir,
                     seeds=seeds,
                     was_data_root=resolved_was_data_root,
+                    validation_profile=profiles_by_version[version],
                 )
                 publish_validation_results(
                     repo_root=repo_root,
@@ -125,6 +130,7 @@ def run_validation_campaign(
                     seeds=seeds,
                     output_dir=version_output_dir,
                     run_results=run_results,
+                    validation_profile=profiles_by_version[version],
                 )
                 published_versions.append(version)
                 print(f"Published {version} from existing outputs")
@@ -155,6 +161,7 @@ def run_validation_campaign(
                     output_dir=version_output_dir,
                     maven_bin=maven_bin,
                     was_data_root=resolved_was_data_root,
+                    validation_profile=profiles_by_version[version],
                 )
                 future_to_request[future] = (version, seed)
 
@@ -187,6 +194,7 @@ def run_validation_campaign(
             seeds=seeds,
             output_dir=output_root / version,
             run_results=version_results,
+            validation_profile=profiles_by_version[version],
         )
         published_versions.append(version)
         print(f"Published {version}")

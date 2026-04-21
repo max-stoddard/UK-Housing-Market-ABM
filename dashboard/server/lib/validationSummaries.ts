@@ -2,11 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   ValidationCompositeTrendPayload,
+  ValidationReferenceLine,
   ValidationMetricSummary,
   ValidationOverviewPayload,
   ValidationVersionSummary
 } from '../../shared/types';
 import { compareVersions } from './versioning';
+
+const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
+const ORIGINAL_V0_VALIDATION_TARGET_YEAR = 2011;
 
 function assertObject(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -48,6 +52,66 @@ function assertNumberArray(value: unknown, message: string): number[] {
     throw new Error(message);
   }
   return value;
+}
+
+function resolveValidationTargetYear(value: unknown, version: string, message: string): number {
+  if (value === undefined || value === null) {
+    return version === 'v0' ? ORIGINAL_V0_VALIDATION_TARGET_YEAR : DEFAULT_VALIDATION_TARGET_YEAR;
+  }
+  return assertNumber(value, message);
+}
+
+function buildDefaultReferenceLine(summary: Pick<ValidationVersionSummary, 'version' | 'overallCompositeLoss' | 'validationTargetYear'>): ValidationReferenceLine | null {
+  if (summary.version !== 'v0') {
+    return null;
+  }
+  return {
+    version: summary.version,
+    label: 'Original v0 calibration',
+    description: `Original ${summary.version} calibration loss against ${summary.validationTargetYear} evidence.`,
+    overallCompositeLoss: summary.overallCompositeLoss,
+    validationTargetYear: summary.validationTargetYear
+  };
+}
+
+function parseReferenceLine(
+  value: unknown,
+  filePath: string,
+  fallback: Pick<ValidationReferenceLine, 'version' | 'label' | 'description' | 'overallCompositeLoss' | 'validationTargetYear'>
+): ValidationReferenceLine | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const objectValue = assertObject(value, `${filePath}.referenceLine must be an object`);
+  return {
+    version:
+      objectValue.version === undefined || objectValue.version === null
+        ? fallback.version
+        : assertString(objectValue.version, `${filePath}.referenceLine.version must be a string`),
+    label:
+      objectValue.label === undefined || objectValue.label === null
+        ? fallback.label
+        : assertString(objectValue.label, `${filePath}.referenceLine.label must be a string`),
+    description: assertStringOrNull(
+      objectValue.description === undefined ? fallback.description : objectValue.description,
+      `${filePath}.referenceLine.description must be a string or null`
+    ),
+    overallCompositeLoss:
+      objectValue.overallCompositeLoss === undefined || objectValue.overallCompositeLoss === null
+        ? fallback.overallCompositeLoss
+        : assertNumber(
+            objectValue.overallCompositeLoss,
+            `${filePath}.referenceLine.overallCompositeLoss must be a number`
+          ),
+    validationTargetYear:
+      objectValue.validationTargetYear === undefined || objectValue.validationTargetYear === null
+        ? fallback.validationTargetYear
+        : assertNumber(
+            objectValue.validationTargetYear,
+            `${filePath}.referenceLine.validationTargetYear must be a number`
+          )
+  };
 }
 
 function parseSourceReference(value: unknown, index: number) {
@@ -177,22 +241,37 @@ function parseValidationSummary(filePath: string): ValidationVersionSummary {
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
   const value = assertObject(raw, `${filePath} must contain a JSON object`);
   const windowValue = assertObject(value.window, `${filePath}.window must be an object`);
+  const version = assertString(value.version, `${filePath}.version must be a string`);
+  const overallCompositeLoss = assertNumber(
+    value.overallCompositeLoss,
+    `${filePath}.overallCompositeLoss must be a number`
+  );
+  const validationTargetYear = resolveValidationTargetYear(
+    value.validationTargetYear,
+    version,
+    `${filePath}.validationTargetYear must be a number`
+  );
   if (!Array.isArray(value.metrics)) {
     throw new Error(`${filePath}.metrics must be an array`);
   }
   return {
     schemaVersion: assertNumber(value.schemaVersion, `${filePath}.schemaVersion must be a number`),
-    version: assertString(value.version, `${filePath}.version must be a string`),
+    version,
     generatedAt: assertString(value.generatedAt, `${filePath}.generatedAt must be a string`),
+    validationTargetYear,
+    referenceLine: parseReferenceLine(value.referenceLine, filePath, {
+      version,
+      label: version === 'v0' ? 'Original v0 calibration' : `${version} validation reference`,
+      description: version === 'v0' ? `Original ${version} calibration loss against ${validationTargetYear} evidence.` : null,
+      overallCompositeLoss,
+      validationTargetYear
+    }),
     seeds: assertNumberArray(value.seeds, `${filePath}.seeds must be a number array`),
     window: {
       startIndex: assertNumber(windowValue.startIndex, `${filePath}.window.startIndex must be a number`),
       endIndex: assertNumber(windowValue.endIndex, `${filePath}.window.endIndex must be a number`)
     },
-    overallCompositeLoss: assertNumber(
-      value.overallCompositeLoss,
-      `${filePath}.overallCompositeLoss must be a number`
-    ),
+    overallCompositeLoss,
     metrics: value.metrics.map((item, index) => parseMetricSummary(item, index))
   };
 }
@@ -229,15 +308,22 @@ export function getValidationOverview(repoRoot: string, requestedVersion?: strin
     throw new Error(`Unknown validation summary version: ${requestedVersion ?? ''}`);
   }
 
-  const selectedSummary = readValidationSummary(repoRoot, selectedVersion);
+  const summaries = availableVersions.map((version) => readValidationSummary(repoRoot, version));
+  const selectedSummary = summaries.find((summary) => summary.version === selectedVersion);
+  if (!selectedSummary) {
+    throw new Error(`Missing selected validation summary for ${selectedVersion}`);
+  }
+
+  const originalSummary = summaries.find((summary) => summary.version === 'v0') ?? null;
   const trend: ValidationCompositeTrendPayload = {
-    points: availableVersions.map((version) => {
-      const summary = readValidationSummary(repoRoot, version);
-      return {
-        version,
-        overallCompositeLoss: summary.overallCompositeLoss
-      };
-    })
+    points: summaries.map((summary) => ({
+      version: summary.version,
+      validationTargetYear: summary.validationTargetYear,
+      overallCompositeLoss: summary.overallCompositeLoss
+    })),
+    referenceLine: originalSummary
+      ? originalSummary.referenceLine ?? buildDefaultReferenceLine(originalSummary)
+      : null
   };
 
   return {

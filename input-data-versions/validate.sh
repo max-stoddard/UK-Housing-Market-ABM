@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Generic validation runner for input-data versions.
+# Generic version-gated validation runner for input-data versions.
 # Author: Max Stoddard
 
 set -euo pipefail

@@ -130,18 +130,130 @@ function buildSourceReferences(metric: ValidationMetricSummary): Array<{ key: st
   ];
 }
 
+interface ValidationTooltipRow {
+  axisValue?: string;
+  data?: number | { value?: number };
+  marker?: string;
+  seriesName?: string;
+}
+
+function formatValidationTargetYearLabel(validationTargetYear: number): string {
+  return `${validationTargetYear} evidence`;
+}
+
+function formatReferenceLineLabel(label: string, validationTargetYear: number): string {
+  return `${label} (${validationTargetYear})`;
+}
+
+function getTooltipValue(data: ValidationTooltipRow['data']): number | null {
+  if (typeof data === 'number') {
+    return data;
+  }
+  if (data && typeof data === 'object' && typeof data.value === 'number') {
+    return data.value;
+  }
+  return null;
+}
+
 function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
   const selectedIndex = overview.trend.points.findIndex((point) => point.version === overview.selectedVersion);
+  const pointsByVersion = new Map(overview.trend.points.map((point) => [point.version, point]));
+  const referenceLine = overview.trend.referenceLine;
+  const referenceLineLabel = referenceLine
+    ? formatReferenceLineLabel(referenceLine.label, referenceLine.validationTargetYear)
+    : null;
+  const series: NonNullable<EChartsOption['series']> = [];
+
+  if (referenceLine && referenceLineLabel) {
+    series.push({
+      type: 'line',
+      name: referenceLineLabel,
+      smooth: false,
+      symbol: 'none',
+      data: overview.trend.points.map(() => referenceLine.overallCompositeLoss),
+      lineStyle: {
+        color: '#8f5b00',
+        width: 1.8,
+        type: 'dashed'
+      },
+      emphasis: {
+        disabled: true
+      },
+      z: 1
+    });
+  }
+
+  series.push({
+    type: 'line',
+    name: 'Validation loss',
+    smooth: true,
+    data: overview.trend.points.map((point) => point.overallCompositeLoss),
+    lineStyle: { color: '#0b7285', width: 2.4 },
+    itemStyle: { color: '#0b7285' },
+    z: 2,
+    markPoint:
+      selectedIndex >= 0
+        ? {
+            symbol: 'circle',
+            symbolSize: 18,
+            itemStyle: {
+              color: '#d9480f',
+              borderColor: '#fff4e6',
+              borderWidth: 3
+            },
+            label: {
+              show: true,
+              formatter: overview.selectedVersion,
+              position: 'top',
+              distance: 10,
+              color: '#8f3b13',
+              backgroundColor: '#fff4e6',
+              borderColor: '#ffd8a8',
+              borderWidth: 1,
+              borderRadius: 999,
+              padding: [4, 8],
+              fontWeight: 700
+            },
+            data: [
+              {
+                name: overview.selectedVersion,
+                xAxis: overview.trend.points[selectedIndex]?.version,
+                yAxis: overview.trend.points[selectedIndex]?.overallCompositeLoss
+              }
+            ]
+          }
+        : undefined
+  });
+
   return {
     tooltip: {
       trigger: 'axis',
       formatter: (rawParams: unknown) => {
-        const rows = Array.isArray(rawParams) ? rawParams : [rawParams];
-        const point = rows[0] as { axisValue?: string; data?: number };
+        const rows = (Array.isArray(rawParams) ? rawParams : [rawParams]) as ValidationTooltipRow[];
+        const axisValue = String(rows[0]?.axisValue ?? '');
+        const point = pointsByVersion.get(axisValue);
         if (!point) {
           return '';
         }
-        return `${String(point.axisValue ?? '')}<br/>Validation loss: ${formatNumber(point.data ?? null, 4)}`;
+
+        const tooltipRows = [
+          `<strong>${point.version}</strong>`,
+          `Target evidence: ${formatValidationTargetYearLabel(point.validationTargetYear)}`
+        ];
+
+        for (const row of rows) {
+          const value = getTooltipValue(row.data);
+          if (value === null) {
+            continue;
+          }
+          tooltipRows.push(`${row.marker ?? ''}${row.seriesName ?? 'Validation loss'}: ${formatNumber(value, 4)}`);
+        }
+
+        if (referenceLine?.description) {
+          tooltipRows.push(referenceLine.description);
+        }
+
+        return tooltipRows.join('<br/>');
       }
     },
     grid: { left: 64, right: 28, top: 22, bottom: 56, containLabel: true },
@@ -157,48 +269,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
       nameGap: 52,
       axisLabel: { color: '#50625a' }
     },
-    series: [
-      {
-        type: 'line',
-        name: 'Validation loss',
-        smooth: true,
-        data: overview.trend.points.map((point) => point.overallCompositeLoss),
-        lineStyle: { color: '#0b7285', width: 2.4 },
-        itemStyle: { color: '#0b7285' },
-        markPoint:
-          selectedIndex >= 0
-            ? {
-                symbol: 'circle',
-                symbolSize: 18,
-                itemStyle: {
-                  color: '#d9480f',
-                  borderColor: '#fff4e6',
-                  borderWidth: 3
-                },
-                label: {
-                  show: true,
-                  formatter: overview.selectedVersion,
-                  position: 'top',
-                  distance: 10,
-                  color: '#8f3b13',
-                  backgroundColor: '#fff4e6',
-                  borderColor: '#ffd8a8',
-                  borderWidth: 1,
-                  borderRadius: 999,
-                  padding: [4, 8],
-                  fontWeight: 700
-                },
-                data: [
-                  {
-                    name: overview.selectedVersion,
-                    xAxis: overview.trend.points[selectedIndex]?.version,
-                    yAxis: overview.trend.points[selectedIndex]?.overallCompositeLoss
-                  }
-                ]
-              }
-            : undefined
-      }
-    ]
+    series
   };
 }
 
@@ -341,6 +412,7 @@ export function ValidationPage() {
   }, [overview]);
 
   const summary = overview?.selectedSummary ?? null;
+  const selectedValidationTargetYear = summary?.validationTargetYear ?? 2024;
   const openMetricIdSet = useMemo(() => new Set(openMetricIds), [openMetricIds]);
 
   useEffect(() => {
@@ -372,9 +444,9 @@ export function ValidationPage() {
         <h2>Validation</h2>
         <div className="validation-intro-copy">
           <p>
-            This page compares each version of the model against tracked 2024 target bands using eight-seed validation
-            summaries. The table below is the main decision tool because it shows which real-world patterns the model
-            matches, misses, or cannot yet support.
+            This page compares <code>v0</code> against 2011 target bands and later versions against tracked 2024
+            target bands using eight-seed validation summaries. The table below is the main decision tool because it
+            shows which real-world patterns the model matches, misses, or cannot yet support.
           </p>
           <p>
             The line chart is a secondary overview for ranking and trend-checking only. Validation matters because a
@@ -399,7 +471,9 @@ export function ValidationPage() {
             <h3>Validation Loss Across Versions</h3>
             <p className="validation-card-subtitle">
               Lower validation loss means the model is closer to the external targets and more stable across seeds. The
-              selected point controls the metric results below.
+              selected point controls the metric results below. <code>v0</code> is benchmarked against 2011 evidence,
+              later versions remain on 2024 evidence, and the dashed line marks the original <code>v0</code>{' '}
+              calibration loss.
             </p>
           </div>
           <label className="validation-selector">
@@ -423,10 +497,13 @@ export function ValidationPage() {
       </article>
 
       <article className="results-card">
-        <h3>Validation Results by Metric for {summary?.version ?? selectedVersion}</h3>
+        <h3>
+          Validation Results by Metric for {summary?.version ?? selectedVersion} ({selectedValidationTargetYear}{' '}
+          targets)
+        </h3>
         <p className="validation-card-subtitle">
-          Each row shows one validation metric, the target band it is checked against, the model summary across seeds,
-          the status, and the raw metric weight supplied in the validation payload.
+          Each row shows one validation metric, the {selectedValidationTargetYear} target band it is checked against,
+          the model summary across seeds, the status, and the raw metric weight supplied in the validation payload.
         </p>
         <div className="results-controls validation-table-controls">
           <label>

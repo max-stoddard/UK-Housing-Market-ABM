@@ -1,0 +1,44 @@
+# 2011 BoE housing-tools validation evidence
+#
+# Author: Max Stoddard
+
+Derived from:
+- input-data-versions/validation-sources/2024/boe/housing-tools.xlsx
+
+Tracked 2011 snapshot:
+- input-data-versions/validation-sources/2011/boe/housing-tools-2011-series.csv
+
+Method:
+- Extract the 2011 rows from the long-run Bank of England housing-tools workbook.
+- Keep the locked workbook sheet semantics used by the 2024 validation catalog.
+- Publish the extracted 2011 rows as a minimal repo-local CSV so the v0 2011
+  profile does not depend on the larger 2024 workbook path.
+
+Metric mappings:
+- `core_mortgageApprovals`: sheet `4.Mortgage approvals`, 2011 monthly series.
+  Source value is the 2011 annual mean converted to thousand count/month:
+  `49.28633333333333`. Target band is the observed 2011 monthly range:
+  `42.883` to `52.93`.
+- `core_housingTransactions`: sheet `5.Housing transactions`, 2011 monthly series.
+  Source value is the 2011 annual mean converted to thousand count/month:
+  `73.55166666666666`. Target band is the observed 2011 monthly range:
+  `68.68` to `77.16`.
+- `core_debtToIncome`: sheet `3. Household debt to income`, 2011 quarterly series.
+  Source value is the 2011 annual mean: `162.93794051498202`. Target band is the
+  observed 2011 quarterly range: `161.8704279215477` to `164.2259943729304`.
+- `core_priceToIncome`: sheet `7.House prices disp. income`, 2011 quarterly
+  series. Source value is the 2011 annual mean: `4.240062566676624`. Target band
+  is the observed 2011 quarterly range: `4.225101341813285` to
+  `4.268301630303742`.
+- `core_housePriceGrowth`: sheet `6.House price growth`, 2011 monthly series.
+  Source value is the 2011 annual mean: `-0.3968031463238107`. Target band is the
+  observed 2011 monthly range: `-0.9449694274597076` to `0.1702610669693572`.
+- `core_interestRateSpread`: sheet `8. Spreads new mortgage lending`, 2011
+  monthly series. Source value is the 2011 annual mean: `2.4800784641069633`.
+  Target band uses the observed 2011 quarterly-mean range:
+  `2.3790224672849844` to `2.5847009073436426`.
+
+Notes:
+- The 2011 profile uses annual means plus observed 2011 ranges for these
+  long-run macro series because there is no 2011 FPC snapshot equivalent to the
+  2024 FPC core-indicator pack.

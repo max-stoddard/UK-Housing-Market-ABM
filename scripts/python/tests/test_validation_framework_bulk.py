@@ -97,6 +97,58 @@ class TestValidationFrameworkBulk(unittest.TestCase):
                 )
             )
 
+    def test_run_validation_campaign_passes_version_specific_profiles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            output_root = repo_root / "tmp" / "validation-history"
+            observed_profiles: dict[str, set[tuple[int, str]]] = {}
+
+            def fake_run_validation_seed(
+                *,
+                version: str,
+                seed: int,
+                validation_profile,
+                **_: object,
+            ) -> dict[str, object]:
+                observed_profiles.setdefault(version, set()).add(
+                    (validation_profile.validation_target_year, validation_profile.was_dataset)
+                )
+                return {
+                    "seed": seed,
+                    "outputDir": f"/tmp/{version}/seed-{seed}",
+                    "metrics": {"core_mortgageApprovals": 60.0},
+                }
+
+            with (
+                patch(
+                    "scripts.python.validation.model.validate_all_input_data_versions.ensure_project_compiled"
+                ),
+                patch(
+                    "scripts.python.validation.model.validate_all_input_data_versions.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                patch(
+                    "scripts.python.validation.model.validate_all_input_data_versions.run_validation_seed",
+                    side_effect=fake_run_validation_seed,
+                ),
+                patch(
+                    "scripts.python.validation.model.validate_all_input_data_versions.publish_validation_results",
+                    side_effect=lambda *, version, **_: {"version": version},
+                ),
+            ):
+                published_versions, failures = run_validation_campaign(
+                    repo_root=repo_root,
+                    versions=["v0", "v1.0"],
+                    seeds=[1],
+                    workers=2,
+                    output_root=output_root,
+                )
+
+            self.assertEqual(published_versions, ["v0", "v1.0"])
+            self.assertEqual(failures, [])
+            self.assertEqual(observed_profiles["v0"], {(2011, "W3")})
+            self.assertEqual(observed_profiles["v1.0"], {(2024, "R8")})
+
 
 if __name__ == "__main__":
     unittest.main()

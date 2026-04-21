@@ -1,0 +1,33 @@
+# 2011 owner-occupier debt-to-income validation evidence
+#
+# Author: Max Stoddard
+
+Derived from:
+- input-data-versions/validation-sources/2024/mlar/mlar-longrun-detailed.xlsx
+- input-data-versions/validation-sources/2011/ons/qwnd-household-gross-disposable-income-2010q2-2011q4.json
+
+Tracked 2011 MLAR snapshot:
+- input-data-versions/validation-sources/2011/mlar/mlar-oo-debt-to-income-2011-components.csv
+
+Method:
+- Reuse the locked 2024 reconstruction formula with 2011 inputs.
+- MLAR components:
+  - aggregate mortgage debt: `1.11` row `33`
+  - regulated balance total: `1.33` row `53`
+  - regulated BTL balance share: `1.33` row `41`
+  - non-regulated balance total: `1.33` row `95`
+  - non-regulated BTL balance share: `1.33` row `91`
+- QWND denominator:
+  - use the trailing four-quarter gross disposable income totals built from the
+    repo-local `2010Q2` to `2011Q4` snapshot.
+
+Quarterly reconstruction:
+- `2011Q1`: `99.75341253849653`
+- `2011Q2`: `99.34683471171756`
+- `2011Q3`: `99.08730411317276`
+- `2011Q4`: `98.61909294397614`
+
+Published target:
+- Source value is the 2011 annual mean: `99.20166107684075`
+- Target band is the observed 2011 quarterly range:
+  `98.61909294397614` to `99.75341253849653`

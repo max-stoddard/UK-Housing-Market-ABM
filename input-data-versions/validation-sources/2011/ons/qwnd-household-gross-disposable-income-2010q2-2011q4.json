@@ -1,0 +1,19 @@
+{
+  "author": "Max Stoddard",
+  "seriesId": "QWND",
+  "seriesLabel": "HH & NPISH disposable income, gross",
+  "units": "\u00a3m",
+  "seasonalAdjustment": "NSA",
+  "sourceUrl": "https://www.ons.gov.uk/economy/grossdomesticproductgdp/timeseries/qwnd/ukea",
+  "sourceSnapshotDate": "2026-04-21",
+  "notes": "Minimal repo-local ONS snapshot required to reconstruct the 2011 trailing four-quarter denominator for owner-occupier debt-to-income validation.",
+  "quarterlyValues": {
+    "2010Q2": 273794.0,
+    "2010Q3": 268423.0,
+    "2010Q4": 272632.0,
+    "2011Q1": 255505.0,
+    "2011Q2": 278118.0,
+    "2011Q3": 273506.0,
+    "2011Q4": 277862.0
+  }
+}

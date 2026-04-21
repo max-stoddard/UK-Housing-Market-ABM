@@ -232,6 +232,14 @@ export type ValidationMetricRequirement = 'required' | 'diagnostic';
 export type ValidationMetricMappingStatus = 'exact_match' | 'derived_match' | 'unsupported';
 export type ValidationLossScaleBasis = 'source_value' | 'target_band_midpoint' | 'target_band_upper';
 
+export interface ValidationReferenceLine {
+  version: string;
+  label: string;
+  description: string | null;
+  overallCompositeLoss: number;
+  validationTargetYear: number;
+}
+
 export interface ValidationTargetBand {
   lower: number;
   upper: number;
@@ -288,6 +296,8 @@ export interface ValidationVersionSummary {
   schemaVersion: number;
   version: string;
   generatedAt: string;
+  validationTargetYear: number;
+  referenceLine: ValidationReferenceLine | null;
   seeds: number[];
   window: {
     startIndex: number;
@@ -299,11 +309,13 @@ export interface ValidationVersionSummary {
 
 export interface ValidationCompositeTrendPoint {
   version: string;
+  validationTargetYear: number;
   overallCompositeLoss: number;
 }
 
 export interface ValidationCompositeTrendPayload {
   points: ValidationCompositeTrendPoint[];
+  referenceLine: ValidationReferenceLine | null;
 }
 
 export interface ValidationOverviewPayload {
