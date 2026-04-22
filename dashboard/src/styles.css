@@ -1090,6 +1090,10 @@ code {
   padding: 0.72rem 0.9rem;
 }
 
+.validation-mode-row {
+  align-items: end;
+}
+
 .validation-table-controls {
   align-items: end;
 }
@@ -1139,15 +1143,14 @@ code {
   text-transform: uppercase;
 }
 
-.validation-metric-meta {
-  margin-top: 0.22rem;
-  color: var(--muted);
-  font-family: 'IBM Plex Mono', 'SFMono-Regular', 'Consolas', monospace;
-  font-size: 0.78rem;
+.validation-metric-cell {
+  display: grid;
+  justify-items: start;
+  gap: 0.55rem;
 }
 
 .validation-source-toggle {
-  margin-top: 0.55rem;
+  margin-top: 0;
 }
 
 .validation-source-panel {
@@ -1187,6 +1190,14 @@ code {
 .validation-loss-unsupported {
   color: var(--muted);
   font-weight: 600;
+}
+
+.validation-loss-delta-positive {
+  color: #b02a37;
+}
+
+.validation-loss-delta-negative {
+  color: #2b8a3e;
 }
 
 .validation-status-pill {

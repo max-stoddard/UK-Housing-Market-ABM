@@ -9,7 +9,8 @@ import { EChart } from '../components/EChart';
 import {
   API_RETRY_DELAY_MS,
   fetchValidationOverview,
-  isRetryableApiError
+  isRetryableApiError,
+  type ValidationOverviewViewMode
 } from '../lib/api';
 
 type ValidationSortMode =
@@ -52,6 +53,16 @@ function formatStatusLabel(status: ValidationMetricSummary['status']): string {
 
 function formatLoss(value: number | null): string {
   return value === null ? 'Unsupported' : formatNumber(value, 4);
+}
+
+function formatLossDelta(value: number | null): string {
+  if (value === null) {
+    return 'Unsupported';
+  }
+  if (Math.abs(value) < 1e-12) {
+    return formatLoss(0);
+  }
+  return `${value > 0 ? '+' : '-'}${formatLoss(Math.abs(value))}`;
 }
 
 function formatMetricWeight(value: number): string {
@@ -137,6 +148,11 @@ interface ValidationTooltipRow {
   seriesName?: string;
 }
 
+interface ValidationChartClickParams {
+  name?: string;
+  seriesName?: string;
+}
+
 function formatValidationTargetYearLabel(validationTargetYear: number): string {
   return `${validationTargetYear} evidence`;
 }
@@ -187,7 +203,14 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
     type: 'line',
     name: 'Validation loss',
     smooth: true,
-    data: overview.trend.points.map((point) => point.overallCompositeLoss),
+    showSymbol: true,
+    symbol: 'circle',
+    symbolSize: 10,
+    cursor: 'pointer',
+    data: overview.trend.points.map((point) => ({
+      name: point.version,
+      value: point.overallCompositeLoss
+    })),
     lineStyle: { color: '#0b7285', width: 2.4 },
     itemStyle: { color: '#0b7285' },
     z: 2,
@@ -247,12 +270,6 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
             continue;
           }
           tooltipRows.push(`${row.marker ?? ''}${row.seriesName ?? 'Validation loss'}: ${formatNumber(value, 4)}`);
-        }
-
-        if (referenceLine) {
-          tooltipRows.push(
-            `Dashed comparator: ${referenceLine.description ?? formatValidationTargetYearLabel(referenceLine.validationTargetYear)}`
-          );
         }
 
         return tooltipRows.join('<br/>');
@@ -354,6 +371,7 @@ function sortMetrics(metrics: ValidationMetricSummary[], sortMode: ValidationSor
 export function ValidationPage() {
   const [overview, setOverview] = useState<ValidationOverviewPayload | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<string>('');
+  const [viewMode, setViewMode] = useState<ValidationOverviewViewMode>('tracked');
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isWaitingForApi, setIsWaitingForApi] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -371,7 +389,7 @@ export function ValidationPage() {
       setError('');
 
       try {
-        const response = await fetchValidationOverview(selectedVersion || undefined);
+        const response = await fetchValidationOverview(selectedVersion || undefined, viewMode);
         if (cancelled) {
           return;
         }
@@ -404,7 +422,7 @@ export function ValidationPage() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [selectedVersion]);
+  }, [selectedVersion, viewMode]);
 
   const chartOption = useMemo(() => {
     if (!overview || overview.trend.points.length === 0) {
@@ -414,7 +432,7 @@ export function ValidationPage() {
   }, [overview]);
 
   const summary = overview?.selectedSummary ?? null;
-  const selectedValidationTargetYear = summary?.validationTargetYear ?? 2024;
+  const selectedValidationTargetYear = summary?.validationTargetYear ?? (viewMode === 'reference_2011' ? 2011 : 2024);
   const openMetricIdSet = useMemo(() => new Set(openMetricIds), [openMetricIds]);
 
   useEffect(() => {
@@ -440,16 +458,36 @@ export function ValidationPage() {
     );
   };
 
+  const handleChartClick = (rawParams: unknown) => {
+    if (viewMode !== 'tracked' || !rawParams || typeof rawParams !== 'object') {
+      return;
+    }
+
+    const params = rawParams as ValidationChartClickParams;
+    if (params.seriesName !== 'Validation loss' || typeof params.name !== 'string' || params.name === selectedVersion) {
+      return;
+    }
+
+    setSelectedVersion(params.name);
+  };
+
   return (
     <section className="validation-layout validation-framework-layout">
       <article className="results-card">
         <h2>Validation</h2>
         <div className="validation-intro-copy">
           <p>
-            This page uses tracked 2024 target bands for every version, including <code>v0</code>, across eight-seed
-            validation summaries. When available, the chart overlays a separate 2011 comparator for the original
-            calibration, but the table below always stays tied to the selected tracked summary.
+            This page keeps the trend chart on the tracked 2024 timeline and lets you switch the table between the
+            tracked summary and the full <code>v0-2011</code> reference summary. The tracked timeline still includes
+            <code>v0</code> across eight-seed validation summaries.
           </p>
+          {viewMode === 'reference_2011' && (
+            <p>
+              The <code>v0-2011</code> reference summary keeps <code>core_hpiStd</code> benchmarked to the same
+              2005-01..2024-12 official std used in the 2024 view, while <code>core_hpiCyclePeriod</code> remains
+              2011-anchored.
+            </p>
+          )}
           <p>
             The line chart is a secondary overview for ranking and trend-checking only. Validation matters because a
             housing-market ABM needs to be realistic against external evidence and robust across multiple seeds, not
@@ -472,27 +510,25 @@ export function ValidationPage() {
           <div>
             <h3>Validation Loss Across Versions</h3>
             <p className="validation-card-subtitle">
-              Lower validation loss means the model is closer to the external targets and more stable across seeds. The
-              selected point controls the metric results below. Every plotted point, including <code>v0</code>, uses
-              the tracked 2024 summary, and the dashed line adds the separate 2011 original-calibration comparator
-              when the validation payload provides one.
+              {viewMode === 'tracked' ? (
+                <>
+                  Lower validation loss means the model is closer to the external targets and more stable across seeds.
+                  Click a point to load that tracked version in the metric results below.
+                </>
+              ) : (
+                <>
+                  Lower validation loss means the model is closer to the external targets and more stable across seeds.
+                  The chart stays on the tracked 2024 summary timeline for context while the metric results below
+                  remain locked to the separate <code>v0-2011</code> reference summary.
+                </>
+              )}
             </p>
           </div>
-          <label className="validation-selector">
-            <span>Version</span>
-            <select value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)}>
-              {overview?.availableVersions.map((version) => (
-                <option key={version} value={version}>
-                  {version}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
         {isLoading ? (
           <p className="loading-banner">Loading validation overview...</p>
         ) : chartOption ? (
-          <EChart option={chartOption} className="chart validation-chart" />
+          <EChart option={chartOption} className="chart validation-chart" onClick={handleChartClick} />
         ) : (
           <p className="info-banner">No tracked validation summaries are available.</p>
         )}
@@ -505,8 +541,30 @@ export function ValidationPage() {
         </h3>
         <p className="validation-card-subtitle">
           Each row shows one validation metric, the {selectedValidationTargetYear} target band it is checked against,
-          the model summary across seeds, the status, and the raw metric weight supplied in the validation payload.
+          the model summary across seeds, the signed loss delta versus <code>v0-2011</code> where negative is better
+          and positive is worse, the status, and the raw metric weight supplied in the validation payload.
         </p>
+        <div className="results-controls validation-mode-row">
+          <label className="validation-selector">
+            <span>Summary view</span>
+            <select value={viewMode} onChange={(event) => setViewMode(event.target.value as ValidationOverviewViewMode)}>
+              <option value="tracked">Tracked 2024 summary</option>
+              <option value="reference_2011">v0-2011 reference summary</option>
+            </select>
+          </label>
+          {viewMode === 'tracked' && (
+            <label className="validation-selector">
+              <span>Version</span>
+              <select value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)}>
+                {overview?.availableVersions.map((version) => (
+                  <option key={version} value={version}>
+                    {version}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         <div className="results-controls validation-table-controls">
           <label>
             <span>Search metrics</span>
@@ -542,6 +600,7 @@ export function ValidationPage() {
                   <th>Mean</th>
                   <th>p25-p75</th>
                   <th>Seeds inside band</th>
+                  <th>Loss delta vs v0-2011</th>
                   <th>Weight</th>
                   <th>Loss</th>
                   <th>Status</th>
@@ -554,29 +613,30 @@ export function ValidationPage() {
                   return (
                     <tr key={metric.metricId}>
                       <td>
-                        <strong>{metric.label}</strong>
-                        <div className="validation-metric-meta">{metric.metricId}</div>
-                        <button
-                          type="button"
-                          className="table-toggle validation-source-toggle"
-                          onClick={() => toggleMetricSources(metric.metricId)}
-                        >
-                          {isSourcesOpen ? 'Hide provenance & sources' : 'Provenance & sources'}
-                        </button>
-                        {isSourcesOpen && (
-                          <div className="validation-source-panel">
-                            <div className="validation-source-label">{metric.sourceLabel}</div>
-                            {buildSourceReferences(metric).map((reference) => (
-                              <div key={reference.key} className="validation-source-ref" title={reference.title}>
-                                {reference.label}
-                              </div>
-                            ))}
-                            {formatLossScaleBasis(metric) && (
-                              <div className="validation-source-note">{formatLossScaleBasis(metric)}</div>
-                            )}
-                            {metric.bandNotes && <div className="validation-source-note">{metric.bandNotes}</div>}
-                          </div>
-                        )}
+                        <div className="validation-metric-cell">
+                          <strong>{metric.label}</strong>
+                          <button
+                            type="button"
+                            className="table-toggle validation-source-toggle"
+                            onClick={() => toggleMetricSources(metric.metricId)}
+                          >
+                            {isSourcesOpen ? 'Hide provenance & sources' : 'Provenance & sources'}
+                          </button>
+                          {isSourcesOpen && (
+                            <div className="validation-source-panel">
+                              <div className="validation-source-label">{metric.sourceLabel}</div>
+                              {buildSourceReferences(metric).map((reference) => (
+                                <div key={reference.key} className="validation-source-ref" title={reference.title}>
+                                  {reference.label}
+                                </div>
+                              ))}
+                              {formatLossScaleBasis(metric) && (
+                                <div className="validation-source-note">{formatLossScaleBasis(metric)}</div>
+                              )}
+                              {metric.bandNotes && <div className="validation-source-note">{metric.bandNotes}</div>}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td>{formatTargetBand(metric)}</td>
                       <td>{formatNumber(metric.seedMean, 3)}</td>
@@ -584,6 +644,21 @@ export function ValidationPage() {
                         {formatNumber(metric.p25, 3)} to {formatNumber(metric.p75, 3)}
                       </td>
                       <td>{formatInsideRate(metric.insideRate)}</td>
+                      <td
+                        className={`validation-loss-cell ${
+                          metric.lossDeltaVsReference2011 === null ? 'validation-loss-unsupported' : ''
+                        } ${
+                          metric.lossDeltaVsReference2011 !== null && metric.lossDeltaVsReference2011 > 0
+                            ? 'validation-loss-delta-positive'
+                            : ''
+                        } ${
+                          metric.lossDeltaVsReference2011 !== null && metric.lossDeltaVsReference2011 < 0
+                            ? 'validation-loss-delta-negative'
+                            : ''
+                        }`}
+                      >
+                        {formatLossDelta(metric.lossDeltaVsReference2011)}
+                      </td>
                       <td>{formatMetricWeight(metric.metricWeight)}</td>
                       <td
                         className={`validation-loss-cell ${metric.metricLoss === null ? 'validation-loss-unsupported' : ''}`}

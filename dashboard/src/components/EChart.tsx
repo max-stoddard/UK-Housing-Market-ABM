@@ -4,9 +4,10 @@ import * as echarts from 'echarts';
 interface EChartProps {
   option: echarts.EChartsOption;
   className?: string;
+  onClick?: (params: unknown) => void;
 }
 
-export function EChart({ option, className }: EChartProps) {
+export function EChart({ option, className, onClick }: EChartProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const instanceRef = useRef<echarts.ECharts | null>(null);
 
@@ -36,6 +37,22 @@ export function EChart({ option, className }: EChartProps) {
   useEffect(() => {
     instanceRef.current?.setOption(option, true);
   }, [option]);
+
+  useEffect(() => {
+    const instance = instanceRef.current;
+    if (!instance || !onClick) {
+      return;
+    }
+
+    const clickHandler = (params: unknown) => {
+      onClick(params);
+    };
+    instance.on('click', clickHandler);
+
+    return () => {
+      instance.off('click', clickHandler);
+    };
+  }, [onClick]);
 
   return <div ref={containerRef} className={className ?? 'chart'} />;
 }

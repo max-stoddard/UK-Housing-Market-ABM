@@ -1258,6 +1258,32 @@ assert.equal(
   2024,
   'Selecting v0 should keep the metric table on the tracked 2024 summary'
 );
+const referenceValidationOverview = getValidationOverview(repoRoot, 'v4.1', 'reference_2011');
+assert.equal(referenceValidationOverview.selectedVersion, 'v4.1');
+assert.equal(
+  referenceValidationOverview.selectedSummary.version,
+  'v0-2011',
+  'Reference validation mode should surface the separate v0-2011 summary as the selected table'
+);
+assert.equal(
+  referenceValidationOverview.selectedSummary.validationTargetYear,
+  2011,
+  'Reference validation mode should keep the summary table on the 2011 target year'
+);
+assert.equal(
+  referenceValidationOverview.selectedSummary.metrics.find((metric) => metric.metricId === 'core_hpiStd')?.bandNotes,
+  'Intentionally benchmarked to the same official UK IndexSA population std over 2005-01 through 2024-12 used by the tracked 2024 view; this 2011 reference summary only changes the displayed comparison window.',
+  'The 2011 validation reference summary should explain that core_hpiStd stays benchmarked to the 2024 std window'
+);
+assert.equal(
+  referenceValidationOverview.selectedSummary.metrics.find((metric) => metric.metricId === 'core_hpiCyclePeriod')?.bandNotes,
+  'Still 2011-anchored: derived from the tracked official-source UK HPI history through 2011-12 using the locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months.',
+  'The 2011 validation reference summary should explain that core_hpiCyclePeriod remains 2011-anchored'
+);
+assert.ok(
+  referenceValidationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
+  'Reference validation mode should keep the trend chart on the tracked 2024 timeline'
+);
 assert.equal(
   readValidationSummary(repoRoot, 'v0').validationTargetYear,
   2024,
@@ -1297,7 +1323,11 @@ assert.ok(
 const approvalsMetric = validationOverview.selectedSummary.metrics.find(
   (metric) => metric.metricId === 'core_mortgageApprovals'
 );
+const referenceApprovalsMetric = referenceValidationOverview.selectedSummary.metrics.find(
+  (metric) => metric.metricId === 'core_mortgageApprovals'
+);
 assert.ok(approvalsMetric, 'Validation overview should include the mortgage approvals metric');
+assert.ok(referenceApprovalsMetric, 'Reference validation overview should include the mortgage approvals metric');
 assert.ok(
   approvalsMetric?.targetBand && approvalsMetric.targetBand.lower < approvalsMetric.targetBand.upper,
   'Mortgage approvals should expose a valid target band'
@@ -1307,6 +1337,12 @@ assert.ok(
   'Mortgage approvals should expose an inside-rate summary'
 );
 assert.equal(approvalsMetric?.metricWeight, 1, 'Mortgage approvals should expose the raw metric weight');
+assertClose(
+  approvalsMetric?.lossDeltaVsReference2011 ?? NaN,
+  (approvalsMetric?.metricLoss ?? NaN) - (referenceApprovalsMetric?.metricLoss ?? NaN),
+  1e-12,
+  'Mortgage approvals should expose the signed loss delta versus the v0-2011 reference'
+);
 assert.equal(
   Object.prototype.hasOwnProperty.call(approvalsMetric ?? {}, 'familyId'),
   false,
@@ -1317,6 +1353,18 @@ assert.ok(
     (metric) => typeof metric.metricWeight === 'number' && Number.isFinite(metric.metricWeight)
   ),
   'Validation overview should expose numeric metric weights for every validation metric'
+);
+assert.ok(
+  validationOverview.selectedSummary.metrics.every((metric) =>
+    Object.prototype.hasOwnProperty.call(metric, 'lossDeltaVsReference2011')
+  ),
+  'Validation overview should expose a per-metric loss delta versus the v0-2011 reference summary'
+);
+assert.ok(
+  referenceValidationOverview.selectedSummary.metrics.every(
+    (metric) => metric.lossDeltaVsReference2011 === 0 || metric.lossDeltaVsReference2011 === null
+  ),
+  'Reference validation mode should expose zero loss deltas when the selected table is the v0-2011 baseline'
 );
 
 const validationSummaryFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-summary-'));
@@ -1481,6 +1529,22 @@ fs.writeFileSync(
           normalizedDistance: 0,
           normalizedIqr: 0,
           metricLoss: 0
+        },
+        {
+          metricId: 'core_housingTransactions',
+          label: 'Housing Transactions',
+          status: 'fail',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: '2011 overlay',
+          targetBand: { lower: 68, upper: 78 },
+          seedMean: 74,
+          p25: 73,
+          p75: 75,
+          insideRate: 1,
+          normalizedDistance: 0,
+          normalizedIqr: 0.02,
+          metricLoss: 0.5
         }
       ]
     },
@@ -1514,6 +1578,22 @@ fs.writeFileSync(
           normalizedDistance: 0.0,
           normalizedIqr: 0.05,
           metricLoss: 0.05
+        },
+        {
+          metricId: 'core_housingTransactions',
+          label: 'Housing Transactions',
+          status: 'warn',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: 'Bank of England FPC core indicators, June 2024',
+          targetBand: { lower: 84, upper: 100 },
+          seedMean: 90,
+          p25: 88,
+          p75: 92,
+          insideRate: 0.5,
+          normalizedDistance: 0.1,
+          normalizedIqr: 0.05,
+          metricLoss: 0.2
         }
       ]
     },
@@ -1527,6 +1607,11 @@ assert.equal(modernSummary.metrics[0]?.sourceReferences.length ?? 0, 1, 'Validat
 assert.equal(modernSummary.metrics[0]?.lossScaleBasis, 'source_value', 'Validation parser should expose loss scale basis');
 assert.equal(modernSummary.metrics[0]?.lossScale, 5.17125, 'Validation parser should expose loss scale values');
 assert.equal(modernSummary.metrics[0]?.metricWeight, 1, 'Validation parser should expose raw metric weights');
+assert.equal(
+  modernSummary.metrics[0]?.lossDeltaVsReference2011 ?? null,
+  null,
+  'Validation parser should default missing loss deltas to null'
+);
 assert.equal(
   Object.prototype.hasOwnProperty.call(modernSummary.metrics[0] ?? {}, 'familyId'),
   false,
@@ -1551,6 +1636,11 @@ assert.equal(
 assert.equal(legacySummary.metrics[0]?.sourceReferences.length ?? 0, 0, 'Validation parser should default missing source references to an empty list');
 assert.equal(legacySummary.metrics[0]?.sourceIndicatorLabel ?? null, null, 'Legacy validation summaries should parse without source detail fields');
 assert.equal(legacySummary.metrics[0]?.metricWeight, 1, 'Legacy validation summaries should default missing metric weights to 1');
+assert.equal(
+  legacySummary.metrics[0]?.lossDeltaVsReference2011 ?? null,
+  null,
+  'Legacy validation summaries should default missing loss deltas to null'
+);
 const originalFixtureSummary = readValidationSummary(validationSummaryFixtureRoot, 'v0');
 assert.equal(
   originalFixtureSummary.validationTargetYear,
@@ -1582,6 +1672,23 @@ assert.equal(
   overviewWithReferenceLine.trend.referenceLine?.validationTargetYear,
   2011,
   'Validation overview should keep the dashed comparator on the 2011 reference timeline'
+);
+assert.equal(
+  overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_mortgageApprovals')
+    ?.lossDeltaVsReference2011,
+  0.05,
+  'Tracked validation summaries should expose positive signed loss deltas when they score worse than v0-2011'
+);
+assert.equal(
+  overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_housingTransactions')
+    ?.lossDeltaVsReference2011,
+  -0.3,
+  'Tracked validation summaries should expose negative signed loss deltas when they score better than v0-2011'
+);
+const referenceOverviewWithDeltas = getValidationOverview(validationSummaryFixtureRoot, 'v4.0', 'reference_2011');
+assert.ok(
+  referenceOverviewWithDeltas.selectedSummary.metrics.every((metric) => metric.lossDeltaVsReference2011 === 0),
+  'Reference validation mode should expose zero deltas for every supported v0-2011 baseline metric'
 );
 
 const rangeAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'range');
@@ -3177,6 +3284,7 @@ assert.ok(
 );
 
 const validationPageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/ValidationPage.tsx'), 'utf-8');
+const eChartSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/components/EChart.tsx'), 'utf-8');
 const publicRoutesSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/routes/publicRoutes.ts'), 'utf-8');
 const serviceSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/lib/service.ts'), 'utf-8');
 const apiSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/lib/api.ts'), 'utf-8');
@@ -3185,17 +3293,25 @@ assert.ok(
   'Validation page should no longer support the three-line mode'
 );
 assert.ok(
-  !validationPageSource.includes('validation-mode-row'),
-  'Validation page should no longer render the validation mode toggle'
+  validationPageSource.includes('validation-mode-row') &&
+    validationPageSource.includes('Summary view') &&
+    validationPageSource.includes('v0-2011 reference summary'),
+  'Validation page should render a tracked/reference summary toggle'
 );
 assert.ok(
   validationPageSource.includes('Validation Loss Across Versions'),
   'Validation page should render the plain-English validation trend heading'
 );
 assert.ok(
-  validationPageSource.includes('tracked 2024 target bands for every version, including') &&
-    validationPageSource.includes('separate 2011 comparator'),
-  'Validation page should explain that every plotted version stays on the tracked 2024 summary and the 2011 line is separate'
+  validationPageSource.includes('tracked 2024 timeline') &&
+    validationPageSource.includes('full <code>v0-2011</code> reference summary'),
+  'Validation page should explain that the trend chart stays tracked while the table can switch to the v0-2011 reference view'
+);
+assert.ok(
+  validationPageSource.includes('core_hpiStd') &&
+    validationPageSource.includes('core_hpiCyclePeriod') &&
+    validationPageSource.includes('2011-anchored'),
+  'Validation page should explain the 2011 HPI benchmark split between core_hpiStd and core_hpiCyclePeriod'
 );
 assert.ok(
   !validationPageSource.includes('Validation Categories'),
@@ -3220,8 +3336,8 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('referenceLineLabel') &&
     validationPageSource.includes('Tracked summary:') &&
-    validationPageSource.includes('Dashed comparator:'),
-  'Validation page should render separate tracked-summary and dashed-comparator tooltip copy'
+    !validationPageSource.includes('Dashed comparator:'),
+  'Validation page tooltip should keep the tracked-summary copy and remove the dashed-comparator line'
 );
 assert.ok(
   !validationPageSource.includes('Click to filter the table'),
@@ -3240,6 +3356,11 @@ assert.ok(
   'Validation page should render metric table sort controls'
 );
 assert.ok(
+  validationPageSource.includes('Loss delta vs v0-2011') &&
+    validationPageSource.includes('lossDeltaVsReference2011'),
+  'Validation page should render the signed loss-delta column versus v0-2011'
+);
+assert.ok(
   !validationPageSource.includes('Show all categories'),
   'Validation page should remove family filter reset controls'
 );
@@ -3250,6 +3371,14 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('validation-source-panel'),
   'Validation page should render a dedicated provenance panel when expanded'
+);
+assert.ok(
+  validationPageSource.includes('validation-metric-cell'),
+  'Validation page should stack the metric name and provenance controls vertically within the metric cell'
+);
+assert.ok(
+  !validationPageSource.includes('validation-metric-meta'),
+  'Validation page should not render metric-id descriptors under the main metric names'
 );
 assert.ok(
   validationPageSource.includes('metricLoss'),
@@ -3300,6 +3429,10 @@ assert.ok(
   'Validation page should render each metric weight from the validation payload'
 );
 assert.ok(
+  validationPageSource.includes("viewMode === 'tracked' && (") && validationPageSource.includes('<span>Version</span>'),
+  'Validation page should hide the version selector whenever the v0-2011 reference summary is selected'
+);
+assert.ok(
   !validationPageSource.includes('lossWeight'),
   'Validation page should stop rendering lossWeight fields'
 );
@@ -3324,12 +3457,24 @@ assert.ok(
   'Validation page should position the selected chart label above the marker'
 );
 assert.ok(
-  apiSource.includes("/api/validation-overview"),
-  'API client should fetch the validation overview payload'
+  validationPageSource.includes('handleChartClick') &&
+    validationPageSource.includes('Click a point to load that tracked version') &&
+    validationPageSource.includes('onClick={handleChartClick}'),
+  'Validation page should wire chart point clicks to tracked-version selection'
 );
 assert.ok(
-  publicRoutesSource.includes("/api/validation-overview"),
-  'Public routes should expose the validation overview endpoint'
+  eChartSource.includes('onClick?: (params: unknown) => void;') &&
+    eChartSource.includes("instance.on('click', clickHandler)") &&
+    eChartSource.includes("instance.off('click', clickHandler)"),
+  'EChart should expose an optional click handler and attach it to the ECharts instance'
+);
+assert.ok(
+  apiSource.includes("/api/validation-overview") && apiSource.includes("view: ValidationOverviewViewMode"),
+  'API client should fetch the validation overview payload with an explicit view mode'
+);
+assert.ok(
+  publicRoutesSource.includes("/api/validation-overview") && publicRoutesSource.includes("req.query.view"),
+  'Public routes should expose the validation overview endpoint and accept the view query parameter'
 );
 assert.ok(
   !serviceSource.includes('entry.validation.income_diff_pct'),
