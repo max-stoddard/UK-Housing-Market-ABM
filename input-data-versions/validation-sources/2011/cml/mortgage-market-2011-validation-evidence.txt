@@ -6,6 +6,9 @@ Purpose:
 - Secondary-source proxy evidence bundle for the 2011 annual first-time buyer,
   home-mover, and buy-to-let house-purchase mortgage totals used by the v0-only
   2011 reference overlay.
+- These are weak proxy metrics by design. The overlay keeps the modern metric
+  names, but the evidence is limited to public reports quoting CML totals rather
+  than a clean primary CML extract.
 
 Tracked public references:
 - PropertyWire, `Lending figures suggest UK first time buyers are racing to beat tax deadline`
@@ -41,3 +44,10 @@ Notes:
   rather than all BTL originations.
 - These values remain secondary-source proxies because the repo does not track a
   cleaner primary 2011 CML source file with the required annual totals.
+- Residual non-equivalences:
+  - `core_advancesToFTB` and `core_advancesToHM` are annual purchase-loan totals
+    converted to monthly thousand-count means.
+  - `core_advancesToBTL` is the buy-to-let house-purchase count, not total BTL
+    lending.
+  - All three use a fixed `+/-15%` tolerance band because the public evidence is
+    report-level CML quoting, not a primary CML publication.

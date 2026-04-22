@@ -13,14 +13,18 @@ Method:
 - Filter the archived full-file CSV down to the United Kingdom rows through
   `2011-12`.
 - Reuse the existing HPI helper methodology that the 2024 profile already locks:
-  rebased mean, rebased population std, and dominant cycle period from the
-  filtered UK series.
+  rebased mean, shared official 2024 rebased population std, and dominant cycle
+  period from the filtered UK series.
+- This is the audited source-faithful 2011 HPI definition used by the
+  dashboard-visible overlay, except for the deliberate cross-year normalization
+  used by `core_hpiStd`.
 
 Derived values:
 - `core_hpiMean`: UK `IndexSA` from `2011-01` to `2011-12`, rebased to January
   2011 = `1.0`, annual mean `0.9922839506172839`, target band `+/-15%`.
-- `core_hpiStd`: UK `IndexSA` from `2005-01` to `2011-12`, rebased to January
-  2005 = `1.0`, population std `0.06520815312915954`, target band `+/-15%`.
+- `core_hpiStd`: deliberate cross-year normalization exception. Reuses the 2024
+  official UK `IndexSA` std over `2005-01` to `2024-12`, rebased to January
+  2005 = `1.0`, population std `0.2766701944903836`, target band `+/-15%`.
 - `core_hpiCyclePeriod`: UK `Index` history through `2011-12`, 12-month moving
   average, log transform, linear detrend, FFT peak search over `60..240` months,
   dominant cycle period `171.33333333333334`, target band `+/-15%`.
@@ -29,3 +33,6 @@ Notes:
 - The source publication date is later than 2011, but the archived HMLR full-file
   release contains the explicit historical UK series required to reconstruct the
   2011 targets reproducibly.
+- `core_hpiStd` is intentionally not a 2011-equivalent target. It reuses the same
+  `2005-01 .. 2024-12` official std scalar as the 2024 framework so the 2011
+  overlay is benchmarked against the identical official volatility baseline.

@@ -7,6 +7,10 @@ the v0-only 2011 reference overlay without relying on ignored `private-datasets/
 paths, except for WAS Wave 3 which remains the private household-validation
 dataset.
 
+The dashboard-facing 2011 view is a separate reference overlay, not the main
+8-seed 2024 validation publication. These source notes document the audited 2011
+metric definitions and the remaining proxy/non-equivalence cases for that view.
+
 Contents:
 - `boe/`: minimal 2011 Bank of England housing-tools series snapshot plus evidence
   note for mortgage approvals, housing transactions, household debt to income,
@@ -27,9 +31,19 @@ referenced by:
 - `scripts/python/validation/model/validation_catalog_2011.py`
 - `docs/validation/validation-catalog-2011-review.md`
 - `input-data-versions/validation-overlays/v0-2011.json`
-- `Results/v0-output/reference-2011/**`
+- `<output-dir>/reference-2011/**` when the live `v0` validation flow is run
 
 WAS Wave 3 is intentionally not duplicated here. The v0-only household realism
 metrics continue to read the private `W3` dataset via the existing WAS helper
 code, while this folder covers every non-WAS public source used by the 2011
 profile.
+
+Metric coverage:
+- Source-faithful macro metrics: `core_mortgageApprovals`,
+  `core_housingTransactions`, `core_debtToIncome`, `core_priceToIncome`,
+  `core_housePriceGrowth`, and `core_interestRateSpread`.
+- Deliberate cross-year-normalized exception: `core_hpiStd`, which reuses the
+  official `2005-01 .. 2024-12` HPI std benchmark from the 2024 framework.
+- Reconstructed historical metric: `core_ooDebtToIncome`.
+- Weak proxy metrics with explicit non-equivalences: `core_advancesToFTB`,
+  `core_advancesToHM`, `core_advancesToBTL`, and `core_rentalYield`.

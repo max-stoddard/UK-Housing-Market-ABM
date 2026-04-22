@@ -19,7 +19,9 @@ Method:
   - non-regulated BTL balance share: `1.33` row `91`
 - QWND denominator:
   - use the trailing four-quarter gross disposable income totals built from the
-    repo-local `2010Q2` to `2011Q4` snapshot.
+  repo-local `2010Q2` to `2011Q4` snapshot.
+- This is a reconstruction of the audited 2011 metric definition, not a proxy
+  substitution.
 
 Quarterly reconstruction:
 - `2011Q1`: `99.75341253849653`
@@ -31,3 +33,9 @@ Published target:
 - Source value is the 2011 annual mean: `99.20166107684075`
 - Target band is the observed 2011 quarterly range:
   `98.61909294397614` to `99.75341253849653`
+
+Notes:
+- The dashboard-visible 2011 view reuses the same reconstruction formula as the
+  main validation catalog.
+- The only structural difference from the 2024 flow is the historical 2011
+  input bundle and trailing income window used to rebuild the denominator.

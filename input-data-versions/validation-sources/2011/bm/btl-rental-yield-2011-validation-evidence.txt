@@ -5,6 +5,9 @@
 Purpose:
 - Secondary-source proxy evidence bundle for the 2011 UK average gross
   buy-to-let rental yield used by the v0-only 2011 reference overlay.
+- This is a weak proxy metric because the tracked archive does not provide a
+  clean 2011 UK quarterly series comparable with the 2024 UK Finance rental
+  yield series.
 
 Tracked public references:
 - PropertyWire, `Healthy demand for rental property pushes up yields across the UK`
@@ -35,3 +38,6 @@ Notes:
 - These values remain secondary-source proxies because the tracked public archive
   contains contemporaneous reporting of BM Solutions releases, not a cleaner
   repo-local primary UK quarterly series.
+- Residual non-equivalence: the 2011 overlay uses an annual UK average, not a
+  quarterly UK Finance-style time series, so the comparison is directional rather
+  than like-for-like.

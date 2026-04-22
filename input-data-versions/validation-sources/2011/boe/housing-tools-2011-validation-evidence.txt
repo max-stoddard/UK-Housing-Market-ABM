@@ -13,6 +13,8 @@ Method:
 - Keep the locked workbook sheet semantics used by the 2024 validation catalog.
 - Publish the extracted 2011 rows as a minimal repo-local CSV so the v0 2011
   profile does not depend on the larger 2024 workbook path.
+- This is a source-faithful 2011 macro bundle, not a proxy bundle. The 2011
+  dashboard-visible overlay uses these exact series definitions.
 
 Metric mappings:
 - `core_mortgageApprovals`: sheet `4.Mortgage approvals`, 2011 monthly series.
@@ -42,3 +44,6 @@ Notes:
 - The 2011 reference overlay uses annual means plus observed 2011 ranges for
   these long-run macro series because there is no 2011 FPC snapshot equivalent
   to the 2024 FPC core-indicator pack.
+- The only deliberate non-equivalence is archival: the source file is a later
+  repo-local extract of the 2011 history, but the reconstructed metrics are the
+  same 2011 series used by the overlay.
