@@ -20,6 +20,8 @@ from scripts.python.validation.model.schema import (
     TargetBand,
 )
 from scripts.python.validation.model.validation_catalog_2024 import (
+    HPI_FULL_HISTORY_REBASED_STD,
+    MARKET_SOURCE_2024_BY_METRIC_ID,
     TARGET_CATALOG as TARGET_CATALOG_2024,
 )
 
@@ -94,20 +96,20 @@ def _plus_minus_tolerance_band(*, source_value: float, tolerance: float) -> Targ
 
 
 SOURCE_LABEL_2011_BY_METRIC_ID: dict[str, str] = {
-    "core_mortgageApprovals": "Bank of England housing-tools 2011 snapshot",
-    "core_housingTransactions": "Bank of England housing-tools 2011 snapshot",
-    "core_advancesToFTB": "Secondary-source proxy for 2011 CML mortgage market totals",
-    "core_advancesToHM": "Secondary-source proxy for 2011 CML mortgage market totals",
-    "core_advancesToBTL": "Secondary-source proxy for 2011 CML mortgage market totals",
-    "core_debtToIncome": "Bank of England housing-tools 2011 snapshot",
-    "core_priceToIncome": "Bank of England housing-tools 2011 snapshot",
-    "core_housePriceGrowth": "Bank of England housing-tools 2011 snapshot",
-    "core_hpiMean": "HM Land Registry UK HPI 2011 snapshot through 2011-12",
-    "core_hpiStd": "HM Land Registry UK HPI 2011 snapshot through 2011-12",
-    "core_hpiCyclePeriod": "HM Land Registry UK HPI 2011 snapshot through 2011-12",
-    "core_ooDebtToIncome": "MLAR 2011 components plus ONS QWND 2010Q2-2011Q4 snapshot",
-    "core_rentalYield": "Secondary-source proxy for 2011 BM Solutions UK rental yield",
-    "core_interestRateSpread": "Bank of England housing-tools 2011 snapshot",
+    "core_mortgageApprovals": "Bank of England housing-tools workbook (repo-local 2011 monthly snapshot)",
+    "core_housingTransactions": "Bank of England housing-tools workbook (repo-local 2011 monthly snapshot)",
+    "core_advancesToFTB": "Best-available secondary-source proxy for 2011 CML purchase lending totals",
+    "core_advancesToHM": "Best-available secondary-source proxy for 2011 CML purchase lending totals",
+    "core_advancesToBTL": "Best-available secondary-source proxy for 2011 CML purchase lending totals",
+    "core_debtToIncome": "Bank of England housing-tools workbook (repo-local 2011 quarterly snapshot)",
+    "core_priceToIncome": "Bank of England housing-tools workbook (repo-local 2011 quarterly snapshot)",
+    "core_housePriceGrowth": "Bank of England housing-tools workbook (repo-local 2011 monthly snapshot)",
+    "core_hpiMean": "HM Land Registry UK HPI full history through 2011-12 (UK IndexSA rebased to January 2011)",
+    "core_hpiStd": "HM Land Registry UK HPI full file December 2024 (shared official std benchmark over 2005-01 to 2024-12)",
+    "core_hpiCyclePeriod": "HM Land Registry UK HPI full history through 2011-12 (UK Index history through 2011-12)",
+    "core_ooDebtToIncome": "MLAR long-run detailed tables plus ONS QWND (full-year 2011 reconstruction)",
+    "core_rentalYield": "Best-available secondary-source proxy for 2011 BM Solutions UK rental yield",
+    "core_interestRateSpread": "Bank of England housing-tools workbook (repo-local 2011 monthly spread series)",
     "income_distribution_jsd": WAS_WAVE_3_SOURCE_LABEL,
     "housing_wealth_distribution_jsd": WAS_WAVE_3_SOURCE_LABEL,
     "financial_wealth_distribution_jsd": WAS_WAVE_3_SOURCE_LABEL,
@@ -165,10 +167,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2011 annual total reported Feb 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_secondary_source_proxy",
+        band_method="fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
         band_notes=(
-            "Secondary-source proxy from public reports quoting CML statistics. "
-            "The 2011 annual total is converted to thousand count/month and scored with a fixed +/-15% band."
+            "Best-available tracked 2011 proxy from public reports quoting CML statistics. "
+            "The annual total is converted to thousand count/month using the same normalization logic as the 2024 "
+            "metric, then scored with a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked."
         ),
         source_references=(
             MetricSourceReference(
@@ -209,10 +212,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2011 annual total reported Feb 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_secondary_source_proxy",
+        band_method="fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
         band_notes=(
-            "Secondary-source proxy from public reports quoting CML statistics. "
-            "The 2011 annual total is converted to thousand count/month and scored with a fixed +/-15% band."
+            "Best-available tracked 2011 proxy from public reports quoting CML statistics. "
+            "The annual total is converted to thousand count/month using the same normalization logic as the 2024 "
+            "metric, then scored with a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked."
         ),
         source_references=(
             MetricSourceReference(
@@ -253,11 +257,12 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2011 annual total reported Feb 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_secondary_source_proxy",
+        band_method="fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
         band_notes=(
-            "Secondary-source proxy from public reports quoting CML statistics. "
-            "The tracked figure is the 2011 buy-to-let house-purchase total, not total BTL lending, "
-            "and it is converted to thousand count/month before applying a fixed +/-15% band."
+            "Best-available tracked 2011 proxy from public reports quoting CML statistics. "
+            "The tracked figure is the 2011 buy-to-let house-purchase total, not total BTL lending, matching the "
+            "2024 metric definition. It is converted to thousand count/month before applying a fixed +/-15% band "
+            "because no cleaner repo-local primary 2011 file is tracked."
         ),
         source_references=(
             MetricSourceReference(
@@ -340,10 +345,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="rebased index",
         source_as_of="2011 annual mean",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_tracked_derived_value",
+        band_method="fixed_plus_minus_15pct_around_official_value",
         band_notes=(
-            "Derived from the tracked UK HPI snapshot through 2011-12. "
-            "The UK IndexSA series is rebased to January 2011 = 1.0 before computing the annual mean."
+            "Derived from the tracked official-source UK HPI history through 2011-12. "
+            "The UK IndexSA series is rebased to January 2011 = 1.0 before computing the annual mean, matching the "
+            "2024 HPI-mean definition with the target year anchored to 2011."
         ),
         source_references=(
             MetricSourceReference(
@@ -360,36 +366,13 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
             ),
         ),
     ),
-    "core_hpiStd": MetricSourceMetadata(
-        source_document_path=HMLR_2011_SNAPSHOT_PATH,
-        source_text_path=HMLR_2011_TEXT_PATH,
-        source_table="United Kingdom IndexSA rows for 2005-01 through 2011-12, rebased to 2005-01 = 1.0",
-        source_page=1,
-        source_indicator_label="Rebased UK seasonally adjusted HPI, 2005-01 to 2011-12 population std",
-        raw_source_value=HPI_2011_REBASED_STD,
-        normalized_source_value=HPI_2011_REBASED_STD,
-        source_units="rebased index",
-        comparison_units="rebased index",
-        source_as_of="2005-01 to 2011-12 population std",
-        mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_tracked_derived_value",
+    "core_hpiStd": replace(
+        MARKET_SOURCE_2024_BY_METRIC_ID["core_hpiStd"],
         band_notes=(
-            "Derived from the tracked UK HPI snapshot through 2011-12. "
-            "The UK IndexSA series is rebased to January 2005 = 1.0 before computing the long-run population std."
-        ),
-        source_references=(
-            MetricSourceReference(
-                label="Repo-local HPI 2011 derived-value audit",
-                source_document_path=HMLR_2011_DERIVED_VALUES_PATH,
-                source_text_path=HMLR_2011_TEXT_PATH,
-                source_table="hpiStd2005To2011RebasedToJan2005",
-                source_page=1,
-                source_indicator_label="Rebased UK seasonally adjusted HPI population std",
-                raw_source_value=HPI_2011_REBASED_STD,
-                source_as_of="2005-01 to 2011-12 population std",
-                source_units="rebased index",
-                notes="Derived from the tracked UK IndexSA snapshot through 2011-12.",
-            ),
+            "Deliberate cross-year normalization exception for the 2011 overlay. "
+            "This metric reuses the exact 2024 official-source std definition and scalar over 2005-01 through "
+            "2024-12 so the 2011 baseline is benchmarked against the same official volatility standard as the "
+            "2024 framework."
         ),
     ),
     "core_hpiCyclePeriod": MetricSourceMetadata(
@@ -407,10 +390,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="months",
         source_as_of="1968-04 to 2011-12 history",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_tracked_derived_value",
+        band_method="fixed_plus_minus_15pct_around_official_value",
         band_notes=(
-            "Derived from the tracked UK HPI snapshot through 2011-12 using the locked 12-month moving-average, "
-            "log-detrend, FFT peak-search method over 60..240 months."
+            "Derived from the tracked official-source UK HPI history through 2011-12 using the locked 12-month "
+            "moving-average, log-detrend, FFT peak-search method over 60..240 months. This matches the 2024 "
+            "cycle-period definition with the available history anchored to December 2011."
         ),
         source_references=(
             MetricSourceReference(
@@ -517,9 +501,9 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="%",
         source_as_of="2011 annual average reported Mar 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_secondary_source_proxy",
+        band_method="fixed_plus_minus_15pct_around_best_available_annual_proxy",
         band_notes=(
-            "Secondary-source proxy based on public reports of BM Solutions rental-yield releases. "
+            "Best-available tracked 2011 proxy based on public reports of BM Solutions rental-yield releases. "
             "The tracked public archive does not provide a clean UK quarterly series comparable with the 2024 UK Finance data, "
             "so this 2011 overlay uses the annual UK average with a fixed +/-15% band."
         ),
@@ -574,7 +558,7 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="percentage points",
         source_as_of="2011 annual mean",
         mapping_status="derived_match",
-        band_method="observed_2011_quarterly_mean_range",
+        band_method="observed_2011_quarterly_range",
         band_notes=(
             "Quarterly means from the tracked Jan-Dec 2011 monthly spread values: "
             "Q1=2.397573, Q2=2.452220, Q3=2.443696, Q4=2.626825. "
@@ -654,7 +638,7 @@ TARGET_BANDS_2011_BY_METRIC_ID: dict[str, TargetBand] = {
         tolerance=HPI_TARGET_TOLERANCE,
     ),
     "core_hpiStd": _plus_minus_tolerance_band(
-        source_value=HPI_2011_REBASED_STD,
+        source_value=HPI_FULL_HISTORY_REBASED_STD,
         tolerance=HPI_TARGET_TOLERANCE,
     ),
     "core_hpiCyclePeriod": _plus_minus_tolerance_band(

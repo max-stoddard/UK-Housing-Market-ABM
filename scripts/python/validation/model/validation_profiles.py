@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Mapping, Sequence
 
 from scripts.python.helpers.was.config import ROUND_8_DATA, WAVE_3_DATA
@@ -29,6 +29,7 @@ class ValidationProfile:
     was_dataset: str
     target_catalog: Sequence[MetricDefinition]
     targets_by_id: Mapping[str, MetricDefinition]
+    output_series_trailing_months_by_metric: Mapping[str, int] = field(default_factory=dict)
 
 
 VALIDATION_PROFILE_2024 = ValidationProfile(
@@ -45,6 +46,9 @@ VALIDATION_PROFILE_REFERENCE_V0_2011 = ValidationProfile(
     was_dataset=WAVE_3_DATA,
     target_catalog=TARGET_CATALOG_2011,
     targets_by_id=TARGETS_BY_ID_2011,
+    output_series_trailing_months_by_metric={
+        "core_hpiCyclePeriod": 525,
+    },
 )
 
 

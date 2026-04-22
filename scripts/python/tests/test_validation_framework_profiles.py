@@ -45,6 +45,8 @@ class TestValidationFrameworkProfiles(unittest.TestCase):
             v0_profile.targets_by_id["core_mortgageApprovals"].source_label,
             TARGETS_BY_ID_2024["core_mortgageApprovals"].source_label,
         )
+        self.assertNotIn("core_hpiStd", v0_profile.output_series_trailing_months_by_metric)
+        self.assertEqual(v0_profile.output_series_trailing_months_by_metric["core_hpiCyclePeriod"], 525)
 
 
 if __name__ == "__main__":

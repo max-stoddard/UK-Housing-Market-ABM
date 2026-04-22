@@ -72,9 +72,18 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             version_dir = repo_root / "input-data-versions" / "v0"
             version_dir.mkdir(parents=True)
             (version_dir / "config.properties").write_text("SEED = 1\n", encoding="utf-8")
-            reference_output_dir = repo_root / "Results" / "v0-output"
-            reference_output_dir.mkdir(parents=True)
             output_dir = repo_root / "tmp" / "validation" / "v0"
+            seed_results: list[dict[str, object]] = []
+            for seed in range(1, 9):
+                seed_output_dir = output_dir / f"seed-{seed}"
+                seed_output_dir.mkdir(parents=True)
+                seed_results.append(
+                    {
+                        "seed": seed,
+                        "outputDir": str(seed_output_dir),
+                        "metrics": self._synthetic_metrics(),
+                    }
+                )
 
             with (
                 patch(
@@ -83,12 +92,12 @@ class TestValidationFrameworkPublish(unittest.TestCase):
                 ),
                 patch(
                     "scripts.python.validation.model.runner.run_snapshot_local_validation",
-                    return_value=self._synthetic_seed_results(),
+                    return_value=seed_results,
                 ),
                 patch(
                     "scripts.python.validation.model.runner._extract_seed_metrics",
                     return_value=self._synthetic_metrics(),
-                ),
+                ) as extract_mock,
             ):
                 summary = run_validation_for_version(
                     repo_root=repo_root,
@@ -101,7 +110,7 @@ class TestValidationFrameworkPublish(unittest.TestCase):
                 (repo_root / "input-data-versions" / "validation" / "v0.json").read_text(encoding="utf-8")
             )
             reference_summary = json.loads(
-                (reference_output_dir / "reference-2011" / "validation_summary.json").read_text(encoding="utf-8")
+                (output_dir / "reference-2011" / "validation_summary.json").read_text(encoding="utf-8")
             )
             tracked_reference_overlay = json.loads(
                 (repo_root / "input-data-versions" / "validation-overlays" / "v0-2011.json").read_text(
@@ -113,13 +122,19 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             self.assertEqual(tracked_summary["validationTargetYear"], 2024)
             self.assertEqual(reference_summary["validationTargetYear"], 2011)
             self.assertEqual(tracked_reference_overlay["validationTargetYear"], 2011)
+            self.assertEqual(reference_summary["seeds"], [1, 2, 3, 4, 5, 6, 7, 8])
+            self.assertEqual(tracked_reference_overlay["seeds"], [1, 2, 3, 4, 5, 6, 7, 8])
             self.assertEqual(reference_summary["artifactType"], "reference_overlay")
             self.assertEqual(tracked_reference_overlay["artifactType"], "reference_overlay")
-            self.assertEqual(reference_summary["referenceSourceOutputDir"], "Results/v0-output")
+            self.assertEqual(
+                reference_summary["referenceSourceOutputDir"],
+                "tmp/validation/v0",
+            )
             self.assertEqual(
                 tracked_reference_overlay["overallCompositeLoss"],
                 reference_summary["overallCompositeLoss"],
             )
+            self.assertEqual(extract_mock.call_count, 8)
             self.assertFalse((repo_root / "input-data-versions" / "validation" / "v0-reference-2011.json").exists())
 
     def test_run_validation_for_version_can_reuse_existing_output_dirs(self) -> None:

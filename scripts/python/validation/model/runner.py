@@ -67,8 +67,7 @@ VALIDATION_RECORDING_OVERRIDES = {
 
 REFERENCE_ARTIFACT_DIRNAME = "reference-2011"
 REFERENCE_OVERLAY_NAME = "v0-2011"
-V0_REFERENCE_OUTPUT_DIR = Path("Results") / "v0-output"
-V0_REFERENCE_ARTIFACT_LABEL = "Original v0 Results/v0-output scored against the v0-only 2011 reference catalog"
+V0_REFERENCE_ARTIFACT_LABEL = "Tracked 8-seed v0 validation outputs rescored against the v0-only 2011 reference catalog"
 
 
 def run_validation_for_version(
@@ -150,6 +149,8 @@ def publish_validation_results(
     publish_reference_validation_artifacts(
         repo_root=repo_root,
         version=version,
+        output_dir=output_dir,
+        run_results=run_results,
         was_data_root=was_data_root,
     )
     return summary
@@ -533,6 +534,7 @@ def _extract_seed_metrics(
             metrics[metric.metric_id] = extract_output_series_metric_from_results(
                 metric_id=metric.metric_id,
                 results_dir=seed_output_dir,
+                trailing_months=validation_profile.output_series_trailing_months_by_metric.get(metric.metric_id),
             )
         elif metric.kind == "household_jsd":
             metrics[metric.metric_id] = extract_household_metric_from_results(
@@ -643,6 +645,8 @@ def publish_reference_validation_artifacts(
     *,
     repo_root: Path,
     version: str,
+    output_dir: Path,
+    run_results: Sequence[dict[str, object]],
     was_data_root: Path | None = None,
 ) -> dict | None:
     """Publish the tracked v0-only 2011 reference overlay plus transient audit artifacts."""
@@ -651,35 +655,45 @@ def publish_reference_validation_artifacts(
     if reference_profile is None:
         return None
 
-    reference_source_output_dir = repo_root / V0_REFERENCE_OUTPUT_DIR
-    if not reference_source_output_dir.exists():
-        return None
+    resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
+    reference_seed_results: list[dict[str, object]] = []
+    for tracked_seed_result in run_results:
+        seed = int(tracked_seed_result["seed"])
+        seed_output_dir = _resolve_output_dir_path(
+            repo_root=repo_root,
+            raw_path=str(tracked_seed_result["outputDir"]),
+        )
+        if not seed_output_dir.exists():
+            raise RuntimeError(f"Missing tracked seed output directory for 2011 reference publication: {seed_output_dir}")
+        reference_seed_results.append(
+            {
+                "seed": seed,
+                "outputDir": str(seed_output_dir),
+                "metrics": _extract_seed_metrics(
+                    seed_output_dir=seed_output_dir,
+                    was_data_root=resolved_was_data_root,
+                    validation_profile=reference_profile,
+                ),
+            }
+        )
 
-    seed_result = {
-        "seed": 1,
-        "outputDir": str(reference_source_output_dir),
-        "metrics": _extract_seed_metrics(
-            seed_output_dir=reference_source_output_dir,
-            was_data_root=resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root),
-            validation_profile=reference_profile,
-        ),
-    }
+    seeds = [int(seed_result["seed"]) for seed_result in reference_seed_results]
     summary = build_validation_summary(
         version=version,
-        seed_results=[seed_result],
-        seeds=[1],
+        seed_results=reference_seed_results,
+        seeds=seeds,
         validation_profile=reference_profile,
     )
     summary["artifactType"] = "reference_overlay"
     summary["artifactLabel"] = V0_REFERENCE_ARTIFACT_LABEL
     summary["referenceSourceOutputDir"] = _display_repo_relative_path(
         repo_root=repo_root,
-        path=reference_source_output_dir,
+        path=output_dir,
     )
     write_transient_artifacts(
-        output_dir=reference_source_output_dir / REFERENCE_ARTIFACT_DIRNAME,
+        output_dir=output_dir / REFERENCE_ARTIFACT_DIRNAME,
         summary=summary,
-        seed_results=[seed_result],
+        seed_results=reference_seed_results,
     )
     write_validation_overlay_summary(
         repo_root=repo_root,
@@ -851,3 +865,10 @@ def _display_repo_relative_path(*, repo_root: Path, path: Path) -> str:
         return path.relative_to(repo_root).as_posix()
     except ValueError:
         return path.as_posix()
+
+
+def _resolve_output_dir_path(*, repo_root: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    return repo_root / path

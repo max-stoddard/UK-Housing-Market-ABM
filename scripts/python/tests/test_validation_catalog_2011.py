@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import unittest
 
+from scripts.python.validation.model.validation_catalog_2024 import HPI_FULL_HISTORY_REBASED_STD
 from scripts.python.validation.model.validation_catalog_2011 import (
     HPI_2011_CYCLE_PERIOD_MONTHS,
     HPI_2011_REBASED_MEAN,
-    HPI_2011_REBASED_STD,
     INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS,
     OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES,
     SOURCE_METADATA_2011_BY_METRIC_ID,
@@ -34,7 +34,7 @@ class TestValidationCatalog2011(unittest.TestCase):
         )
         self.assertAlmostEqual(
             SOURCE_METADATA_2011_BY_METRIC_ID["core_hpiStd"].normalized_source_value or 0.0,
-            HPI_2011_REBASED_STD,
+            HPI_FULL_HISTORY_REBASED_STD,
         )
         self.assertAlmostEqual(
             SOURCE_METADATA_2011_BY_METRIC_ID["core_hpiCyclePeriod"].normalized_source_value or 0.0,
@@ -51,17 +51,38 @@ class TestValidationCatalog2011(unittest.TestCase):
         self.assertAlmostEqual(spread.target_band.lower, min(INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS))
         self.assertAlmostEqual(spread.target_band.upper, max(INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS))
         self.assertEqual(len(spread.source_metadata.source_references), 4)
+        self.assertEqual(spread.source_metadata.band_method, "observed_2011_quarterly_range")
         self.assertIn("Q1=2.397573", spread.source_metadata.band_notes or "")
         self.assertIn("Q4=2.626825", spread.source_metadata.band_notes or "")
 
-    def test_weaker_2011_metrics_are_labeled_as_secondary_source_proxies(self) -> None:
-        for metric_id in ("core_advancesToFTB", "core_advancesToHM", "core_advancesToBTL", "core_rentalYield"):
+    def test_weaker_2011_metrics_are_labeled_as_best_available_proxies(self) -> None:
+        proxy_band_methods = {
+            "core_advancesToFTB": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
+            "core_advancesToHM": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
+            "core_advancesToBTL": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
+            "core_rentalYield": "fixed_plus_minus_15pct_around_best_available_annual_proxy",
+        }
+        for metric_id, band_method in proxy_band_methods.items():
             metric = TARGETS_BY_ID[metric_id]
-            self.assertIn("Secondary-source proxy", metric.source_label)
-            self.assertEqual(
-                metric.source_metadata.band_method,
-                "fixed_plus_minus_15pct_around_secondary_source_proxy",
-            )
+            self.assertIn("Best-available secondary-source proxy", metric.source_label)
+            self.assertEqual(metric.source_metadata.band_method, band_method)
+
+    def test_hpi_metrics_use_same_official_value_band_method_as_2024(self) -> None:
+        for metric_id in ("core_hpiMean", "core_hpiStd", "core_hpiCyclePeriod"):
+            metric = TARGETS_BY_ID[metric_id]
+            self.assertEqual(metric.source_metadata.band_method, "fixed_plus_minus_15pct_around_official_value")
+        self.assertIn("through 2011-12", TARGETS_BY_ID["core_hpiMean"].source_label)
+        self.assertIn("through 2011-12", TARGETS_BY_ID["core_hpiCyclePeriod"].source_label)
+
+    def test_hpi_std_is_deliberate_cross_year_normalization_exception(self) -> None:
+        hpi_std = TARGETS_BY_ID["core_hpiStd"]
+        self.assertEqual(hpi_std.source_metadata.source_as_of, "2005-01 to 2024-12 population std")
+        self.assertEqual(
+            hpi_std.source_metadata.source_document_path,
+            "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv",
+        )
+        self.assertIn("shared official std benchmark", hpi_std.source_label)
+        self.assertIn("Deliberate cross-year normalization exception", hpi_std.source_metadata.band_notes or "")
 
     def test_oo_dti_keeps_repo_local_ons_snapshot_reference(self) -> None:
         oo_dti = TARGETS_BY_ID["core_ooDebtToIncome"]

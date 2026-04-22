@@ -196,19 +196,37 @@ def extract_rebased_output_series_mean(csv_path: Path, *, column_name: str) -> f
     return compute_rebased_mean(window)
 
 
-def extract_rebased_output_series_std(csv_path: Path, *, column_name: str) -> float:
+def extract_rebased_output_series_std(
+    csv_path: Path,
+    *,
+    column_name: str,
+    trailing_months: int | None = None,
+) -> float:
     """Read one output series and return the rebased validation-window population std."""
 
     values = load_output_series(csv_path, column_name=column_name)
-    window = _complete_validation_window(values=values, source_path=csv_path)
+    window = _select_output_series_window(
+        values=values,
+        source_path=csv_path,
+        trailing_months=trailing_months,
+    )
     return compute_rebased_std(window)
 
 
-def extract_output_series_cycle_period(csv_path: Path, *, column_name: str) -> float:
+def extract_output_series_cycle_period(
+    csv_path: Path,
+    *,
+    column_name: str,
+    trailing_months: int | None = None,
+) -> float:
     """Read one output series and return the locked dominant cycle-period estimate."""
 
     values = load_output_series(csv_path, column_name=column_name)
-    window = _complete_validation_window(values=values, source_path=csv_path)
+    window = _select_output_series_window(
+        values=values,
+        source_path=csv_path,
+        trailing_months=trailing_months,
+    )
     return estimate_dominant_cycle_period_months(window)
 
 
@@ -338,7 +356,12 @@ def _read_was_data_for_dataset(
     return chunk
 
 
-def extract_output_series_metric_from_results(*, metric_id: str, results_dir: Path) -> float:
+def extract_output_series_metric_from_results(
+    *,
+    metric_id: str,
+    results_dir: Path,
+    trailing_months: int | None = None,
+) -> float:
     """Extract one Output-run1.csv-backed metric from a run output directory."""
 
     spec = OUTPUT_SERIES_SPECS[metric_id]
@@ -346,9 +369,17 @@ def extract_output_series_metric_from_results(*, metric_id: str, results_dir: Pa
     if metric_id == "core_hpiMean":
         return extract_rebased_output_series_mean(csv_path, column_name=spec.column_name)
     if metric_id == "core_hpiStd":
-        return extract_rebased_output_series_std(csv_path, column_name=spec.column_name)
+        return extract_rebased_output_series_std(
+            csv_path,
+            column_name=spec.column_name,
+            trailing_months=trailing_months,
+        )
     if metric_id == "core_hpiCyclePeriod":
-        return extract_output_series_cycle_period(csv_path, column_name=spec.column_name)
+        return extract_output_series_cycle_period(
+            csv_path,
+            column_name=spec.column_name,
+            trailing_months=trailing_months,
+        )
     raise RuntimeError(f"Unsupported output-series metric: {metric_id}")
 
 
@@ -373,3 +404,21 @@ def _complete_validation_window(*, values: Sequence[float], source_path: Path) -
     if len(window) != expected_count:
         raise RuntimeError(f"Incomplete validation window in {source_path}")
     return window
+
+
+def _select_output_series_window(
+    *,
+    values: Sequence[float],
+    source_path: Path,
+    trailing_months: int | None,
+) -> list[float]:
+    window = _complete_validation_window(values=values, source_path=source_path)
+    if trailing_months is None:
+        return window
+    if trailing_months <= 0:
+        raise ValueError("trailing_months must be positive")
+    if len(window) < trailing_months:
+        raise RuntimeError(
+            f"Incomplete trailing output-series window in {source_path}: need {trailing_months} months"
+        )
+    return window[-trailing_months:]

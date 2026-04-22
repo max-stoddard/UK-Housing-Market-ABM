@@ -83,6 +83,32 @@ class TestValidationFrameworkExtractors(unittest.TestCase):
                 delta=6.0,
             )
 
+    def test_extract_output_series_cycle_period_can_use_trailing_2011_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "Output-run1.csv"
+            values = []
+            for month in range(200):
+                values.append(2.0)
+            for month in range(1275):
+                values.append(2.0 + 0.2 * math.sin((2.0 * math.pi * month) / 60.0))
+            for month in range(525):
+                values.append(2.0 + 0.2 * math.sin((2.0 * math.pi * month) / 120.0))
+            for month in range(5):
+                values.append(2.0)
+            path.write_text(
+                "Sale HPI\n" + "\n".join(f"{value:.12f}" for value in values) + "\n",
+                encoding="utf-8",
+            )
+            self.assertAlmostEqual(
+                extract_output_series_cycle_period(
+                    path,
+                    column_name="Sale HPI",
+                    trailing_months=525,
+                ),
+                120.0,
+                delta=10.0,
+            )
+
     def test_extract_household_jsd_returns_zero_for_identical_histograms(self) -> None:
         jsd = extract_household_jsd(
             model_values=[1_000.0, 2_000.0, 4_000.0],
