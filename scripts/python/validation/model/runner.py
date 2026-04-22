@@ -1,4 +1,4 @@
-"""Snapshot-local runner and summary builder for 2024 validation.
+"""Snapshot-local runner and summary builder for tracked validation and references.
 
 @author: Max Stoddard
 """
@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import csv
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
 import subprocess
@@ -23,7 +22,11 @@ from scripts.python.validation.model.extractors import (
     extract_household_metric_from_results,
     extract_output_series_metric_from_results,
 )
-from scripts.python.validation.model.publish import write_transient_artifacts, write_validation_summary
+from scripts.python.validation.model.publish import (
+    write_transient_artifacts,
+    write_validation_overlay_summary,
+    write_validation_summary,
+)
 from scripts.python.validation.model.schema import (
     CANONICAL_VALIDATION_SEEDS,
     VALIDATION_SCHEMA_VERSION,
@@ -41,7 +44,11 @@ from scripts.python.validation.model.scoring import (
     normalize_by_loss_scale,
     resolve_loss_scale,
 )
-from scripts.python.validation.model.validation_profiles import ValidationProfile, resolve_validation_profile
+from scripts.python.validation.model.validation_profiles import (
+    ValidationProfile,
+    resolve_reference_validation_profile,
+    resolve_validation_profile,
+)
 
 VALIDATION_RECORDING_OVERRIDES = {
     "recordTransactions": "false",
@@ -57,6 +64,11 @@ VALIDATION_RECORDING_OVERRIDES = {
     "recordAge": "false",
     "recordSavingRate": "false",
 }
+
+REFERENCE_ARTIFACT_DIRNAME = "reference-2011"
+REFERENCE_OVERLAY_NAME = "v0-2011"
+V0_REFERENCE_OUTPUT_DIR = Path("Results") / "v0-output"
+V0_REFERENCE_ARTIFACT_LABEL = "Original v0 Results/v0-output scored against the v0-only 2011 reference catalog"
 
 
 def run_validation_for_version(
@@ -106,6 +118,7 @@ def run_validation_for_version(
         output_dir=output_dir,
         run_results=run_results,
         validation_profile=validation_profile,
+        was_data_root=resolved_was_data_root,
     )
 
 
@@ -117,6 +130,7 @@ def publish_validation_results(
     output_dir: Path,
     run_results: Sequence[dict[str, object]],
     validation_profile: ValidationProfile | None = None,
+    was_data_root: Path | None = None,
 ) -> dict:
     """Publish tracked and transient outputs after all seed runs succeed."""
 
@@ -125,21 +139,19 @@ def publish_validation_results(
         raise ValueError("Tracked publication requires 8/8 successful seeds before publishing tracked JSON")
 
     resolved_profile = validation_profile or resolve_validation_profile(version)
-    reference_loss, reference_label = resolve_initial_calibration_reference_metadata(
-        repo_root=repo_root,
-        version=version,
-        validation_profile=resolved_profile,
-    )
     summary = build_validation_summary(
         version=version,
         seed_results=run_results,
         seeds=seeds,
         validation_profile=resolved_profile,
-        initial_calibration_reference_loss=reference_loss,
-        initial_calibration_reference_label=reference_label,
     )
     write_transient_artifacts(output_dir=output_dir, summary=summary, seed_results=run_results)
     write_validation_summary(repo_root=repo_root, summary=summary)
+    publish_reference_validation_artifacts(
+        repo_root=repo_root,
+        version=version,
+        was_data_root=was_data_root,
+    )
     return summary
 
 
@@ -203,6 +215,68 @@ def run_snapshot_local_validation(
     return [worker_results[seed] for seed in seeds]
 
 
+def run_validation_seed(
+    *,
+    repo_root: Path,
+    version: str,
+    seed: int,
+    output_dir: Path,
+    maven_bin: str,
+    was_data_root: Path,
+    validation_profile: ValidationProfile,
+) -> dict[str, object]:
+
+    """Run one snapshot-local validation seed and return its extracted metrics."""
+
+    version_config_path = repo_root / "input-data-versions" / version / "config.properties"
+    if not version_config_path.exists():
+        raise RuntimeError(f"Missing version config: {version_config_path}")
+
+    seed_output_dir = output_dir / f"seed-{seed}"
+    if seed_output_dir.exists():
+        shutil.rmtree(seed_output_dir)
+    seed_output_dir.mkdir(parents=True, exist_ok=True)
+    configs_dir = output_dir / "configs"
+    configs_dir.mkdir(parents=True, exist_ok=True)
+
+    overrides = dict(VALIDATION_RECORDING_OVERRIDES)
+    overrides["SEED"] = str(seed)
+    config_text = build_snapshot_local_config_text(version_config_path, overrides)
+    config_path = configs_dir / f"seed-{seed}.properties"
+    config_path.write_text(config_text, encoding="utf-8")
+
+    exec_args = f'-configFile "{config_path}" -outputFolder "{seed_output_dir}" -dev'
+    _log_validation_run_start(
+        version=version,
+        seed=seed,
+    )
+    proc = subprocess.run(
+        [maven_bin, "-q", "exec:java", f"-Dexec.args={exec_args}"],
+        cwd=repo_root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "Model validation run failed.\n"
+            f"version={version} seed={seed}\n"
+            f"Output tail:\n{proc.stdout[-3000:]}"
+        )
+
+    return {
+        "seed": seed,
+        "outputDir": str(seed_output_dir),
+        "metrics": _extract_seed_metrics(
+            seed_output_dir=seed_output_dir,
+            was_data_root=was_data_root,
+            validation_profile=validation_profile,
+        ),
+    }
+
+
+
 def load_reused_validation_results(
     *,
     output_dir: Path,
@@ -242,64 +316,6 @@ def load_reused_validation_results(
     return seed_results
 
 
-def run_validation_seed(
-    *,
-    repo_root: Path,
-    version: str,
-    seed: int,
-    output_dir: Path,
-    maven_bin: str,
-    was_data_root: Path,
-    validation_profile: ValidationProfile,
-) -> dict[str, object]:
-    """Run one snapshot-local validation seed and return its extracted metrics."""
-
-    version_config_path = repo_root / "input-data-versions" / version / "config.properties"
-    if not version_config_path.exists():
-        raise RuntimeError(f"Missing version config: {version_config_path}")
-
-    configs_dir = output_dir / "configs"
-    configs_dir.mkdir(parents=True, exist_ok=True)
-    seed_output_dir = output_dir / f"seed-{seed}"
-    if seed_output_dir.exists():
-        shutil.rmtree(seed_output_dir)
-    seed_output_dir.mkdir(parents=True, exist_ok=True)
-
-    overrides = dict(VALIDATION_RECORDING_OVERRIDES)
-    overrides["SEED"] = str(seed)
-    config_text = build_snapshot_local_config_text(version_config_path, overrides)
-    config_path = configs_dir / f"seed-{seed}.properties"
-    config_path.write_text(config_text, encoding="utf-8")
-
-    exec_args = f'-configFile "{config_path}" -outputFolder "{seed_output_dir}" -dev'
-    _log_validation_run_start(
-        version=version,
-        seed=seed,
-    )
-    proc = subprocess.run(
-        [maven_bin, "-q", "exec:java", f"-Dexec.args={exec_args}"],
-        cwd=repo_root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        check=False,
-    )
-    if proc.returncode != 0:
-        raise RuntimeError(
-            "Model validation run failed.\n"
-            f"version={version} seed={seed}\n"
-            f"Output tail:\n{proc.stdout[-3000:]}"
-        )
-
-    return {
-        "seed": seed,
-        "outputDir": str(seed_output_dir),
-        "metrics": _extract_seed_metrics(
-            seed_output_dir=seed_output_dir,
-            was_data_root=was_data_root,
-            validation_profile=validation_profile,
-        ),
-    }
 
 
 def _log_validation_run_start(
@@ -320,10 +336,14 @@ def resolve_was_data_root(*, repo_root: Path, explicit_root: Path | None) -> Pat
     if explicit_root is not None:
         return explicit_root
 
+    dataset_candidates = (
+        Path("private-datasets/was/was_round_8_hhold_eul_may_2025.privdata"),
+        Path("private-datasets/was/was_wave_3_hhold_eul_final.dta"),
+    )
     candidates = [repo_root]
     candidates.extend(repo_root.parents[:3])
     for candidate in candidates:
-        if (candidate / "private-datasets" / "was" / "was_round_8_hhold_eul_may_2025.privdata").exists():
+        if any((candidate / dataset_path).exists() for dataset_path in dataset_candidates):
             return candidate
     return repo_root
 
@@ -335,8 +355,6 @@ def build_validation_summary(
     seeds: Sequence[int],
     validation_profile: ValidationProfile | None = None,
     targets_by_id: Mapping[str, object] | None = None,
-    initial_calibration_reference_loss: float | None = None,
-    initial_calibration_reference_label: str | None = None,
 ) -> dict:
     """Build the dashboard-facing summary JSON from per-seed metric values."""
 
@@ -488,9 +506,6 @@ def build_validation_summary(
         ),
         "metrics": summary_metrics,
     }
-    if initial_calibration_reference_loss is not None and initial_calibration_reference_label is not None:
-        summary["initialCalibrationReferenceLoss"] = initial_calibration_reference_loss
-        summary["initialCalibrationReferenceLabel"] = initial_calibration_reference_label
     return summary
 
 
@@ -624,32 +639,54 @@ def score_existing_summary_against_targets(
     )
 
 
-def resolve_initial_calibration_reference_metadata(
+def publish_reference_validation_artifacts(
     *,
     repo_root: Path,
     version: str,
-    validation_profile: ValidationProfile,
-) -> tuple[float | None, str | None]:
-    """Resolve optional initial-calibration reference metadata for a published summary."""
+    was_data_root: Path | None = None,
+) -> dict | None:
+    """Publish the tracked v0-only 2011 reference overlay plus transient audit artifacts."""
 
-    reference_version = validation_profile.initial_calibration_reference_version
-    reference_label = validation_profile.initial_calibration_reference_label
-    if reference_version is None or reference_label is None or version != reference_version:
-        return None, None
+    reference_profile = resolve_reference_validation_profile(version)
+    if reference_profile is None:
+        return None
 
-    reference_path = repo_root / "input-data-versions" / "validation" / f"{reference_version}.json"
-    if not reference_path.exists():
-        return None, None
+    reference_source_output_dir = repo_root / V0_REFERENCE_OUTPUT_DIR
+    if not reference_source_output_dir.exists():
+        return None
 
-    summary = json.loads(reference_path.read_text(encoding="utf-8"))
-    return (
-        score_existing_summary_against_targets(
-            summary=summary,
-            targets_by_id=validation_profile.targets_by_id,
-            target_catalog=validation_profile.target_catalog,
+    seed_result = {
+        "seed": 1,
+        "outputDir": str(reference_source_output_dir),
+        "metrics": _extract_seed_metrics(
+            seed_output_dir=reference_source_output_dir,
+            was_data_root=resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root),
+            validation_profile=reference_profile,
         ),
-        reference_label,
+    }
+    summary = build_validation_summary(
+        version=version,
+        seed_results=[seed_result],
+        seeds=[1],
+        validation_profile=reference_profile,
     )
+    summary["artifactType"] = "reference_overlay"
+    summary["artifactLabel"] = V0_REFERENCE_ARTIFACT_LABEL
+    summary["referenceSourceOutputDir"] = _display_repo_relative_path(
+        repo_root=repo_root,
+        path=reference_source_output_dir,
+    )
+    write_transient_artifacts(
+        output_dir=reference_source_output_dir / REFERENCE_ARTIFACT_DIRNAME,
+        summary=summary,
+        seed_results=[seed_result],
+    )
+    write_validation_overlay_summary(
+        repo_root=repo_root,
+        overlay_name=REFERENCE_OVERLAY_NAME,
+        summary=summary,
+    )
+    return summary
 
 
 def _ordered_metric_ids(
@@ -807,3 +844,10 @@ def _serialize_source_reference(reference: MetricSourceReference) -> dict[str, o
         "sourceUnits": reference.source_units,
         "notes": reference.notes,
     }
+
+
+def _display_repo_relative_path(*, repo_root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return path.as_posix()

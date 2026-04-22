@@ -2,13 +2,15 @@
 
 Author: Max Stoddard
 
-This note documents how the v0-only 2011 validation profile is reproduced from
-repo-local source artifacts.
+This note documents how the v0-only 2011 reference overlay is reproduced from
+repo-local source artifacts and scored from `Results/v0-output`.
 
 Reviewed files:
 - `scripts/python/validation/model/validation_catalog_2011.py`
 - `input-data-versions/validation-sources/2011/**`
-- `input-data-versions/validation/v0.json`
+- `input-data-versions/validation-overlays/v0-2011.json`
+- `Results/v0-output/**`
+- `Results/v0-output/reference-2011/**`
 
 ## Source families
 - `boe/`: repo-local 2011 series extracted from the tracked Bank of England
@@ -31,11 +33,13 @@ Reviewed files:
   quarterly range as the target band.
 - `core_advancesToFTB`, `core_advancesToHM`, and `core_advancesToBTL` convert the
   2011 annual totals to monthly thousand-count means and apply a fixed `+/-15%`
-  tolerance band, matching the locked count-conversion approach already used for
-  annual loan totals in the 2024 profile.
+  tolerance band. These remain explicitly labeled secondary-source proxies
+  because the tracked repo bundle only contains public reports quoting the 2011
+  CML totals, not a cleaner primary source file.
 - `core_rentalYield` uses the 2011 annual BM Solutions UK yield with a fixed
   `+/-15%` tolerance because there is no clean tracked UK quarterly archive
-  equivalent to the 2024 UK Finance series.
+  equivalent to the 2024 UK Finance series. This metric is explicitly labeled a
+  secondary-source proxy for the same reason.
 - `core_hpiMean`, `core_hpiStd`, and `core_hpiCyclePeriod` reuse the existing HPI
   helper methodology, but the source series ends at `2011-12`.
 - `core_ooDebtToIncome` reuses the 2024 reconstruction formula with 2011 MLAR
@@ -51,5 +55,7 @@ Reviewed files:
 - The source publication date may be later than 2011 where a later frozen public
   release contains the required 2011 history more cleanly than an original 2011
   publication.
-- The tracked validation summary for `v0` should be the only summary using the
-  2011 target year; all later versions remain on the 2024 profile.
+- All tracked validation summaries, including `v0`, remain on the 2024 profile.
+- The 2011 target year is reserved for the separate `v0` reference overlay
+  published to `input-data-versions/validation-overlays/v0-2011.json` and
+  mirrored under `Results/v0-output/reference-2011/**`.

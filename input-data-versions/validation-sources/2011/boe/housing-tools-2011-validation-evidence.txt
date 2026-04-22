@@ -36,9 +36,9 @@ Metric mappings:
 - `core_interestRateSpread`: sheet `8. Spreads new mortgage lending`, 2011
   monthly series. Source value is the 2011 annual mean: `2.4800784641069633`.
   Target band uses the observed 2011 quarterly-mean range:
-  `2.3790224672849844` to `2.5847009073436426`.
+  `2.3975732465696207` to `2.626824733041048`.
 
 Notes:
-- The 2011 profile uses annual means plus observed 2011 ranges for these
-  long-run macro series because there is no 2011 FPC snapshot equivalent to the
-  2024 FPC core-indicator pack.
+- The 2011 reference overlay uses annual means plus observed 2011 ranges for
+  these long-run macro series because there is no 2011 FPC snapshot equivalent
+  to the 2024 FPC core-indicator pack.

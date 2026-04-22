@@ -131,6 +131,7 @@ def run_validation_campaign(
                     output_dir=version_output_dir,
                     run_results=run_results,
                     validation_profile=profiles_by_version[version],
+                    was_data_root=resolved_was_data_root,
                 )
                 published_versions.append(version)
                 print(f"Published {version} from existing outputs")
@@ -149,7 +150,7 @@ def run_validation_campaign(
     total_runs = len(versions) * len(seeds)
     completed_runs = 0
 
-    with ThreadPoolExecutor(max_workers=workers) as executor:
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="validation-worker") as executor:
         for version in versions:
             version_output_dir = output_root / version
             for seed in seeds:
@@ -195,6 +196,7 @@ def run_validation_campaign(
             output_dir=output_root / version,
             run_results=version_results,
             validation_profile=profiles_by_version[version],
+            was_data_root=resolved_was_data_root,
         )
         published_versions.append(version)
         print(f"Published {version}")

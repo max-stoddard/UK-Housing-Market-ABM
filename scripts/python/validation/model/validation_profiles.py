@@ -1,4 +1,4 @@
-"""Validation-profile resolution for version-gated target years.
+"""Validation-profile resolution for tracked and reference validation targets.
 
 @author: Max Stoddard
 """
@@ -29,8 +29,6 @@ class ValidationProfile:
     was_dataset: str
     target_catalog: Sequence[MetricDefinition]
     targets_by_id: Mapping[str, MetricDefinition]
-    initial_calibration_reference_version: str | None = None
-    initial_calibration_reference_label: str | None = None
 
 
 VALIDATION_PROFILE_2024 = ValidationProfile(
@@ -41,29 +39,34 @@ VALIDATION_PROFILE_2024 = ValidationProfile(
     targets_by_id=TARGETS_BY_ID_2024,
 )
 
-VALIDATION_PROFILE_V0_2011 = ValidationProfile(
-    profile_id="validation-v0-2011",
+VALIDATION_PROFILE_REFERENCE_V0_2011 = ValidationProfile(
+    profile_id="validation-reference-v0-2011",
     validation_target_year=2011,
     was_dataset=WAVE_3_DATA,
     target_catalog=TARGET_CATALOG_2011,
     targets_by_id=TARGETS_BY_ID_2011,
-    initial_calibration_reference_version="v0",
-    initial_calibration_reference_label="Original v0 tracked summary rescored against the v0->2011 validation profile",
 )
 
 
 def resolve_validation_profile(version: str) -> ValidationProfile:
-    """Resolve the validation profile for one tracked input-data version."""
+    """Resolve the tracked validation profile for one input-data version."""
+
+    return VALIDATION_PROFILE_2024
+
+
+def resolve_reference_validation_profile(version: str) -> ValidationProfile | None:
+    """Resolve an optional non-tracked reference profile for one version."""
 
     normalized_version = version.strip().lower()
     if normalized_version == "v0":
-        return VALIDATION_PROFILE_V0_2011
-    return VALIDATION_PROFILE_2024
+        return VALIDATION_PROFILE_REFERENCE_V0_2011
+    return None
 
 
 __all__ = [
     "ValidationProfile",
     "VALIDATION_PROFILE_2024",
-    "VALIDATION_PROFILE_V0_2011",
+    "VALIDATION_PROFILE_REFERENCE_V0_2011",
+    "resolve_reference_validation_profile",
     "resolve_validation_profile",
 ]

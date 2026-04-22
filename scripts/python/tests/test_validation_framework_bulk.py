@@ -97,7 +97,7 @@ class TestValidationFrameworkBulk(unittest.TestCase):
                 )
             )
 
-    def test_run_validation_campaign_passes_version_specific_profiles(self) -> None:
+    def test_run_validation_campaign_passes_tracked_2024_profile_for_all_versions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_root = Path(tmp_dir)
             output_root = repo_root / "tmp" / "validation-history"
@@ -146,7 +146,7 @@ class TestValidationFrameworkBulk(unittest.TestCase):
 
             self.assertEqual(published_versions, ["v0", "v1.0"])
             self.assertEqual(failures, [])
-            self.assertEqual(observed_profiles["v0"], {(2011, "W3")})
+            self.assertEqual(observed_profiles["v0"], {(2024, "R8")})
             self.assertEqual(observed_profiles["v1.0"], {(2024, "R8")})
 
 

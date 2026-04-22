@@ -142,7 +142,7 @@ function formatValidationTargetYearLabel(validationTargetYear: number): string {
 }
 
 function formatReferenceLineLabel(label: string, validationTargetYear: number): string {
-  return `${label} (${validationTargetYear})`;
+  return `${label} (${validationTargetYear} comparator)`;
 }
 
 function getTooltipValue(data: ValidationTooltipRow['data']): number | null {
@@ -238,7 +238,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
 
         const tooltipRows = [
           `<strong>${point.version}</strong>`,
-          `Target evidence: ${formatValidationTargetYearLabel(point.validationTargetYear)}`
+          `Tracked summary: ${formatValidationTargetYearLabel(point.validationTargetYear)}`
         ];
 
         for (const row of rows) {
@@ -249,8 +249,10 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
           tooltipRows.push(`${row.marker ?? ''}${row.seriesName ?? 'Validation loss'}: ${formatNumber(value, 4)}`);
         }
 
-        if (referenceLine?.description) {
-          tooltipRows.push(referenceLine.description);
+        if (referenceLine) {
+          tooltipRows.push(
+            `Dashed comparator: ${referenceLine.description ?? formatValidationTargetYearLabel(referenceLine.validationTargetYear)}`
+          );
         }
 
         return tooltipRows.join('<br/>');
@@ -444,9 +446,9 @@ export function ValidationPage() {
         <h2>Validation</h2>
         <div className="validation-intro-copy">
           <p>
-            This page compares <code>v0</code> against 2011 target bands and later versions against tracked 2024
-            target bands using eight-seed validation summaries. The table below is the main decision tool because it
-            shows which real-world patterns the model matches, misses, or cannot yet support.
+            This page uses tracked 2024 target bands for every version, including <code>v0</code>, across eight-seed
+            validation summaries. When available, the chart overlays a separate 2011 comparator for the original
+            calibration, but the table below always stays tied to the selected tracked summary.
           </p>
           <p>
             The line chart is a secondary overview for ranking and trend-checking only. Validation matters because a
@@ -471,9 +473,9 @@ export function ValidationPage() {
             <h3>Validation Loss Across Versions</h3>
             <p className="validation-card-subtitle">
               Lower validation loss means the model is closer to the external targets and more stable across seeds. The
-              selected point controls the metric results below. <code>v0</code> is benchmarked against 2011 evidence,
-              later versions remain on 2024 evidence, and the dashed line marks the original <code>v0</code>{' '}
-              calibration loss.
+              selected point controls the metric results below. Every plotted point, including <code>v0</code>, uses
+              the tracked 2024 summary, and the dashed line adds the separate 2011 original-calibration comparator
+              when the validation payload provides one.
             </p>
           </div>
           <label className="validation-selector">

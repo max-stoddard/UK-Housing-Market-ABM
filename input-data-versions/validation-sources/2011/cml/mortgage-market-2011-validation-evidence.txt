@@ -3,9 +3,9 @@
 # Author: Max Stoddard
 
 Purpose:
-- Public evidence bundle for the 2011 annual first-time buyer, home-mover, and
-  buy-to-let house-purchase mortgage totals used by the v0-only 2011 validation
-  profile.
+- Secondary-source proxy evidence bundle for the 2011 annual first-time buyer,
+  home-mover, and buy-to-let house-purchase mortgage totals used by the v0-only
+  2011 reference overlay.
 
 Tracked public references:
 - PropertyWire, `Lending figures suggest UK first time buyers are racing to beat tax deadline`
@@ -39,3 +39,5 @@ Notes:
 - The buy-to-let figure is intentionally the house-purchase count, not total BTL
   lending, because the modern tracked metric validates BTL purchase activity
   rather than all BTL originations.
+- These values remain secondary-source proxies because the repo does not track a
+  cleaner primary 2011 CML source file with the required annual totals.

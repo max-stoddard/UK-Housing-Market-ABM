@@ -5,9 +5,12 @@
 
 from __future__ import annotations
 
+import io
 import json
+import subprocess
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,8 +18,10 @@ from scripts.python.validation.model.runner import (
     build_validation_summary,
     resolve_was_data_root,
     run_validation_for_version,
+    run_validation_seed,
 )
 from scripts.python.validation.model.publish import write_validation_summary
+from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
 
 class TestValidationFrameworkPublish(unittest.TestCase):
@@ -60,6 +65,62 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             self.assertTrue((output_dir / "validation_seed_results.csv").exists())
             self.assertTrue((output_dir / "validation_summary.md").exists())
             self.assertTrue((repo_root / "input-data-versions" / "validation" / "v-test.json").exists())
+
+    def test_run_validation_for_v0_keeps_tracked_summary_2024_and_writes_2011_reference_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            version_dir = repo_root / "input-data-versions" / "v0"
+            version_dir.mkdir(parents=True)
+            (version_dir / "config.properties").write_text("SEED = 1\n", encoding="utf-8")
+            reference_output_dir = repo_root / "Results" / "v0-output"
+            reference_output_dir.mkdir(parents=True)
+            output_dir = repo_root / "tmp" / "validation" / "v0"
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                patch(
+                    "scripts.python.validation.model.runner.run_snapshot_local_validation",
+                    return_value=self._synthetic_seed_results(),
+                ),
+                patch(
+                    "scripts.python.validation.model.runner._extract_seed_metrics",
+                    return_value=self._synthetic_metrics(),
+                ),
+            ):
+                summary = run_validation_for_version(
+                    repo_root=repo_root,
+                    version="v0",
+                    seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+                    output_dir=output_dir,
+                )
+
+            tracked_summary = json.loads(
+                (repo_root / "input-data-versions" / "validation" / "v0.json").read_text(encoding="utf-8")
+            )
+            reference_summary = json.loads(
+                (reference_output_dir / "reference-2011" / "validation_summary.json").read_text(encoding="utf-8")
+            )
+            tracked_reference_overlay = json.loads(
+                (repo_root / "input-data-versions" / "validation-overlays" / "v0-2011.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertEqual(summary["validationTargetYear"], 2024)
+            self.assertEqual(tracked_summary["validationTargetYear"], 2024)
+            self.assertEqual(reference_summary["validationTargetYear"], 2011)
+            self.assertEqual(tracked_reference_overlay["validationTargetYear"], 2011)
+            self.assertEqual(reference_summary["artifactType"], "reference_overlay")
+            self.assertEqual(tracked_reference_overlay["artifactType"], "reference_overlay")
+            self.assertEqual(reference_summary["referenceSourceOutputDir"], "Results/v0-output")
+            self.assertEqual(
+                tracked_reference_overlay["overallCompositeLoss"],
+                reference_summary["overallCompositeLoss"],
+            )
+            self.assertFalse((repo_root / "input-data-versions" / "validation" / "v0-reference-2011.json").exists())
 
     def test_run_validation_for_version_can_reuse_existing_output_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -155,6 +216,51 @@ class TestValidationFrameworkPublish(unittest.TestCase):
                         seeds=[1, 2, 3, 4, 5, 6, 7, 8],
                         output_dir=repo_root / "tmp" / "validation" / "v-test",
                     )
+
+    def test_run_validation_seed_logs_java_start_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            version_dir = repo_root / "input-data-versions" / "v-test"
+            version_dir.mkdir(parents=True)
+            (version_dir / "config.properties").write_text("SEED = 1\n", encoding="utf-8")
+            output_dir = repo_root / "tmp" / "validation" / "v-test"
+            stdout = io.StringIO()
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.build_snapshot_local_config_text",
+                    return_value="SEED = 3\n",
+                ),
+                patch(
+                    "scripts.python.validation.model.runner.subprocess.run",
+                    return_value=subprocess.CompletedProcess(args=["mvn"], returncode=0, stdout="ok"),
+                ),
+                patch(
+                    "scripts.python.validation.model.runner._extract_seed_metrics",
+                    return_value=self._synthetic_metrics(),
+                ),
+                redirect_stdout(stdout),
+            ):
+                result = run_validation_seed(
+                    repo_root=repo_root,
+                    version="v-test",
+                    seed=3,
+                    output_dir=output_dir,
+                    maven_bin="mvn",
+                    was_data_root=repo_root,
+                    validation_profile=resolve_validation_profile("v-test"),
+                )
+
+            log_output = stdout.getvalue()
+            self.assertEqual(result["seed"], 3)
+            self.assertIn("[validation]", log_output)
+            self.assertIn("version=v-test", log_output)
+            self.assertIn("seed=3", log_output)
+            self.assertIn("worker=MainThread", log_output)
+            self.assertNotIn("start=", log_output)
+            self.assertNotIn("maven=", log_output)
+            self.assertNotIn("config=", log_output)
+            self.assertNotIn("output_dir=", log_output)
 
     def test_build_validation_summary_rejects_missing_required_target_metadata(self) -> None:
         required_targets = {
@@ -272,6 +378,16 @@ class TestValidationFrameworkPublish(unittest.TestCase):
 
             resolved = resolve_was_data_root(repo_root=worktree_root, explicit_root=None)
             self.assertEqual(resolved, project_root)
+
+    def test_resolve_was_data_root_accepts_wave_3_only_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            was_file = repo_root / "private-datasets" / "was" / "was_wave_3_hhold_eul_final.dta"
+            was_file.parent.mkdir(parents=True)
+            was_file.write_text("header\n", encoding="utf-8")
+
+            resolved = resolve_was_data_root(repo_root=repo_root, explicit_root=None)
+            self.assertEqual(resolved, repo_root)
 
     def _synthetic_seed_results(self) -> list[dict[str, object]]:
         metrics = {

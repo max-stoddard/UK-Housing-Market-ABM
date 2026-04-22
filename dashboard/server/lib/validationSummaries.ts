@@ -10,7 +10,7 @@ import type {
 import { compareVersions } from './versioning';
 
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
-const ORIGINAL_V0_VALIDATION_TARGET_YEAR = 2011;
+const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
 
 function assertObject(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -54,24 +54,21 @@ function assertNumberArray(value: unknown, message: string): number[] {
   return value;
 }
 
-function resolveValidationTargetYear(value: unknown, version: string, message: string): number {
+function resolveValidationTargetYear(value: unknown, message: string): number {
   if (value === undefined || value === null) {
-    return version === 'v0' ? ORIGINAL_V0_VALIDATION_TARGET_YEAR : DEFAULT_VALIDATION_TARGET_YEAR;
+    return DEFAULT_VALIDATION_TARGET_YEAR;
   }
   return assertNumber(value, message);
 }
 
-function buildDefaultReferenceLine(summary: Pick<ValidationVersionSummary, 'version' | 'overallCompositeLoss' | 'validationTargetYear'>): ValidationReferenceLine | null {
-  if (summary.version !== 'v0') {
-    return null;
+function normalizeTrackedValidationTargetYear(version: string, validationTargetYear: number): number {
+  // Legacy v0 payloads can still carry the old 2011 comparator year at the top level.
+  // The dashboard keeps the tracked summary timeline on the current 2024 evidence and
+  // expects any separate historical comparator to arrive via referenceLine instead.
+  if (version === 'v0' && validationTargetYear !== DEFAULT_VALIDATION_TARGET_YEAR) {
+    return DEFAULT_VALIDATION_TARGET_YEAR;
   }
-  return {
-    version: summary.version,
-    label: 'Original v0 calibration',
-    description: `Original ${summary.version} calibration loss against ${summary.validationTargetYear} evidence.`,
-    overallCompositeLoss: summary.overallCompositeLoss,
-    validationTargetYear: summary.validationTargetYear
-  };
+  return validationTargetYear;
 }
 
 function parseReferenceLine(
@@ -237,7 +234,10 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
   };
 }
 
-function parseValidationSummary(filePath: string): ValidationVersionSummary {
+function parseValidationSummary(
+  filePath: string,
+  { normalizeTrackedTimeline = true }: { normalizeTrackedTimeline?: boolean } = {}
+): ValidationVersionSummary {
   const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as unknown;
   const value = assertObject(raw, `${filePath} must contain a JSON object`);
   const windowValue = assertObject(value.window, `${filePath}.window must be an object`);
@@ -246,11 +246,13 @@ function parseValidationSummary(filePath: string): ValidationVersionSummary {
     value.overallCompositeLoss,
     `${filePath}.overallCompositeLoss must be a number`
   );
-  const validationTargetYear = resolveValidationTargetYear(
+  const rawValidationTargetYear = resolveValidationTargetYear(
     value.validationTargetYear,
-    version,
     `${filePath}.validationTargetYear must be a number`
   );
+  const validationTargetYear = normalizeTrackedTimeline
+    ? normalizeTrackedValidationTargetYear(version, rawValidationTargetYear)
+    : rawValidationTargetYear;
   if (!Array.isArray(value.metrics)) {
     throw new Error(`${filePath}.metrics must be an array`);
   }
@@ -262,9 +264,9 @@ function parseValidationSummary(filePath: string): ValidationVersionSummary {
     referenceLine: parseReferenceLine(value.referenceLine, filePath, {
       version,
       label: version === 'v0' ? 'Original v0 calibration' : `${version} validation reference`,
-      description: version === 'v0' ? `Original ${version} calibration loss against ${validationTargetYear} evidence.` : null,
+      description: version === 'v0' ? `Original ${version} calibration loss against ${rawValidationTargetYear} evidence.` : null,
       overallCompositeLoss,
-      validationTargetYear
+      validationTargetYear: rawValidationTargetYear
     }),
     seeds: assertNumberArray(value.seeds, `${filePath}.seeds must be a number array`),
     window: {
@@ -294,7 +296,15 @@ export function readValidationSummary(repoRoot: string, version: string): Valida
   if (!fs.existsSync(filePath)) {
     throw new Error(`Missing validation summary for ${version}`);
   }
-  return parseValidationSummary(filePath);
+  return parseValidationSummary(filePath, { normalizeTrackedTimeline: true });
+}
+
+function readValidationOverlay(repoRoot: string, overlayName: string): ValidationVersionSummary | null {
+  const filePath = path.join(repoRoot, 'input-data-versions', 'validation-overlays', `${overlayName}.json`);
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+  return parseValidationSummary(filePath, { normalizeTrackedTimeline: false });
 }
 
 export function getValidationOverview(repoRoot: string, requestedVersion?: string): ValidationOverviewPayload {
@@ -314,16 +324,27 @@ export function getValidationOverview(repoRoot: string, requestedVersion?: strin
     throw new Error(`Missing selected validation summary for ${selectedVersion}`);
   }
 
-  const originalSummary = summaries.find((summary) => summary.version === 'v0') ?? null;
+  const referenceOverlay = readValidationOverlay(repoRoot, V0_REFERENCE_OVERLAY_NAME);
+  const referenceLine =
+    (referenceOverlay
+      ? {
+          version: referenceOverlay.version,
+          label: 'Original v0 calibration',
+          description:
+            'Original v0 calibration loss against 2011 evidence, scored from the tracked Results/v0-output run.',
+          overallCompositeLoss: referenceOverlay.overallCompositeLoss,
+          validationTargetYear: referenceOverlay.validationTargetYear
+        }
+      : null) ??
+    summaries.find((summary) => summary.referenceLine)?.referenceLine ??
+    null;
   const trend: ValidationCompositeTrendPayload = {
     points: summaries.map((summary) => ({
       version: summary.version,
       validationTargetYear: summary.validationTargetYear,
       overallCompositeLoss: summary.overallCompositeLoss
     })),
-    referenceLine: originalSummary
-      ? originalSummary.referenceLine ?? buildDefaultReferenceLine(originalSummary)
-      : null
+    referenceLine
   };
 
   return {

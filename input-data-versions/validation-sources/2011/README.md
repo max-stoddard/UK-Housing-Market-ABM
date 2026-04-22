@@ -3,7 +3,7 @@
 Author: Max Stoddard
 
 This folder contains the tracked source artifacts required to review and reproduce
-the v0-only 2011 validation profile without relying on ignored `private-datasets/`
+the v0-only 2011 reference overlay without relying on ignored `private-datasets/`
 paths, except for WAS Wave 3 which remains the private household-validation
 dataset.
 
@@ -26,7 +26,8 @@ These files are tracked because they are the authoritative 2011 source snapshots
 referenced by:
 - `scripts/python/validation/model/validation_catalog_2011.py`
 - `docs/validation/validation-catalog-2011-review.md`
-- `input-data-versions/validation/v0.json`
+- `input-data-versions/validation-overlays/v0-2011.json`
+- `Results/v0-output/reference-2011/**`
 
 WAS Wave 3 is intentionally not duplicated here. The v0-only household realism
 metrics continue to read the private `W3` dataset via the existing WAS helper

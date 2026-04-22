@@ -3,8 +3,8 @@
 # Author: Max Stoddard
 
 Purpose:
-- Public evidence bundle for the 2011 UK average gross buy-to-let rental yield
-  used by the v0-only 2011 validation profile.
+- Secondary-source proxy evidence bundle for the 2011 UK average gross
+  buy-to-let rental yield used by the v0-only 2011 reference overlay.
 
 Tracked public references:
 - PropertyWire, `Healthy demand for rental property pushes up yields across the UK`
@@ -30,5 +30,8 @@ Published target:
 Notes:
 - The 2024 rental-yield metric uses UK Finance quarterly values and the observed
   quarterly range. The 2011 public archive does not expose an equally clean UK
-  quarterly series, so the v0-only 2011 profile locks to the BM Solutions annual
+  quarterly series, so the v0-only 2011 overlay locks to the BM Solutions annual
   UK yield with a fixed `+/-15%` tolerance.
+- These values remain secondary-source proxies because the tracked public archive
+  contains contemporaneous reporting of BM Solutions releases, not a cleaner
+  repo-local primary UK quarterly series.

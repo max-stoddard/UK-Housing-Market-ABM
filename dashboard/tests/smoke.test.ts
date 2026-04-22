@@ -1245,27 +1245,23 @@ assert.equal(
   'Validation overview should no longer expose family summaries in the dashboard payload'
 );
 assert.ok(
-  validationOverview.trend.points.some((point) => point.version === 'v0' && point.validationTargetYear === 2011),
-  'Validation overview trend should expose the 2011 target year for v0'
+  validationOverview.trend.points.some((point) => point.version === 'v0' && point.validationTargetYear === 2024),
+  'Validation overview trend should keep v0 on the tracked 2024 summary'
 );
 assert.ok(
   validationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
   'Validation overview trend should keep later versions on 2024 targets by default'
 );
+const originalValidationOverview = getValidationOverview(repoRoot, 'v0');
 assert.equal(
-  validationOverview.trend.referenceLine?.version,
-  'v0',
-  'Validation overview trend should expose the original v0 calibration reference line'
+  originalValidationOverview.selectedSummary.validationTargetYear,
+  2024,
+  'Selecting v0 should keep the metric table on the tracked 2024 summary'
 );
 assert.equal(
-  validationOverview.trend.referenceLine?.overallCompositeLoss,
-  readValidationSummary(repoRoot, 'v0').overallCompositeLoss,
-  'Validation overview trend reference line should default to the v0 composite loss'
-);
-assert.equal(
-  validationOverview.trend.referenceLine?.validationTargetYear,
-  2011,
-  'Validation overview trend reference line should retain the v0 2011 target year'
+  readValidationSummary(repoRoot, 'v0').validationTargetYear,
+  2024,
+  'Validation parser should normalise legacy v0 tracked summaries onto the 2024 timeline'
 );
 
 const versionOrder = new Map(versions.map((version, index) => [version, index]));
@@ -1325,7 +1321,9 @@ assert.ok(
 
 const validationSummaryFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-summary-'));
 const validationSummaryFixtureDir = path.join(validationSummaryFixtureRoot, 'input-data-versions', 'validation');
+const validationOverlayFixtureDir = path.join(validationSummaryFixtureRoot, 'input-data-versions', 'validation-overlays');
 fs.mkdirSync(validationSummaryFixtureDir, { recursive: true });
+fs.mkdirSync(validationOverlayFixtureDir, { recursive: true });
 fs.writeFileSync(
   path.join(validationSummaryFixtureDir, 'v-modern.json'),
   JSON.stringify(
@@ -1422,7 +1420,109 @@ fs.writeFileSync(
     2
   )
 );
+fs.writeFileSync(
+  path.join(validationSummaryFixtureDir, 'v0.json'),
+  JSON.stringify(
+    {
+      schemaVersion: 3,
+      version: 'v0',
+      validationTargetYear: 2011,
+      generatedAt: '2026-04-14T00:00:00Z',
+      seeds: [1, 2, 3, 4, 5, 6, 7, 8],
+      window: { startIndex: 200, endIndex: 2000 },
+      overallCompositeLoss: 0.5,
+      metrics: [
+        {
+          metricId: 'core_mortgageApprovals',
+          label: 'Mortgage Approvals',
+          status: 'fail',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: 'Bank of England FPC core indicators, June 2024',
+          targetBand: { lower: 57, upper: 63 },
+          seedMean: 50,
+          p25: 49,
+          p75: 51,
+          insideRate: 0,
+          normalizedDistance: 1.0,
+          normalizedIqr: 0.1,
+          metricLoss: 1.5
+        }
+      ]
+    },
+    null,
+    2
+  )
+);
+fs.writeFileSync(
+  path.join(validationOverlayFixtureDir, 'v0-2011.json'),
+  JSON.stringify(
+    {
+      schemaVersion: 3,
+      version: 'v0',
+      validationTargetYear: 2011,
+      generatedAt: '2026-04-14T00:00:00Z',
+      seeds: [1],
+      window: { startIndex: 200, endIndex: 2000 },
+      overallCompositeLoss: 0.8,
+      metrics: [
+        {
+          metricId: 'core_mortgageApprovals',
+          label: 'Mortgage Approvals',
+          status: 'fail',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: '2011 overlay',
+          targetBand: { lower: 42, upper: 53 },
+          seedMean: 50,
+          p25: 50,
+          p75: 50,
+          insideRate: 1,
+          normalizedDistance: 0,
+          normalizedIqr: 0,
+          metricLoss: 0
+        }
+      ]
+    },
+    null,
+    2
+  )
+);
+fs.writeFileSync(
+  path.join(validationSummaryFixtureDir, 'v4.0.json'),
+  JSON.stringify(
+    {
+      schemaVersion: 3,
+      version: 'v4.0',
+      generatedAt: '2026-04-14T00:00:00Z',
+      seeds: [1, 2, 3, 4, 5, 6, 7, 8],
+      window: { startIndex: 200, endIndex: 2000 },
+      overallCompositeLoss: 0.4,
+      metrics: [
+        {
+          metricId: 'core_mortgageApprovals',
+          label: 'Mortgage Approvals',
+          status: 'pass',
+          requirement: 'required',
+          units: 'count/month',
+          sourceLabel: 'Bank of England FPC core indicators, June 2024',
+          targetBand: { lower: 57, upper: 63 },
+          seedMean: 60,
+          p25: 58,
+          p75: 62,
+          insideRate: 1,
+          normalizedDistance: 0.0,
+          normalizedIqr: 0.05,
+          metricLoss: 0.05
+        }
+      ]
+    },
+    null,
+    2
+  )
+);
 const modernSummary = readValidationSummary(validationSummaryFixtureRoot, 'v-modern');
+assert.equal(modernSummary.validationTargetYear, 2024, 'Validation parser should default missing target years to 2024');
 assert.equal(modernSummary.metrics[0]?.sourceReferences.length ?? 0, 1, 'Validation parser should preserve source references');
 assert.equal(modernSummary.metrics[0]?.lossScaleBasis, 'source_value', 'Validation parser should expose loss scale basis');
 assert.equal(modernSummary.metrics[0]?.lossScale, 5.17125, 'Validation parser should expose loss scale values');
@@ -1443,9 +1543,46 @@ assert.equal(
   'Validation parser should expose source reference document paths'
 );
 const legacySummary = readValidationSummary(validationSummaryFixtureRoot, 'v-legacy');
+assert.equal(
+  legacySummary.validationTargetYear,
+  2024,
+  'Legacy validation summaries should default missing top-level target years to 2024'
+);
 assert.equal(legacySummary.metrics[0]?.sourceReferences.length ?? 0, 0, 'Validation parser should default missing source references to an empty list');
 assert.equal(legacySummary.metrics[0]?.sourceIndicatorLabel ?? null, null, 'Legacy validation summaries should parse without source detail fields');
 assert.equal(legacySummary.metrics[0]?.metricWeight, 1, 'Legacy validation summaries should default missing metric weights to 1');
+const originalFixtureSummary = readValidationSummary(validationSummaryFixtureRoot, 'v0');
+assert.equal(
+  originalFixtureSummary.validationTargetYear,
+  2024,
+  'Validation parser should keep legacy v0 tracked summaries on the ordinary 2024 timeline'
+);
+assert.equal(
+  originalFixtureSummary.referenceLine,
+  null,
+  'Tracked v0 summaries should not need to embed the separate 2011 comparator payload'
+);
+const overviewWithReferenceLine = getValidationOverview(validationSummaryFixtureRoot, 'v4.0');
+assert.equal(
+  overviewWithReferenceLine.trend.points.find((point) => point.version === 'v0')?.overallCompositeLoss,
+  0.5,
+  'Validation overview should keep the tracked v0 point on its own 2024 summary value'
+);
+assert.equal(
+  overviewWithReferenceLine.trend.points.find((point) => point.version === 'v0')?.validationTargetYear,
+  2024,
+  'Validation overview should keep the tracked v0 point on the 2024 summary timeline'
+);
+assert.equal(
+  overviewWithReferenceLine.trend.referenceLine?.overallCompositeLoss,
+  0.8,
+  'Validation overview should source the dashed comparator from the separate referenceLine artifact'
+);
+assert.equal(
+  overviewWithReferenceLine.trend.referenceLine?.validationTargetYear,
+  2011,
+  'Validation overview should keep the dashed comparator on the 2011 reference timeline'
+);
 
 const rangeAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'range');
 const throughRightAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'through_right');
@@ -3056,9 +3193,9 @@ assert.ok(
   'Validation page should render the plain-English validation trend heading'
 );
 assert.ok(
-  validationPageSource.includes('2011 target bands') &&
-    validationPageSource.includes('later versions against tracked 2024'),
-  'Validation page should explain that v0 uses 2011 targets while later versions use 2024 targets'
+  validationPageSource.includes('tracked 2024 target bands for every version, including') &&
+    validationPageSource.includes('separate 2011 comparator'),
+  'Validation page should explain that every plotted version stays on the tracked 2024 summary and the 2011 line is separate'
 );
 assert.ok(
   !validationPageSource.includes('Validation Categories'),
@@ -3081,8 +3218,10 @@ assert.ok(
   'Validation page should explain that the chart is a secondary decision aid'
 );
 assert.ok(
-  validationPageSource.includes('referenceLineLabel') && validationPageSource.includes('Target evidence:'),
-  'Validation page should render the original v0 reference line and year-aware chart tooltip copy'
+  validationPageSource.includes('referenceLineLabel') &&
+    validationPageSource.includes('Tracked summary:') &&
+    validationPageSource.includes('Dashed comparator:'),
+  'Validation page should render separate tracked-summary and dashed-comparator tooltip copy'
 );
 assert.ok(
   !validationPageSource.includes('Click to filter the table'),

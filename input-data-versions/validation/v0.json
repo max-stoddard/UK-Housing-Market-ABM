@@ -1,7 +1,8 @@
 {
   "schemaVersion": 3,
   "version": "v0",
-  "generatedAt": "2026-04-20T19:41:57Z",
+  "validationTargetYear": 2024,
+  "generatedAt": "2026-04-22T00:09:37Z",
   "seeds": [
     1,
     2,

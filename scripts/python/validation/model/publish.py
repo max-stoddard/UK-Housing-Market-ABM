@@ -21,6 +21,16 @@ def write_validation_summary(*, repo_root: Path, summary: dict) -> Path:
     return output_path
 
 
+def write_validation_overlay_summary(*, repo_root: Path, overlay_name: str, summary: dict) -> Path:
+    """Write one tracked non-selectable validation overlay JSON."""
+
+    overlays_dir = repo_root / "input-data-versions" / "validation-overlays"
+    overlays_dir.mkdir(parents=True, exist_ok=True)
+    output_path = overlays_dir / f"{overlay_name}.json"
+    output_path.write_text(json.dumps(summary, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+    return output_path
+
+
 def write_transient_artifacts(*, output_dir: Path, summary: dict, seed_results: Sequence[dict]) -> None:
     """Write transient validation artifacts for manual inspection."""
 
@@ -134,16 +144,20 @@ def _write_summary_markdown(path: Path, summary: dict) -> None:
         f"# Validation Summary: {summary['version']}",
         "",
         f"- Generated at: {summary['generatedAt']}",
-        f"- Validation target year: {summary['validationTargetYear']}",
-        f"- Seeds: {', '.join(str(seed) for seed in summary['seeds'])}",
-        f"- Overall composite loss: {summary['overallCompositeLoss']:.6f}",
     ]
-    if "initialCalibrationReferenceLoss" in summary and "initialCalibrationReferenceLabel" in summary:
-        lines.append(
-            "- Initial calibration reference: "
-            f"{summary['initialCalibrationReferenceLabel']} "
-            f"({summary['initialCalibrationReferenceLoss']:.6f})"
-        )
+    if "artifactType" in summary:
+        lines.append(f"- Artifact type: {summary['artifactType']}")
+    if "artifactLabel" in summary:
+        lines.append(f"- Artifact label: {summary['artifactLabel']}")
+    if "referenceSourceOutputDir" in summary:
+        lines.append(f"- Reference source output dir: {summary['referenceSourceOutputDir']}")
+    lines.extend(
+        [
+            f"- Validation target year: {summary['validationTargetYear']}",
+            f"- Seeds: {', '.join(str(seed) for seed in summary['seeds'])}",
+            f"- Overall composite loss: {summary['overallCompositeLoss']:.6f}",
+        ]
+    )
     lines.extend(["", "## Metrics"])
     for metric in summary["metrics"]:
         lines.append(
