@@ -289,6 +289,7 @@ export interface ValidationMetricSummary {
   normalizedDistance: number | null;
   normalizedIqr: number | null;
   metricLoss: number | null;
+  lossDeltaVsReference2011: number | null;
   metricWeight: number;
 }
 

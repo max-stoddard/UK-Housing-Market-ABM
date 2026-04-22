@@ -30,7 +30,10 @@ import {
   loadDashboardInputVersionHistory,
   type DashboardInputVersionHistoryEntry
 } from './dashboardInputVersionHistory';
-import { getValidationOverview as getTrackedValidationOverview } from './validationSummaries';
+import {
+  getValidationOverview as getTrackedValidationOverview,
+  type ValidationOverviewViewMode
+} from './validationSummaries';
 import {
   buildLatestSourceTagsByKey,
   parseConfigWithComments,
@@ -1041,8 +1044,12 @@ export function getInProgressVersions(repoRoot: string): string[] {
   return versions.filter((version) => inProgress.has(version));
 }
 
-export function getValidationOverview(repoRoot: string, version?: string): ValidationOverviewPayload {
-  return getTrackedValidationOverview(repoRoot, version);
+export function getValidationOverview(
+  repoRoot: string,
+  version?: string,
+  viewMode: ValidationOverviewViewMode = 'tracked'
+): ValidationOverviewPayload {
+  return getTrackedValidationOverview(repoRoot, version, viewMode);
 }
 
 export function getParameterCatalog() {

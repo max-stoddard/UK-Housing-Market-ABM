@@ -11,6 +11,11 @@ import { compareVersions } from './versioning';
 
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
+export type ValidationOverviewViewMode = 'tracked' | 'reference_2011';
+const V0_REFERENCE_HPI_STD_BAND_NOTE =
+  'Intentionally benchmarked to the same official UK IndexSA population std over 2005-01 through 2024-12 used by the tracked 2024 view; this 2011 reference summary only changes the displayed comparison window.';
+const V0_REFERENCE_HPI_CYCLE_BAND_NOTE =
+  'Still 2011-anchored: derived from the tracked official-source UK HPI history through 2011-12 using the locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months.';
 
 function assertObject(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -230,6 +235,10 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
     ),
     normalizedIqr: assertNumberOrNull(objectValue.normalizedIqr, `metrics[${index}].normalizedIqr must be a number or null`),
     metricLoss: assertNumberOrNull(objectValue.metricLoss, `metrics[${index}].metricLoss must be a number or null`),
+    lossDeltaVsReference2011: assertNumberOrNull(
+      objectValue.lossDeltaVsReference2011,
+      `metrics[${index}].lossDeltaVsReference2011 must be a number or null`
+    ),
     metricWeight: parseMetricWeight(objectValue.metricWeight, index)
   };
 }
@@ -307,7 +316,68 @@ function readValidationOverlay(repoRoot: string, overlayName: string): Validatio
   return parseValidationSummary(filePath, { normalizeTrackedTimeline: false });
 }
 
-export function getValidationOverview(repoRoot: string, requestedVersion?: string): ValidationOverviewPayload {
+function readValidationReferenceSummary(repoRoot: string): ValidationVersionSummary | null {
+  const summary = readValidationOverlay(repoRoot, V0_REFERENCE_OVERLAY_NAME);
+  if (!summary) {
+    return null;
+  }
+  const metrics = summary.metrics.map((metric) => {
+    if (metric.metricId === 'core_hpiStd') {
+      return {
+        ...metric,
+        bandNotes: V0_REFERENCE_HPI_STD_BAND_NOTE
+      };
+    }
+    if (metric.metricId === 'core_hpiCyclePeriod') {
+      return {
+        ...metric,
+        bandNotes: V0_REFERENCE_HPI_CYCLE_BAND_NOTE
+      };
+    }
+    return metric;
+  });
+  return {
+    ...summary,
+    version: V0_REFERENCE_OVERLAY_NAME,
+    metrics
+  };
+}
+
+function addLossDeltaVsReference2011(
+  summary: ValidationVersionSummary,
+  referenceSummary: ValidationVersionSummary | null
+): ValidationVersionSummary {
+  if (!referenceSummary) {
+    return {
+      ...summary,
+      metrics: summary.metrics.map((metric) => ({
+        ...metric,
+        lossDeltaVsReference2011: null
+      }))
+    };
+  }
+
+  const referenceMetricsById = new Map(referenceSummary.metrics.map((metric) => [metric.metricId, metric]));
+  return {
+    ...summary,
+    metrics: summary.metrics.map((metric) => {
+      const referenceMetric = referenceMetricsById.get(metric.metricId);
+      return {
+        ...metric,
+        lossDeltaVsReference2011:
+          metric.metricLoss === null || referenceMetric?.metricLoss === null || !referenceMetric
+            ? null
+            : metric.metricLoss - referenceMetric.metricLoss
+      };
+    })
+  };
+}
+
+export function getValidationOverview(
+  repoRoot: string,
+  requestedVersion?: string,
+  viewMode: ValidationOverviewViewMode = 'tracked'
+): ValidationOverviewPayload {
   const availableVersions = listValidationSummaryVersions(repoRoot);
   if (availableVersions.length === 0) {
     throw new Error('No tracked validation summaries are available');
@@ -324,16 +394,16 @@ export function getValidationOverview(repoRoot: string, requestedVersion?: strin
     throw new Error(`Missing selected validation summary for ${selectedVersion}`);
   }
 
-  const referenceOverlay = readValidationOverlay(repoRoot, V0_REFERENCE_OVERLAY_NAME);
+  const referenceSummary = readValidationReferenceSummary(repoRoot);
   const referenceLine =
-    (referenceOverlay
-      ? {
-          version: referenceOverlay.version,
+    (referenceSummary
+        ? {
+          version: referenceSummary.version,
           label: 'Original v0 calibration',
           description:
-            'Original v0 calibration loss against 2011 evidence, scored from the tracked Results/v0-output run.',
-          overallCompositeLoss: referenceOverlay.overallCompositeLoss,
-          validationTargetYear: referenceOverlay.validationTargetYear
+            'Original v0 calibration loss against 2011 evidence, rescored from the tracked 8-seed v0 validation outputs.',
+          overallCompositeLoss: referenceSummary.overallCompositeLoss,
+          validationTargetYear: referenceSummary.validationTargetYear
         }
       : null) ??
     summaries.find((summary) => summary.referenceLine)?.referenceLine ??
@@ -346,11 +416,18 @@ export function getValidationOverview(repoRoot: string, requestedVersion?: strin
     })),
     referenceLine
   };
+  if (viewMode === 'reference_2011' && !referenceSummary) {
+    throw new Error(`Missing validation summary for ${V0_REFERENCE_OVERLAY_NAME}`);
+  }
+  const selectedSummaryView = addLossDeltaVsReference2011(
+    viewMode === 'reference_2011' ? (referenceSummary as ValidationVersionSummary) : selectedSummary,
+    referenceSummary
+  );
 
   return {
     availableVersions,
     selectedVersion,
     trend,
-    selectedSummary
+    selectedSummary: selectedSummaryView
   };
 }

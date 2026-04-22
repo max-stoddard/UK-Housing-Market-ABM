@@ -63,7 +63,9 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
   app.get('/api/validation-overview', context.withMemoryLogging('validation-overview', (req, res) => {
     try {
       const version = String(req.query.version ?? '').trim();
-      res.json(getValidationOverview(context.repoRoot, version || undefined));
+      const viewParam = String(req.query.view ?? 'tracked').trim();
+      const view = viewParam === 'reference_2011' ? 'reference_2011' : 'tracked';
+      res.json(getValidationOverview(context.repoRoot, version || undefined, view));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
