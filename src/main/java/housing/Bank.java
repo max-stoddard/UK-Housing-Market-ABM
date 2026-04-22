@@ -239,11 +239,13 @@ public class Bank {
      */
     private double getMonthlyPaymentFactor(boolean isHome, double age) {
         double r = getMortgageInterestRate() / config.constants.MONTHS_IN_YEAR;
-        // For non-BTL purchases, compute payment factor to pay off the principal in the agreed number of payments,
-        // coherent with any mortgage length age-based restrictions
-        if (isHome) {
-            if (getNPayments(true, age) > 0) {
-                return r / (1.0 - Math.pow(1.0 + r, -getNPayments(true, age)));
+        // For non-BTL purchases, and for BTL purchases when amortising mode is enabled, compute the payment factor to
+        // pay off the principal in the agreed number of payments, coherent with any mortgage length age-based
+        // restrictions
+        if (isHome || config.enableBTLAmortizingMortgageMode) {
+            int nPayments = getNPayments(isHome, age);
+            if (nPayments > 0) {
+                return r / (1.0 - Math.pow(1.0 + r, -nPayments));
             } else {
                 throw new RuntimeException("Trying to find monthly payment factor for a zero payments mortgage");
             }
@@ -321,6 +323,13 @@ public class Bank {
         return approval;
     }
 
+    private double getBTLAnnualPaymentRate(double age) {
+        if (config.enableBTLAmortizingMortgageMode) {
+            return getMonthlyPaymentFactor(false, age) * config.constants.MONTHS_IN_YEAR;
+        }
+        return getMortgageInterestRate();
+    }
+
     /**
      * Request a mortgage approval without actually signing a mortgage contract, i.e., the returned
      * MortgageAgreement object is not added to the Bank's HashSet of mortgages nor entered into CreditSupply
@@ -369,9 +378,9 @@ public class Bank {
 
             } else {
                 // Interest Coverage Ratio (ICR) constraint: it sets a minimum value for the expected annual rental
-                // income divided by the annual interest expenses
+                // income divided by the relevant annual BTL financing payment
                 double icr_principal = Model.rentalMarketStats.getExpAvFlowYield() * housePrice
-                        / (getHardMinICR() * getMortgageInterestRate());
+                        / (getHardMinICR() * getBTLAnnualPaymentRate(h.getAge()));
                 approval.principal = Math.min(approval.principal, icr_principal);
             }
 
@@ -474,9 +483,9 @@ public class Bank {
 
         } else {
             // Interest Coverage Ratio (ICR) constraint: it sets a minimum value for the expected annual rental income
-            // divided by the annual interest expenses
+            // divided by the relevant annual BTL financing payment
             double icr_max_price = max_downpayment / (1.0 - Model.rentalMarketStats.getExpAvFlowYield()
-                    / (getHardMinICR() * getMortgageInterestRate()));
+                    / (getHardMinICR() * getBTLAnnualPaymentRate(h.getAge())));
             // When the rental yield is larger than the interest rate times the ICR, then the ICR does never constrain
             if (icr_max_price < 0.0) icr_max_price = Double.POSITIVE_INFINITY;
             max_price = Math.min(max_price,  icr_max_price);

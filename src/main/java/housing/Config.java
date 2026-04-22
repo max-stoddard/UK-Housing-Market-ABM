@@ -95,6 +95,9 @@ public class Config {
     double DOWNPAYMENT_OO_SHAPE;            // Shape parameter for the log-normal distribution of downpayments by owner-occupiers
     double DOWNPAYMENT_BTL_MEAN;            // Average down-payment, as a percentage of house price, for but-to-let investors
     double DOWNPAYMENT_BTL_EPSILON;         // Standard deviation of the noise for down-payments by buy-to-let investors
+    boolean enableBTLDownpaymentLognormal = false; // True to use HPI-scaled log-normal downpayments for BTL investors
+    double DOWNPAYMENT_BTL_SCALE = 0.0;     // Scale parameter for the log-normal distribution of downpayments by buy-to-let investors
+    double DOWNPAYMENT_BTL_SHAPE = 0.0;     // Shape parameter for the log-normal distribution of downpayments by buy-to-let investors
 
     // Household behaviour: Sale: Sale decision
     private double HOLD_PERIOD;             // Average period, in years, for which owner-occupiers hold their houses
@@ -114,6 +117,8 @@ public class Config {
     double BTL_INCOME_DRIVEN_CAP_GAIN_COEFF;    // Weight that rental-income-driven BTL investors put on capital gains
     double BTL_CAPITAL_DRIVEN_CAP_GAIN_COEFF;   // Weight that capital-gains-driven BTL investors put on capital gains
     double BTL_MIX_DRIVEN_CAP_GAIN_COEFF;       // Weight that mix-driven BTL investors put on capital gains
+    boolean enableBTLAlternativeReturn = false; // True to subtract the alternative return from BTL expected equity yields
+    double BTL_ALTERNATIVE_RETURN = 0.0;    // Expected return on alternative (non-BTL) investments
 
     // Household behaviour: Rent: Rent Desired rental expenditure
     double DESIRED_RENT_SCALE;              // Scale, number of annual salaries (raised to the DESIRED_RENT_EXPONENT power) the household is willing to spend on rent
@@ -141,6 +146,7 @@ public class Config {
     public double RENT_GROSS_YIELD;         // Profit margin for buy-to-let investors
 
     // Bank
+    boolean enableBTLAmortizingMortgageMode = false; // True to size and price BTL mortgages using amortising payments
     int MORTGAGE_DURATION_YEARS;            // Mortgage duration in years
     int BANK_AGE_LIMIT;                     // Maximum age for a household to get a mortgage and maximum age for a non-BTL household to finish repaying its mortgages
     double BANK_INITIAL_RATE;               // Private bank's initial interest rate

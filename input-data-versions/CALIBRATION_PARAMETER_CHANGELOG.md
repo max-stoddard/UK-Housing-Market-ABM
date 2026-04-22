@@ -1021,3 +1021,14 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.10.json`
 - Version(s) affected:
   - `v4.10`
+
+### Compatibility Schema Backfill (2026-04-22)
+- Scope:
+  - `src/main/resources/config.properties`
+  - every checked-in `input-data-versions/*/config.properties`
+- Change:
+  - backfilled default-off BTL feature toggles `enableBTLAmortizingMortgageMode`, `enableBTLDownpaymentLognormal`, and `enableBTLAlternativeReturn`
+  - added required schema placeholders `DOWNPAYMENT_BTL_SCALE`, `DOWNPAYMENT_BTL_SHAPE`, and `BTL_ALTERNATIVE_RETURN` for strict config loading; snapshot placeholders reuse the snapshot-local owner-occupier scale/shape and `0.0`
+  - moved legacy-only `DOWNPAYMENT_BTL_MEAN` and `DOWNPAYMENT_BTL_EPSILON` into `LEGACY PARAMETERS`
+- Rationale:
+  - backward-compatible schema backfill for opt-in BTL features; all checked-in snapshots keep legacy behaviour because every new toggle defaults to `false`

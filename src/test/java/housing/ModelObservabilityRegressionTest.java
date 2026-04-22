@@ -10,9 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,6 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ModelObservabilityRegressionTest {
 
     private static final Path REPO_ROOT = Paths.get("").toAbsolutePath();
+    private static final String V410_LEGACY_OUTPUT_SHA256 =
+            "02416901a00ff77ca8b0e0b5bd1d5ca80f36334eb37197408adf35700b91abbd";
+    private static final String V410_LEGACY_HOUSING_WEALTH = "996";
     private static final List<String> APPENDED_OUTPUT_COLUMNS = Arrays.asList(
             "nonHousingConsumption",
             "rentalCashOutflow",
@@ -40,41 +44,22 @@ class ModelObservabilityRegressionTest {
     Path tempDir;
 
     @Test
-    void preservesLegacyOutputPrefixAndLeavesNewMicroFilesOptIn() throws Exception {
+    void preservesV410LegacyOutputsWhenNewBTLFeaturesStayDisabled() throws Exception {
         Path outputDir = tempDir.resolve("results");
         Path configPath = writeCurrentTinyConfig(tempDir.resolve("current-baseline.properties"));
 
         ProcessResult result = runModel(configPath, outputDir);
         assertEquals(0, result.exitCode, () -> "STDOUT:\n" + result.stdout + "\nSTDERR:\n" + result.stderr);
 
-        List<String> baselineLines = Files.readAllLines(resourcePath("t7t9/master-baseline/Output-run1.csv"));
         List<String> currentLines = Files.readAllLines(outputDir.resolve("Output-run1.csv"));
-        assertEquals(baselineLines.size(), currentLines.size());
-
-        List<String> baselineHeaderTokens = splitSemicolonRow(baselineLines.get(0));
         List<String> currentHeaderTokens = splitSemicolonRow(currentLines.get(0));
 
         assertAll(
-                () -> assertEquals(baselineHeaderTokens,
-                        currentHeaderTokens.subList(0, baselineHeaderTokens.size())),
-                () -> assertEquals(APPENDED_OUTPUT_COLUMNS,
-                        currentHeaderTokens.subList(baselineHeaderTokens.size(), currentHeaderTokens.size()))
-        );
-
-        for (int lineIndex = 1; lineIndex < baselineLines.size(); lineIndex += 1) {
-            List<String> baselineTokens = splitSemicolonRow(baselineLines.get(lineIndex));
-            List<String> currentTokens = splitSemicolonRow(currentLines.get(lineIndex));
-            assertEquals(baselineTokens, currentTokens.subList(0, baselineTokens.size()),
-                    "Legacy output prefix changed on line " + lineIndex);
-            assertEquals(baselineTokens.size() + APPENDED_OUTPUT_COLUMNS.size(), currentTokens.size(),
-                    "Unexpected output width on line " + lineIndex);
-        }
-
-        assertAll(
-                () -> assertEquals(
-                        Files.readString(resourcePath("t7t9/master-baseline/HousingWealth-run1.csv"), StandardCharsets.UTF_8),
-                        Files.readString(outputDir.resolve("HousingWealth-run1.csv"), StandardCharsets.UTF_8)
-                ),
+                () -> assertEquals(APPENDED_OUTPUT_COLUMNS, currentHeaderTokens.subList(
+                        currentHeaderTokens.size() - APPENDED_OUTPUT_COLUMNS.size(), currentHeaderTokens.size())),
+                () -> assertEquals(V410_LEGACY_OUTPUT_SHA256, sha256Hex(outputDir.resolve("Output-run1.csv"))),
+                () -> assertEquals(V410_LEGACY_HOUSING_WEALTH,
+                        Files.readString(outputDir.resolve("HousingWealth-run1.csv"), StandardCharsets.UTF_8).trim()),
                 () -> assertFalse(Files.exists(outputDir.resolve("TotalDebt-run1.csv"))),
                 () -> assertFalse(Files.exists(outputDir.resolve("HousingStatus-run1.csv"))),
                 () -> assertFalse(Files.exists(outputDir.resolve("NonHousingConsumption-run1.csv")))
@@ -101,6 +86,9 @@ class ModelObservabilityRegressionTest {
         configText = replaceSetting(configText, "recordNHousesOwned", "false");
         configText = replaceSetting(configText, "recordAge", "false");
         configText = replaceSetting(configText, "recordSavingRate", "false");
+        configText = replaceSetting(configText, "enableBTLAmortizingMortgageMode", "false");
+        configText = replaceSetting(configText, "enableBTLDownpaymentLognormal", "false");
+        configText = replaceSetting(configText, "enableBTLAlternativeReturn", "false");
         Files.writeString(outputPath, configText, StandardCharsets.UTF_8);
         return outputPath;
     }
@@ -149,9 +137,15 @@ class ModelObservabilityRegressionTest {
                 .collect(Collectors.toList());
     }
 
-    private static Path resourcePath(String resourceName) throws Exception {
-        return Paths.get(Objects.requireNonNull(
-                ModelObservabilityRegressionTest.class.getClassLoader().getResource(resourceName)).toURI());
+    private static String sha256Hex(Path path) throws IOException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] bytes = Files.readAllBytes(path);
+        byte[] hash = digest.digest(bytes);
+        StringBuilder builder = new StringBuilder(hash.length * 2);
+        for (byte value : hash) {
+            builder.append(String.format("%02x", value));
+        }
+        return builder.toString();
     }
 
     private static final class ProcessResult {

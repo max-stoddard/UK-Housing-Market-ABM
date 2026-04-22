@@ -197,8 +197,13 @@ public class HouseholdBehaviour {
 //            downpayment = housingMarketStats.getHPI()
 //                    * downpaymentDistFTB.inverseCumulativeProbability(me.incomePercentile);
         } else if (!isHome) {
-            downpayment = housePrice*(Math.max(0.0,
-                    config.DOWNPAYMENT_BTL_MEAN + config.DOWNPAYMENT_BTL_EPSILON * prng.nextGaussian()));
+            if (config.enableBTLDownpaymentLognormal) {
+                downpayment = housingMarketStats.getHPI()
+                        * getBTLDownpaymentDist().inverseCumulativeProbability(me.incomePercentile);
+            } else {
+                downpayment = housePrice*(Math.max(0.0,
+                        config.DOWNPAYMENT_BTL_MEAN + config.DOWNPAYMENT_BTL_EPSILON * prng.nextGaussian()));
+            }
         } else {
             downpayment = housingMarketStats.getHPI()
                     * downpaymentDistOO.inverseCumulativeProbability(me.incomePercentile);
@@ -318,12 +323,13 @@ public class HouseholdBehaviour {
         // occupancy) divided by its current (fair market value) sale price
         double currentRentalYield = h.getRentalRecord().getPrice() * config.constants.MONTHS_IN_YEAR
                 * rentalMarketStats.getAvOccupancyForQuality(h.getQuality()) / currentMarketPrice;
-        // ...find the mortgage rate (pounds paid a year per pound of equity)
-        double mortgageRate = mortgage.nextPayment() * config.constants.MONTHS_IN_YEAR / equity;
+        // ...find the financing drag (payment flow in legacy interest-only mode, pure interest expense otherwise)
+        double financingCostRate = getBTLFinancingCostRate(mortgage, equity);
         // ...finally, find expected equity yield, or yield on equity
         double expectedEquityYield = leverage * ((1.0 - BTLCapGainCoefficient) * currentRentalYield
-                + BTLCapGainCoefficient * getLongTermHPAExpectation())
-                - mortgageRate;
+                + BTLCapGainCoefficient * getLongTermHPAExpectation()
+                - getBTLAlternativeReturn())
+                - financingCostRate;
         // Compute a probability to keep the property as a function of the effective yield
         double pKeep = Math.pow(sigma(config.BTL_CHOICE_INTENSITY * expectedEquityYield),
                 1.0 / config.constants.MONTHS_IN_YEAR);
@@ -368,12 +374,13 @@ public class HouseholdBehaviour {
         double leverage = mortgage.purchasePrice/equity;
         // ...find the expected rental yield as an (exponential) average over all house qualities
         double rentalYield = rentalMarketStats.getExpAvFlowYield();
-        // ...find the mortgage rate (pounds paid a year per pound of equity)
-        double mortgageRate = mortgage.nextPayment()*config.constants.MONTHS_IN_YEAR/equity;
+        // ...find the financing drag (payment flow in legacy interest-only mode, pure interest expense otherwise)
+        double financingCostRate = getBTLFinancingCostRate(mortgage, equity);
         // ...finally, find expected equity yield, or yield on equity
         double expectedEquityYield = leverage*((1.0 - BTLCapGainCoefficient)*rentalYield
-                + BTLCapGainCoefficient*getLongTermHPAExpectation())
-                - mortgageRate;
+                + BTLCapGainCoefficient*getLongTermHPAExpectation()
+                - getBTLAlternativeReturn())
+                - financingCostRate;
         // Compute the probability to decide to buy an investment property as a function of the expected equity yield
         double pBuy = 1.0 - Math.pow((1.0 - sigma(config.BTL_CHOICE_INTENSITY*expectedEquityYield)),
                 1.0/config.constants.MONTHS_IN_YEAR);
@@ -419,6 +426,24 @@ public class HouseholdBehaviour {
      * @param x Parameter of the sigma or logistic function
      */
     private double sigma(double x) { return 1.0/(1.0 + Math.exp(-1.0*x)); }
+
+    private LogNormalDistribution getBTLDownpaymentDist() {
+        return new LogNormalDistribution(prng, config.DOWNPAYMENT_BTL_SCALE, config.DOWNPAYMENT_BTL_SHAPE);
+    }
+
+    private double getBTLAlternativeReturn() {
+        if (config.enableBTLAlternativeReturn) {
+            return config.BTL_ALTERNATIVE_RETURN;
+        }
+        return 0.0;
+    }
+
+    private double getBTLFinancingCostRate(MortgageAgreement mortgage, double equity) {
+        if (config.enableBTLAmortizingMortgageMode) {
+            return mortgage.principal * mortgage.getAnnualInterestRate() / equity;
+        }
+        return mortgage.nextPayment() * config.constants.MONTHS_IN_YEAR / equity;
+    }
 
     /**
      * Expectations of future house price growth are based on previous trend (longTermHPA), times a dampening or
