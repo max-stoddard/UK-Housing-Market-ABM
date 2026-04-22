@@ -6,13 +6,14 @@ set -euo pipefail
 
 print_usage() {
   cat <<EOF
-Usage: $(basename "$0") <version> [--output-dir <path>]
+Usage: $(basename "$0") <version> [--output-dir <path>] [--workers <n>] [--reuse-existing-output]
 
 Arguments:
   <version>               Input-data version folder name (for example: v0, v1.0, v4.1).
 
 Options:
   --output-dir <path>     Transient output directory. Defaults to tmp/validation/<version>.
+  --workers <n>          Maximum parallel workers for per-seed validation runs. Defaults to 20.
   --reuse-existing-output Reuse existing per-seed outputs from --output-dir instead of rerunning the model.
 EOF
 }
@@ -26,6 +27,7 @@ input_version="$1"
 shift
 
 output_dir=""
+workers=20
 reuse_existing_output="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -35,6 +37,18 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       output_dir="$2"
+      shift 2
+      ;;
+    --workers)
+      if [[ $# -lt 2 ]]; then
+        echo "--workers requires an integer argument." >&2
+        exit 1
+      fi
+      if [[ ! "$2" =~ ^[0-9]+$ ]] || [[ "$2" == "0" ]]; then
+        echo "--workers must be a positive integer." >&2
+        exit 1
+      fi
+      workers="$2"
       shift 2
       ;;
     --reuse-existing-output)
@@ -62,6 +76,7 @@ validation_args=(
   --version "${input_version}"
   --seeds 1,2,3,4,5,6,7,8
   --output-dir "${output_dir}"
+  --workers "${workers}"
 )
 
 if [[ "${reuse_existing_output}" == "true" ]]; then

@@ -17,6 +17,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", required=True, help="Input-data version folder name, for example v4.1")
     parser.add_argument("--seeds", default="1,2,3,4,5,6,7,8", help="Comma-separated seed list")
     parser.add_argument("--output-dir", required=True, help="Transient validation output directory")
+    parser.add_argument("--workers", type=int, default=20, help="Maximum parallel workers for per-seed validation runs")
     parser.add_argument("--maven-bin", default="mvn", help="Maven executable")
     parser.add_argument("--was-data-root", default=None, help="Optional WAS data root override")
     parser.add_argument(
@@ -41,6 +42,7 @@ def main() -> None:
         seeds=parse_seed_list(args.seeds),
         output_dir=Path(args.output_dir),
         maven_bin=args.maven_bin,
+        workers=args.workers,
         was_data_root=Path(args.was_data_root) if args.was_data_root else None,
         reuse_existing_output=args.reuse_existing_output,
     )

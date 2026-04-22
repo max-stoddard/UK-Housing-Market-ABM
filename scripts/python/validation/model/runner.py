@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import csv
 import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import shutil
 import subprocess
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -66,6 +68,7 @@ def run_validation_for_version(
     maven_bin: str = "mvn",
     was_data_root: Path | None = None,
     reuse_existing_output: bool = False,
+    workers: int = 20,
     allow_test_override: bool = False,
 ) -> dict:
     """Run canonical validation for one input-data version and publish artifacts."""
@@ -73,6 +76,8 @@ def run_validation_for_version(
     canonical_seeds = list(CANONICAL_VALIDATION_SEEDS)
     if seeds != canonical_seeds and not allow_test_override:
         raise ValueError("Canonical validation requires seeds 1..8 unless an explicit test-only override is used")
+    if workers <= 0:
+        raise ValueError("workers must be positive")
 
     validation_profile = resolve_validation_profile(version)
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
@@ -92,6 +97,7 @@ def run_validation_for_version(
             maven_bin=maven_bin,
             was_data_root=resolved_was_data_root,
             validation_profile=validation_profile,
+            workers=workers,
         )
     return publish_validation_results(
         repo_root=repo_root,
@@ -146,6 +152,7 @@ def run_snapshot_local_validation(
     maven_bin: str,
     was_data_root: Path,
     validation_profile: ValidationProfile,
+    workers: int,
 ) -> list[dict[str, object]]:
     """Execute the Java model snapshot-locally for each seed and extract metrics."""
 
@@ -154,13 +161,30 @@ def run_snapshot_local_validation(
         raise RuntimeError(f"Missing version config: {version_config_path}")
 
     ensure_project_compiled(repo_root, maven_bin=maven_bin)
-    seed_results: list[dict[str, object]] = []
     configs_dir = output_dir / "configs"
     configs_dir.mkdir(parents=True, exist_ok=True)
 
-    for seed in seeds:
-        seed_results.append(
-            run_validation_seed(
+    if workers <= 1:
+        seed_results: list[dict[str, object]] = []
+        for seed in seeds:
+            seed_results.append(
+                run_validation_seed(
+                    repo_root=repo_root,
+                    version=version,
+                    seed=seed,
+                    output_dir=output_dir,
+                    maven_bin=maven_bin,
+                    was_data_root=was_data_root,
+                    validation_profile=validation_profile,
+                )
+            )
+        return seed_results
+
+    worker_results: dict[int, dict[str, object]] = {}
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="validation-worker") as executor:
+        futures = {
+            executor.submit(
+                run_validation_seed,
                 repo_root=repo_root,
                 version=version,
                 seed=seed,
@@ -168,10 +192,15 @@ def run_snapshot_local_validation(
                 maven_bin=maven_bin,
                 was_data_root=was_data_root,
                 validation_profile=validation_profile,
-            )
-        )
+            ): seed
+            for seed in seeds
+        }
 
-    return seed_results
+        for future in as_completed(futures):
+            seed = futures[future]
+            worker_results[seed] = future.result()
+
+    return [worker_results[seed] for seed in seeds]
 
 
 def load_reused_validation_results(
@@ -243,6 +272,10 @@ def run_validation_seed(
     config_path.write_text(config_text, encoding="utf-8")
 
     exec_args = f'-configFile "{config_path}" -outputFolder "{seed_output_dir}" -dev'
+    _log_validation_run_start(
+        version=version,
+        seed=seed,
+    )
     proc = subprocess.run(
         [maven_bin, "-q", "exec:java", f"-Dexec.args={exec_args}"],
         cwd=repo_root,
@@ -267,6 +300,18 @@ def run_validation_seed(
             validation_profile=validation_profile,
         ),
     }
+
+
+def _log_validation_run_start(
+    *,
+    version: str,
+    seed: int,
+) -> None:
+    worker_name = threading.current_thread().name
+    print(
+        f"[validation] version={version} seed={seed} worker={worker_name}",
+        flush=True,
+    )
 
 
 def resolve_was_data_root(*, repo_root: Path, explicit_root: Path | None) -> Path:
