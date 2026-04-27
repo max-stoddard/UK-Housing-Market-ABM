@@ -52,7 +52,7 @@ Audit note:
 - `TENANCY_LENGTH_MIN`
 - `TENANCY_LENGTH_MAX`
 
-### Zoopla data (raw collated listings) from 2003 to 2015 and RPI data
+### Zoopla data (raw collated listings) from 2003 to 2015 and RPI data. BLOCKED.
 1 parameter
 - `DATA_INITIAL_RENT_MARKUP_DIST`
 
