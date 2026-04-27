@@ -51,7 +51,7 @@ public class Demographics {
         // Compute original bin centers
         double [] binCenters = new double[ageDistribution.size()];
         for (int i = 0; i < ageDistribution.size(); i++) {
-            binCenters[i] = minAge + ageDistribution.getBinWidth() / 2.0 + i * ageDistribution.getBinWidth();
+            binCenters[i] = ageDistribution.getBinCenter(i);
         }
 
         // Compute monthly bin edges and centers
@@ -142,7 +142,7 @@ public class Demographics {
         int [] expectedHouseholdsPerAgeBand = new int[ageDistribution.size() + 1];
         for (int i = 0; i < ageDistribution.size(); i++) {
             expectedHouseholdsPerAgeBand[i] = (int)Math.round(targetPopulation * ageDistribution.get(i)
-                    * ageDistribution.getBinWidth());
+                    * ageDistribution.getBinWidth(i));
         }
         expectedHouseholdsPerAgeBand[ageDistribution.size()] = 0;
         return expectedHouseholdsPerAgeBand;

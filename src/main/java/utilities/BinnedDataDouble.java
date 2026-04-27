@@ -3,6 +3,7 @@ package utilities;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
 
 import org.apache.commons.csv.CSVFormat;
@@ -14,6 +15,11 @@ import org.apache.commons.csv.CSVRecord;
  *  @author daniel, Adrian Carro
  */
 public class BinnedDataDouble extends BinnedData<Double> {
+
+    // Optional record of explicit bin edges read from a CSV file. These are only kept when the file really uses
+    // variable-width bins; otherwise the legacy BinnedData first-bin-minimum and single-bin-width representation is used
+    private ArrayList<Double> binLowerEdges;
+    private ArrayList<Double> binUpperEdges;
 
     //------------------------//
     //----- Constructors -----//
@@ -27,6 +33,8 @@ public class BinnedDataDouble extends BinnedData<Double> {
      */
     public BinnedDataDouble(String filename) {
         super(0.0,0.0);
+        binLowerEdges = new ArrayList<>();
+        binUpperEdges = new ArrayList<>();
         try {
             // Open file and buffered readers
             FileReader in = new FileReader(filename);
@@ -46,15 +54,24 @@ public class BinnedDataDouble extends BinnedData<Double> {
             if(records.hasNext()) {
                 record = records.next();
                 // Use the first record to set the first bin minimum and the bin width...
-                this.setFirstBinMin(Double.valueOf(record.get(0)));
-                this.setBinWidth(Double.valueOf(record.get(1)) - getSupportLowerBound());
-                // ...before actually adding it to the array
+                double lowerEdge = Double.valueOf(record.get(0));
+                double upperEdge = Double.valueOf(record.get(1));
+                this.setFirstBinMin(lowerEdge);
+                this.setBinWidth(upperEdge - getSupportLowerBound());
+                // ...before recording the explicit edges and actually adding it to the array
+                binLowerEdges.add(lowerEdge);
+                binUpperEdges.add(upperEdge);
                 add(Double.valueOf(record.get(2)));
                 while(records.hasNext()) {
                     record = records.next();
-                    // Next records are just added to the array
+                    // Next records keep their own edges in case the CSV uses variable-width bins
+                    binLowerEdges.add(Double.valueOf(record.get(0)));
+                    binUpperEdges.add(Double.valueOf(record.get(1)));
                     add(Double.valueOf(record.get(2)));
                 }
+                // If the lower edges follow the original equal-width convention, discard the extra edge storage so
+                // existing input files keep their previous interpretation exactly
+                preserveLegacyEqualWidthBehaviourWhenPossible();
             }
         } catch (IOException e) {
             System.out.println("Problem while loading data from " + filename
@@ -70,5 +87,68 @@ public class BinnedDataDouble extends BinnedData<Double> {
      * @param firstBinMin First bin minimum
      * @param binWidth Bin width
      */
-    public BinnedDataDouble(double firstBinMin, double binWidth) { super(firstBinMin, binWidth); }
+    public BinnedDataDouble(double firstBinMin, double binWidth) {
+        super(firstBinMin, binWidth);
+        // Manually constructed binned data keeps the historical equal-width representation
+        binLowerEdges = null;
+        binUpperEdges = null;
+    }
+
+    // Return the lower edge for one bin, using explicit CSV edges only when the data requires them
+    public double getBinLowerEdge(int index) {
+        if (hasExplicitBinEdges()) return binLowerEdges.get(index);
+        return getSupportLowerBound() + index*getBinWidth();
+    }
+
+    // Return the upper edge for one bin, using explicit CSV edges only when the data requires them
+    public double getBinUpperEdge(int index) {
+        if (hasExplicitBinEdges()) return binUpperEdges.get(index);
+        return getSupportLowerBound() + (index + 1)*getBinWidth();
+    }
+
+    // Return the width for one bin. For equal-width data this is the same value as getBinWidth()
+    public double getBinWidth(int index) {
+        return getBinUpperEdge(index) - getBinLowerEdge(index);
+    }
+
+    // Return the midpoint for one bin, allowing downstream interpolation to work with variable-width data
+    public double getBinCenter(int index) {
+        return (getBinLowerEdge(index) + getBinUpperEdge(index)) / 2.0;
+    }
+
+    @Override
+    public double getSupportUpperBound() {
+        // Variable-width CSVs must use the final explicit upper edge rather than size()*firstBinWidth
+        if (hasExplicitBinEdges() && !binUpperEdges.isEmpty()) return binUpperEdges.get(binUpperEdges.size() - 1);
+        return super.getSupportUpperBound();
+    }
+
+    @Override
+    public Double getBinAt(double val) {
+        // Equal-width data keeps the original BinnedData lookup path
+        if (!hasExplicitBinEdges()) return super.getBinAt(val);
+        // Variable-width data is searched against explicit upper edges, with out-of-support values clamped to the ends
+        if (val < getSupportLowerBound()) return get(0);
+        for (int i = 0; i < size(); i++) {
+            if (val < getBinUpperEdge(i)) return get(i);
+        }
+        return get(size() - 1);
+    }
+
+    private boolean hasExplicitBinEdges() {
+        return binLowerEdges != null && binUpperEdges != null;
+    }
+
+    private void preserveLegacyEqualWidthBehaviourWhenPossible() {
+        if (binLowerEdges.size() < 2) return;
+        double width = getBinWidth();
+        // Legacy input files are identified by lower edges that advance by the first bin width. Some old files contain
+        // a wider final printed upper edge, but the model historically ignored it, so this keeps old outputs stable
+        for (int i = 1; i < binLowerEdges.size(); i++) {
+            double expectedLowerEdge = getSupportLowerBound() + i*width;
+            if (Math.abs(binLowerEdges.get(i) - expectedLowerEdge) > 1.0e-9) return;
+        }
+        binLowerEdges = null;
+        binUpperEdges = null;
+    }
 }
