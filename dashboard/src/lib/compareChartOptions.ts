@@ -1,6 +1,6 @@
 // Author: Max Stoddard
 import type { EChartsOption } from 'echarts';
-import type { CompareResult, CurvePoint, HomePreviewItem, ScalarDatum } from '../../shared/types';
+import type { BinnedDatum, BinnedSourceDatum, CompareResult, CurvePoint, HomePreviewItem, ScalarDatum } from '../../shared/types';
 import type { JointHeatmapLayoutOverrides } from './jointHeatmapOption';
 
 export function formatChartNumber(value: number): string {
@@ -52,6 +52,46 @@ function formatAxisTick(value: number): string {
     return value.toLocaleString('en-GB', { maximumFractionDigits: 4 });
   }
   return formatScientific(value, 1);
+}
+
+function formatDensityAxisTitle(yAxisName: string): string {
+  const baseName = yAxisName.replace(/\s*\(-\)\s*$/, '').trim();
+  return baseName ? `${baseName} density` : 'Density';
+}
+
+function sameIntervalGrid(left: BinnedSourceDatum[] | BinnedDatum[], right: BinnedSourceDatum[] | BinnedDatum[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((bin, index) => {
+    const other = right[index];
+    return Math.abs(bin.lower - other.lower) < 1e-9 && Math.abs(bin.upper - other.upper) < 1e-9;
+  });
+}
+
+function shouldUseIntervalComparison(item: CompareResult): boolean {
+  if (item.visualPayload.type !== 'binned_distribution') {
+    return false;
+  }
+  const sourceBins = item.visualPayload.sourceBins;
+  if (!sourceBins || sourceBins.left.length === 0 || sourceBins.right.length === 0) {
+    return false;
+  }
+  return (
+    !sameIntervalGrid(sourceBins.left, sourceBins.right) ||
+    !sameIntervalGrid(sourceBins.left, item.visualPayload.bins) ||
+    !sameIntervalGrid(sourceBins.right, item.visualPayload.bins)
+  );
+}
+
+function shouldUseIntervalSingle(
+  item: Pick<CompareResult | HomePreviewItem, 'visualPayload' | 'rightVersion'>
+): boolean {
+  if (item.visualPayload.type !== 'binned_distribution') {
+    return false;
+  }
+  const sourceBins = item.visualPayload.sourceBins?.right;
+  return Boolean(sourceBins && sourceBins.length > 0 && !sameIntervalGrid(sourceBins, item.visualPayload.bins));
 }
 
 export interface CurveLayoutOverrides {
@@ -227,6 +267,177 @@ export function scalarSingleOption(
   };
 }
 
+type IntervalDatum = [number, number, number, number, string];
+
+function intervalData(bins: BinnedSourceDatum[]): IntervalDatum[] {
+  return bins.map((bin) => [bin.lower, bin.upper, bin.density, bin.value, bin.label]);
+}
+
+function intervalDomain(...seriesGroups: BinnedSourceDatum[][]): [number, number] {
+  const bounds = seriesGroups.flatMap((series) => series.flatMap((bin) => [bin.lower, bin.upper]));
+  const finite = bounds.filter(Number.isFinite);
+  if (finite.length === 0) {
+    return [0, 1];
+  }
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  return Math.abs(max - min) < 1e-12 ? [min, min + 1] : [min, max];
+}
+
+function renderIntervalBar(fill: string, stroke: string) {
+  return (_params: any, api: any) => {
+    const lower = Number(api.value(0));
+    const upper = Number(api.value(1));
+    const density = Number(api.value(2));
+    const topLeft = api.coord([lower, density]);
+    const bottomRight = api.coord([upper, 0]);
+    const width = Math.max(bottomRight[0] - topLeft[0], 1);
+    const height = Math.max(bottomRight[1] - topLeft[1], 0);
+
+    return {
+      type: 'rect' as const,
+      shape: {
+        x: topLeft[0],
+        y: topLeft[1],
+        width,
+        height
+      },
+      style: api.style({
+        fill,
+        stroke,
+        lineWidth: 1
+      })
+    };
+  };
+}
+
+function intervalTooltipFormatter(yAxisName: string) {
+  const valueLabel = yAxisName.replace(/\s*\(-\)\s*$/, '').trim() || 'Value';
+  return (rawParams: unknown) => {
+    const params = Array.isArray(rawParams) ? rawParams[0] : rawParams;
+    const row = (params as any)?.data as IntervalDatum | undefined;
+    if (!row) {
+      return '';
+    }
+    const label = row[4];
+    const value = Number(row[3]);
+    const density = Number(row[2]);
+    return `${label}<br/>${(params as any).seriesName}: ${formatChartNumber(value)}<br/>${valueLabel} density: ${formatCurveValue(
+      density
+    )}`;
+  };
+}
+
+function intervalBinnedOption(
+  leftVersion: string,
+  rightVersion: string,
+  leftBins: BinnedSourceDatum[],
+  rightBins: BinnedSourceDatum[],
+  xAxisName: string,
+  yAxisName: string
+): EChartsOption {
+  const [xMin, xMax] = intervalDomain(leftBins, rightBins);
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: intervalTooltipFormatter(yAxisName)
+    },
+    legend: { top: 0, data: [leftVersion, rightVersion] },
+    grid: { left: 78, right: 34, top: 44, bottom: 82, containLabel: true },
+    xAxis: {
+      type: 'value',
+      min: xMin,
+      max: xMax,
+      name: xAxisName,
+      nameLocation: 'middle',
+      nameGap: 52,
+      nameTextStyle: { fontSize: 12, fontWeight: 600, color: '#495057' },
+      axisLabel: {
+        formatter: (rawValue: number) => formatAxisTick(Number(rawValue))
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: formatDensityAxisTitle(yAxisName),
+      nameLocation: 'middle',
+      nameGap: 64,
+      nameTextStyle: { fontSize: 12, fontWeight: 600, color: '#495057' },
+      axisLabel: {
+        formatter: (rawValue: number) => formatAxisTick(Number(rawValue))
+      }
+    },
+    series: [
+      {
+        name: leftVersion,
+        type: 'custom',
+        clip: true,
+        renderItem: renderIntervalBar('rgba(20, 84, 214, 0.32)', 'rgba(20, 84, 214, 0.82)'),
+        data: intervalData(leftBins),
+        encode: { x: [0, 1], y: 2 },
+        z: 1
+      },
+      {
+        name: rightVersion,
+        type: 'custom',
+        clip: true,
+        renderItem: renderIntervalBar('rgba(24, 149, 139, 0.32)', 'rgba(24, 149, 139, 0.82)'),
+        data: intervalData(rightBins),
+        encode: { x: [0, 1], y: 2 },
+        z: 2
+      }
+    ]
+  };
+}
+
+function intervalBinnedSingleOption(
+  version: string,
+  bins: BinnedSourceDatum[],
+  xAxisName: string,
+  yAxisName: string
+): EChartsOption {
+  const [xMin, xMax] = intervalDomain(bins);
+  return {
+    tooltip: {
+      trigger: 'item',
+      formatter: intervalTooltipFormatter(yAxisName)
+    },
+    legend: { top: 0, data: [version] },
+    grid: { left: 78, right: 34, top: 44, bottom: 82, containLabel: true },
+    xAxis: {
+      type: 'value',
+      min: xMin,
+      max: xMax,
+      name: xAxisName,
+      nameLocation: 'middle',
+      nameGap: 52,
+      nameTextStyle: { fontSize: 12, fontWeight: 600, color: '#495057' },
+      axisLabel: {
+        formatter: (rawValue: number) => formatAxisTick(Number(rawValue))
+      }
+    },
+    yAxis: {
+      type: 'value',
+      name: formatDensityAxisTitle(yAxisName),
+      nameLocation: 'middle',
+      nameGap: 64,
+      nameTextStyle: { fontSize: 12, fontWeight: 600, color: '#495057' },
+      axisLabel: {
+        formatter: (rawValue: number) => formatAxisTick(Number(rawValue))
+      }
+    },
+    series: [
+      {
+        name: version,
+        type: 'custom',
+        clip: true,
+        renderItem: renderIntervalBar('rgba(11, 114, 133, 0.42)', 'rgba(11, 114, 133, 0.88)'),
+        data: intervalData(bins),
+        encode: { x: [0, 1], y: 2 }
+      }
+    ]
+  };
+}
+
 export function binnedOption(
   item: CompareResult,
   xAxisName: string,
@@ -240,6 +451,16 @@ export function binnedOption(
 
   const leftLabel = labels?.leftLabel ?? item.leftVersion;
   const rightLabel = labels?.rightLabel ?? item.rightVersion;
+  if (shouldUseIntervalComparison(item) && item.visualPayload.sourceBins) {
+    return intervalBinnedOption(
+      leftLabel,
+      rightLabel,
+      item.visualPayload.sourceBins.left,
+      item.visualPayload.sourceBins.right,
+      xAxisName,
+      yAxisName
+    );
+  }
 
   return {
     tooltip: {
@@ -320,6 +541,10 @@ export function binnedSingleOption(
   }
 
   const label = versionLabel ?? item.rightVersion;
+  const sourceBins = item.visualPayload.sourceBins?.right;
+  if (shouldUseIntervalSingle(item) && sourceBins) {
+    return intervalBinnedSingleOption(label, sourceBins, xAxisName, yAxisName);
+  }
 
   return {
     tooltip: { trigger: 'axis' },

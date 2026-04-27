@@ -52,6 +52,7 @@ import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFi
 import { createWriteAuthController, getWriteAuthConfigurationError, resolveDashboardWriteAccess } from '../server/lib/writeAuth.js';
 import { loadDashboardInputVersionHistory } from '../server/lib/dashboardInputVersionHistory.js';
 import { assertAxisSpecComplete, getAxisSpec } from '../src/lib/chartAxes.js';
+import { binnedOption } from '../src/lib/compareChartOptions.js';
 import {
   buildExperimentSearchParams,
   normaliseExperimentRouteState,
@@ -87,6 +88,10 @@ const repoRoot = path.resolve(__dirname, '../..');
 
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
+}
+
+function sumBinnedDensityMass(rows: number[][]): number {
+  return sum(rows.map((row) => (row[1] - row[0]) * row[2]));
 }
 
 function assertClose(actual: number, expected: number, tolerance: number, message: string): void {
@@ -2055,27 +2060,66 @@ for (const item of compare.items) {
 const ageDist = compare.items.find((item) => item.id === 'age_distribution');
 assert.ok(ageDist && ageDist.visualPayload.type === 'binned_distribution');
 if (ageDist && ageDist.visualPayload.type === 'binned_distribution') {
-  const labels = ageDist.visualPayload.bins.map((bin) => bin.label);
-  assert.ok(labels.includes('75-85'), 'Expected split age band 75-85');
-  assert.ok(labels.includes('85-95'), 'Expected split age band 85-95');
-  assert.ok(!labels.includes('75-95'), 'Shared age grid should not include unsplit 75-95 band');
-
   const leftConfig = parseConfigFile(getConfigPath(repoRoot, 'v0'));
-  const rightConfig = parseConfigFile(getConfigPath(repoRoot, 'v4.0'));
+  const rightConfig = parseConfigFile(getConfigPath(repoRoot, compare.right));
   const leftRows = readNumericCsvRows(
     resolveConfigDataFilePath(repoRoot, 'v0', leftConfig.get('DATA_AGE_DISTRIBUTION') ?? '')
   );
   const rightRows = readNumericCsvRows(
-    resolveConfigDataFilePath(repoRoot, 'v4.0', rightConfig.get('DATA_AGE_DISTRIBUTION') ?? '')
+    resolveConfigDataFilePath(repoRoot, compare.right, rightConfig.get('DATA_AGE_DISTRIBUTION') ?? '')
   );
 
-  const rawLeftMass = sum(leftRows.map((row) => row[2]));
-  const rawRightMass = sum(rightRows.map((row) => row[2]));
+  const rawLeftMass = sumBinnedDensityMass(leftRows);
+  const rawRightMass = sumBinnedDensityMass(rightRows);
   const rebinnedLeftMass = sum(ageDist.visualPayload.bins.map((bin) => bin.left));
   const rebinnedRightMass = sum(ageDist.visualPayload.bins.map((bin) => bin.right));
 
-  assertClose(rebinnedLeftMass, rawLeftMass, 1e-8, '1D rebin should preserve left mass');
-  assertClose(rebinnedRightMass, rawRightMass, 1e-8, '1D rebin should preserve right mass');
+  assertClose(rebinnedLeftMass, rawLeftMass, 1e-8, '1D density rebin should preserve left mass');
+  assertClose(rebinnedRightMass, rawRightMass, 1e-8, '1D density rebin should preserve right mass');
+}
+
+const ageDistV411 = compareParameters(repoRoot, 'v0', 'v4.11', ['age_distribution']).items[0];
+assert.ok(ageDistV411 && ageDistV411.visualPayload.type === 'binned_distribution');
+if (ageDistV411 && ageDistV411.visualPayload.type === 'binned_distribution') {
+  const leftConfig = parseConfigFile(getConfigPath(repoRoot, 'v0'));
+  const rightConfig = parseConfigFile(getConfigPath(repoRoot, 'v4.11'));
+  const leftRows = readNumericCsvRows(
+    resolveConfigDataFilePath(repoRoot, 'v0', leftConfig.get('DATA_AGE_DISTRIBUTION') ?? '')
+  );
+  const rightRows = readNumericCsvRows(
+    resolveConfigDataFilePath(repoRoot, 'v4.11', rightConfig.get('DATA_AGE_DISTRIBUTION') ?? '')
+  );
+  const sourceBins = ageDistV411.visualPayload.sourceBins;
+  assert.ok(sourceBins, 'Expected source bins for age_distribution');
+  assert.equal(sourceBins.left.length, 8, 'Expected v0 source age distribution to keep 8 bins');
+  assert.equal(sourceBins.right.length, 15, 'Expected v4.11 source age distribution to keep 15 bins');
+  assert.equal(sourceBins.left.length, leftRows.length, 'Expected v0 source bins to match raw CSV rows');
+  assert.equal(sourceBins.right.length, rightRows.length, 'Expected v4.11 source bins to match raw CSV rows');
+  assert.equal(sourceBins.left[0]?.lower, 15, 'Expected v0 first age bin lower edge to be preserved');
+  assert.equal(sourceBins.left[0]?.upper, 25, 'Expected v0 first age bin upper edge to be preserved');
+  assert.equal(sourceBins.right[0]?.lower, 16, 'Expected v4.11 first age bin lower edge to be preserved');
+  assert.equal(sourceBins.right[0]?.upper, 20, 'Expected v4.11 first age bin upper edge to be preserved');
+
+  const rawLeftMass = sumBinnedDensityMass(leftRows);
+  const rawRightMass = sumBinnedDensityMass(rightRows);
+  const rebinnedLeftMass = sum(ageDistV411.visualPayload.bins.map((bin) => bin.left));
+  const rebinnedRightMass = sum(ageDistV411.visualPayload.bins.map((bin) => bin.right));
+  assertClose(rebinnedLeftMass, rawLeftMass, 1e-8, 'v4.11 age compare should preserve left mass');
+  assertClose(rebinnedRightMass, rawRightMass, 1e-8, 'v4.11 age compare should preserve right mass');
+
+  const option = binnedOption(
+    ageDistV411,
+    'Age band (years)',
+    'Household share (-)',
+    'Share delta (-)',
+    { leftLabel: 'v0 original', rightLabel: 'v4.11 latest' }
+  );
+  const xAxis = Array.isArray(option.xAxis) ? option.xAxis[0] : option.xAxis;
+  assert.equal((xAxis as any)?.type, 'value', 'Unequal source bins should use a numeric x-axis');
+  const series = Array.isArray(option.series) ? option.series : [];
+  assert.ok(series.every((entry: any) => entry.type === 'custom'), 'Unequal source bins should use interval series');
+  assert.equal((series[0] as any)?.data?.length, 8, 'Left interval series should use v0 source bins');
+  assert.equal((series[1] as any)?.data?.length, 15, 'Right interval series should use v4.11 source bins');
 }
 
 const incomeAge = compare.items.find((item) => item.id === 'income_given_age_joint');

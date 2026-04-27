@@ -94,6 +94,14 @@ export interface BinnedDatum {
   delta: number;
 }
 
+export interface BinnedSourceDatum {
+  label: string;
+  lower: number;
+  upper: number;
+  value: number;
+  density: number;
+}
+
 export type AxisScaleType = 'linear' | 'log';
 
 export interface AxisMeta {
@@ -123,7 +131,7 @@ export interface CurvePoint {
 
 export type VisualPayload =
   | { type: 'scalar'; values: ScalarDatum[] }
-  | { type: 'binned_distribution'; bins: BinnedDatum[] }
+  | { type: 'binned_distribution'; bins: BinnedDatum[]; sourceBins?: { left: BinnedSourceDatum[]; right: BinnedSourceDatum[] } }
   | { type: 'joint_distribution'; matrix: JointPayload }
   | {
       type: 'lognormal_pair';

@@ -4,6 +4,7 @@ import { PARAMETER_CATALOG } from '../../shared/catalog';
 import type {
   AxisScaleType,
   BinnedDatum,
+  BinnedSourceDatum,
   CompareResult,
   CompareResponse,
   CurvePoint,
@@ -221,6 +222,16 @@ interface BinnedMassRow {
   value: number;
 }
 
+interface BinnedComparisonPayload {
+  bins: BinnedDatum[];
+  sourceBins: {
+    left: BinnedSourceDatum[];
+    right: BinnedSourceDatum[];
+  };
+}
+
+type BinnedValueMode = 'mass' | 'density';
+
 interface JointMassCell {
   xLower: number;
   xUpper: number;
@@ -249,6 +260,25 @@ function normalizeBinnedRows(rows: number[][]): BinnedMassRow[] {
       lower,
       upper,
       value: row[1]
+    };
+  });
+}
+
+function buildSourceBins(
+  rows: BinnedMassRow[],
+  scaleType: AxisScaleType = 'linear',
+  valueMode: BinnedValueMode = 'mass'
+): BinnedSourceDatum[] {
+  const linearKind = inferLinearAxisKind(extractEdgesFromBins(rows));
+  return rows.map((row) => {
+    const width = row.upper - row.lower;
+    const value = valueMode === 'density' ? row.value * width : row.value;
+    return {
+      label: formatBandLabel(row.lower, row.upper, scaleType, linearKind),
+      lower: row.lower,
+      upper: row.upper,
+      value,
+      density: valueMode === 'density' ? row.value : width > EPSILON ? row.value / width : 0
     };
   });
 }
@@ -373,7 +403,11 @@ function buildSharedAxis(
   };
 }
 
-function rebin1DMass(source: BinnedMassRow[], targetEdges: number[]): number[] {
+function rebin1DMass(
+  source: BinnedMassRow[],
+  targetEdges: number[],
+  valueMode: BinnedValueMode = 'mass'
+): number[] {
   const target = Array.from({ length: targetEdges.length - 1 }, () => 0);
 
   for (const src of source) {
@@ -386,7 +420,7 @@ function rebin1DMass(source: BinnedMassRow[], targetEdges: number[]): number[] {
       const overlapUpper = Math.min(src.upper, targetEdges[i + 1]);
       const overlap = overlapUpper - overlapLower;
       if (overlap > EPSILON) {
-        target[i] += src.value * (overlap / srcWidth);
+        target[i] += valueMode === 'density' ? src.value * overlap : src.value * (overlap / srcWidth);
       }
     }
   }
@@ -430,8 +464,9 @@ function rebin2DMass(source: JointMassCell[], targetXEdges: number[], targetYEdg
 function buildBinnedComparison(
   leftRows: number[][],
   rightRows: number[][],
-  scaleType: AxisScaleType = 'linear'
-): BinnedDatum[] {
+  scaleType: AxisScaleType = 'linear',
+  valueMode: BinnedValueMode = 'mass'
+): BinnedComparisonPayload {
   const left = normalizeBinnedRows(leftRows);
   const right = normalizeBinnedRows(rightRows);
   const leftEdges = extractEdgesFromBins(left);
@@ -440,10 +475,10 @@ function buildBinnedComparison(
   const rightCount = Math.max(rightEdges.length - 1, 1);
 
   const axis = buildSharedAxis(leftEdges, rightEdges, scaleType, Math.max(leftCount, rightCount));
-  const leftMass = rebin1DMass(left, axis.edges);
-  const rightMass = rebin1DMass(right, axis.edges);
+  const leftMass = rebin1DMass(left, axis.edges, valueMode);
+  const rightMass = rebin1DMass(right, axis.edges, valueMode);
 
-  return axis.edges.slice(0, -1).map((lower, index) => {
+  const bins = axis.edges.slice(0, -1).map((lower, index) => {
     const upper = axis.edges[index + 1];
     const leftValue = leftMass[index] ?? 0;
     const rightValue = rightMass[index] ?? 0;
@@ -456,6 +491,14 @@ function buildBinnedComparison(
       delta: rightValue - leftValue
     };
   });
+
+  return {
+    bins,
+    sourceBins: {
+      left: buildSourceBins(left, scaleType, valueMode),
+      right: buildSourceBins(right, scaleType, valueMode)
+    }
+  };
 }
 
 function buildJointPayload(
@@ -715,6 +758,10 @@ function getBinnedScaleType(parameterId: string): AxisScaleType {
   }
 }
 
+function getBinnedValueMode(parameterId: string): BinnedValueMode {
+  return parameterId === 'age_distribution' ? 'density' : 'mass';
+}
+
 function useStepRateComparison(parameterId: string): boolean {
   return parameterId === 'national_insurance_rates' || parameterId === 'income_tax_rates';
 }
@@ -815,15 +862,30 @@ function buildVisualComparison(
       const rightRows = readNumericCsvRows(
         resolveConfigDataFilePath(context.repoRoot, context.rightVersion, rightFileConfig)
       );
-      const bins = useStepRateComparison(meta.id)
-        ? buildStepRateComparison(leftRows, rightRows)
-        : buildBinnedComparison(leftRows, rightRows, getBinnedScaleType(meta.id));
+      if (useStepRateComparison(meta.id)) {
+        const bins = buildStepRateComparison(leftRows, rightRows);
+        return {
+          unchanged: bins.every((bin) => isNearlyZero(bin.delta)),
+          visualPayload: {
+            type: 'binned_distribution',
+            bins
+          }
+        };
+      }
+
+      const comparison = buildBinnedComparison(
+        leftRows,
+        rightRows,
+        getBinnedScaleType(meta.id),
+        getBinnedValueMode(meta.id)
+      );
 
       return {
-        unchanged: bins.every((bin) => isNearlyZero(bin.delta)),
+        unchanged: comparison.bins.every((bin) => isNearlyZero(bin.delta)),
         visualPayload: {
           type: 'binned_distribution',
-          bins
+          bins: comparison.bins,
+          sourceBins: comparison.sourceBins
         }
       };
     }
