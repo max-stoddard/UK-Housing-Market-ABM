@@ -1151,6 +1151,45 @@
           "decision_logic": "Objective=direct method justification; Why=the literal 125% lender floor is the least assumption-heavy semantic match to the model's hard BTL underwriting rule once the mismatched CHL/CMI file is excluded and UK Finance outcomes are treated as context only; Tradeoff=the promoted value is a public proxy rather than a weighted market-wide threshold, and the stressed-rate versus live-rate mismatch remains a documented model limitation."
         }
       ]
+    },
+    {
+      "version_id": "v4.11",
+      "snapshot_folder": "v4.11",
+      "validation_dataset": "r8",
+      "description": "Replaced DATA_AGE_DISTRIBUTION with the FRS 2023-24 weighted HRP age distribution using the populated hhageGR4 field after hhagegrp was anonymized in househol.csv, with the 75+ tail split uniformly into 75-80, 80-85, and 85-95.",
+      "updated_data_sources": [
+        "frs"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/frs/age_dist.py"
+      ],
+      "config_parameters": [
+        "DATA_AGE_DISTRIBUTION"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "DATA_AGE_DISTRIBUTION",
+          "dataset_source": "src/main/resources/Age15-FRS-2023-24-Weighted.csv"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-27T16:19:01Z after replacing the WAS R8 age distribution with the FRS 2023-24 weighted HRP age distribution. overallCompositeLoss=0.559981 versus v4.10=0.610391 (delta -0.050410). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: Household Debt to Income. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.10: Household Debt to Income fail->warn and HPI Mean warn->fail. The FRS household file has hhagegrp anonymized as A in all rows, so v4.11 uses hhageGR4 and uniformly splits its 75+ tail to maintain the requested 15-bin runtime shape."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "DATA_AGE_DISTRIBUTION"
+          ],
+          "improvement_summary": "Rebased the model HRP age-density file to FRS 2023-24 household data with a 15-bin variable-width output.",
+          "why_changed": "To use a newer household survey window than WAS Round 8 for the demographic age structure while preserving the model's age-density file contract.",
+          "method_chosen": "Weighted FRS hhageGR4 histogram using gross4, with hhagegrp rejected because it is anonymized as A in househol.csv and the hhageGR4 75+ tail split uniformly into 75-80, 80-85, and 85-95.",
+          "decision_logic": "Objective=direct method justification; Why=hhageGR4 is the only populated granular HRP age field in the supplied FRS household file and gross4 is the household grossing weight; Tradeoff=the last three output bins are an explicit uniform tail split from 75+ rather than directly observed 75-79, 80-84, and 85+ bins."
+        }
+      ]
     }
   ]
 }

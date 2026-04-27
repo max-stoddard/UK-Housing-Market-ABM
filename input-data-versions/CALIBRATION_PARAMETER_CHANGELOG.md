@@ -1032,3 +1032,27 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - moved legacy-only `DOWNPAYMENT_BTL_MEAN` and `DOWNPAYMENT_BTL_EPSILON` into `LEGACY PARAMETERS`
 - Rationale:
   - backward-compatible schema backfill for opt-in BTL features; all checked-in snapshots keep legacy behaviour because every new toggle defaults to `false`
+
+### v4.11
+- Script path: `scripts/python/calibration/frs/age_dist.py`
+- Outputs/keys produced: `DATA_AGE_DISTRIBUTION` via `Age15-FRS-2023-24-Weighted.csv`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.frs.age_dist --output-dir input-data-versions/v4.11 --evidence-dir input-data-versions/calibration-evidence/frs-age-distribution-v4.11`
+  - `bash input-data-versions/validate.sh v4.11 --output-dir tmp/validation/v4.11 --workers 20`
+- Expected result snippet:
+  - `DATA_AGE_DISTRIBUTION = src/main/resources/Age15-FRS-2023-24-Weighted.csv`
+  - `Valid rows: 16754`
+  - `Density integral: 1.000000000000`
+  - tracked validation: `overallCompositeLoss = 0.559981`
+- Method chosen:
+  - Weighted FRS 2023-24 household HRP age-density file using `gross4` weights and the populated `hhageGR4` variable, with the `75+` source tail split uniformly across output bins `75-80`, `80-85`, and `85-95`.
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the requested hhagegrp field is anonymized as A for all rows in househol.csv, while hhageGR4 is the only populated granular HRP age field and gross4 is the household grossing weight; Tradeoff=the final three runtime bins are an explicit uniform split from the source 75+ tail rather than directly observed 75-79, 80-84, and 85+ bins.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/frs-age-distribution-v4.11/FrsAgeDistributionSourceValues.csv`
+  - `input-data-versions/calibration-evidence/frs-age-distribution-v4.11/FrsAgeDistributionSummary.json`
+  - `input-data-versions/validation/v4.11.json`
+- Version(s) affected:
+  - `v4.11`
