@@ -1195,6 +1195,13 @@
       "version_id": "v4.12",
       "snapshot_folder": "v4.12",
       "validation_dataset": "r8",
+      "description": "Recalibrated ESSENTIAL_CONSUMPTION_FRACTION and MAXIMUM_CONSUMPTION_FRACTION from LCFS 2023/24 using corrected weighted-modern thresholds.",
+      "updated_data_sources": [
+        "lcfs"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/lcfs/consumption_fractions.py"
+      ],
       "config_parameters": [
         "ESSENTIAL_CONSUMPTION_FRACTION",
         "MAXIMUM_CONSUMPTION_FRACTION"
@@ -1215,7 +1222,19 @@
         "housing_wealth_diff_pct": null,
         "financial_wealth_diff_pct": null,
         "note": "Tracked 2024 validation summary regenerated on 2026-04-28T13:12:10Z after correcting the LCFS 2023/24 weighted-modern thresholds and recalibrating ESSENTIAL_CONSUMPTION_FRACTION to 0.6510123541 and MAXIMUM_CONSUMPTION_FRACTION to 0.1964658008. ESSENTIAL_CONSUMPTION_FRACTION uses annual-weighted median p600t / p344p for p344p between 520 and 640 weekly; MAXIMUM_CONSUMPTION_FRACTION uses the annual-weighted 99th percentile p600t / (12 * p344p) for p344p * 52 > 7400. overallCompositeLoss=0.580818 versus v4.11=0.559981 (delta +0.020837), and versus the earlier v4.12 LCFS note=0.586644 (delta -0.005826). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: Household Debt to Income. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus the earlier v4.12 note: Household Debt to Income fail->warn. The correction improves the promoted LCFS threshold alignment and validation loss relative to the earlier v4.12 calibration while remaining worse than v4.11 overall."
-      }
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "ESSENTIAL_CONSUMPTION_FRACTION",
+            "MAXIMUM_CONSUMPTION_FRACTION"
+          ],
+          "improvement_summary": "Rebased essential and maximum consumption fractions to LCFS 2023/24 weighted-modern estimates with corrected thresholds.",
+          "why_changed": "To refresh household consumption assumptions with post-2020 LCFS evidence while preserving explicit historical reproduction diagnostics.",
+          "method_chosen": "weighted-modern LCFS 2023/24 method using weighta annual weights, p344p gross normal weekly household income, and p600t all-person total consumption expenditure. ESSENTIAL_CONSUMPTION_FRACTION uses the annual-weighted median p600t / p344p for households with p344p between 520 and 640 weekly; MAXIMUM_CONSUMPTION_FRACTION uses the annual-weighted 99th percentile p600t / (12 * p344p) for households with p344p * 52 > 7400.",
+          "decision_logic": "Objective=post-2020 evidence refresh with explicit historical reproduction; Why=the promoted method uses the 2023/24 LCFS household weight, gross weekly income, and all-person total-consumption fields directly, with the essential-consumption weekly income band aligned to 520-640 and the maximum-consumption floor aligned to 7400 from 2024/25 income-support reasoning; Tradeoff=tracked 2024 validation remains worse than v4.11, but improves versus the earlier v4.12 LCFS note and restores Household Debt to Income from fail to warn while preserving transparent-literal and legacy-match diagnostics on their historical thresholds."
+        }
+      ]
     },
     {
       "version_id": "v4.13",
