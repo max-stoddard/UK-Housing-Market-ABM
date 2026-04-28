@@ -1,0 +1,192 @@
+{
+  "datasetYear": 2024,
+  "datasetPath": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/private-datasets/lcfs/2024/dvhh_ukanon_v2_2023.tab",
+  "method": "weighted-modern",
+  "methodRationale": "Uses annual survey weights, gross normal weekly household income, and all-person total consumption expenditure.",
+  "selectedConfigValues": {
+    "ESSENTIAL_CONSUMPTION_FRACTION": 0.6510123541,
+    "MAXIMUM_CONSUMPTION_FRACTION": 0.1964658008
+  },
+  "estimates": [
+    {
+      "key": "ESSENTIAL_CONSUMPTION_FRACTION",
+      "value": 0.6510123540753682,
+      "rounded_config_value": 0.6510123541,
+      "sample_rows": 374,
+      "weight_sum": 2535.934836513503,
+      "statistic": "weighted_median",
+      "ratio_numerator": "p600t",
+      "ratio_denominator": "p344p",
+      "filter_description": "p344p between 520 and 640 weekly"
+    },
+    {
+      "key": "MAXIMUM_CONSUMPTION_FRACTION",
+      "value": 0.19646580079025444,
+      "rounded_config_value": 0.1964658008,
+      "sample_rows": 4101,
+      "weight_sum": 27818.159639347235,
+      "statistic": "weighted_quantile_0.99",
+      "ratio_numerator": "p600t",
+      "ratio_denominator": "12 * p344p",
+      "filter_description": "p344p * 52 > 7400"
+    }
+  ],
+  "diagnostics": {
+    "rawRows": 4202,
+    "validRows": 4192,
+    "droppedRows": 10,
+    "nonPositiveOrMissingIncomeRows": 7,
+    "nonPositiveOrMissingConsumptionRows": 3,
+    "nonPositiveOrMissingWeightRows": 0,
+    "incomeColumn": "p344p",
+    "consumptionColumn": "p600t",
+    "weightColumn": "weighta",
+    "essentialIncomeBasis": "weekly"
+  },
+  "methodComparison": [
+    {
+      "method": "weighted-modern",
+      "methodRationale": "Uses annual survey weights, gross normal weekly household income, and all-person total consumption expenditure.",
+      "selectedConfigValues": {
+        "ESSENTIAL_CONSUMPTION_FRACTION": 0.6510123541,
+        "MAXIMUM_CONSUMPTION_FRACTION": 0.1964658008
+      },
+      "rawValues": {
+        "ESSENTIAL_CONSUMPTION_FRACTION": 0.6510123540753682,
+        "MAXIMUM_CONSUMPTION_FRACTION": 0.19646580079025444
+      },
+      "estimates": [
+        {
+          "key": "ESSENTIAL_CONSUMPTION_FRACTION",
+          "value": 0.6510123540753682,
+          "rounded_config_value": 0.6510123541,
+          "sample_rows": 374,
+          "weight_sum": 2535.934836513503,
+          "statistic": "weighted_median",
+          "ratio_numerator": "p600t",
+          "ratio_denominator": "p344p",
+          "filter_description": "p344p between 520 and 640 weekly"
+        },
+        {
+          "key": "MAXIMUM_CONSUMPTION_FRACTION",
+          "value": 0.19646580079025444,
+          "rounded_config_value": 0.1964658008,
+          "sample_rows": 4101,
+          "weight_sum": 27818.159639347235,
+          "statistic": "weighted_quantile_0.99",
+          "ratio_numerator": "p600t",
+          "ratio_denominator": "12 * p344p",
+          "filter_description": "p344p * 52 > 7400"
+        }
+      ],
+      "diagnostics": {
+        "rawRows": 4202,
+        "validRows": 4192,
+        "droppedRows": 10,
+        "nonPositiveOrMissingIncomeRows": 7,
+        "nonPositiveOrMissingConsumptionRows": 3,
+        "nonPositiveOrMissingWeightRows": 0,
+        "incomeColumn": "p344p",
+        "consumptionColumn": "p600t",
+        "weightColumn": "weighta",
+        "essentialIncomeBasis": "weekly"
+      }
+    },
+    {
+      "method": "transparent-literal",
+      "methodRationale": "Implements the existing config comments literally: monthly income 400-480 and 99th percentile for annual income above 5900.",
+      "selectedConfigValues": {
+        "ESSENTIAL_CONSUMPTION_FRACTION": 1.9342284708,
+        "MAXIMUM_CONSUMPTION_FRACTION": 0.1919597127
+      },
+      "rawValues": {
+        "ESSENTIAL_CONSUMPTION_FRACTION": 1.93422847082498,
+        "MAXIMUM_CONSUMPTION_FRACTION": 0.1919597126762125
+      },
+      "estimates": [
+        {
+          "key": "ESSENTIAL_CONSUMPTION_FRACTION",
+          "value": 1.93422847082498,
+          "rounded_config_value": 1.9342284708,
+          "sample_rows": 10,
+          "weight_sum": 51.27182154433571,
+          "statistic": "weighted_median",
+          "ratio_numerator": "p600",
+          "ratio_denominator": "anon_income",
+          "filter_description": "anon_income converted to monthly income between 400 and 480"
+        },
+        {
+          "key": "MAXIMUM_CONSUMPTION_FRACTION",
+          "value": 0.1919597126762125,
+          "rounded_config_value": 0.1919597127,
+          "sample_rows": 4155,
+          "weight_sum": 28156.680823660718,
+          "statistic": "weighted_quantile_0.99",
+          "ratio_numerator": "p600",
+          "ratio_denominator": "12 * anon_income",
+          "filter_description": "anon_income * 52 > 5900"
+        }
+      ],
+      "diagnostics": {
+        "rawRows": 4202,
+        "validRows": 4197,
+        "droppedRows": 5,
+        "nonPositiveOrMissingIncomeRows": 2,
+        "nonPositiveOrMissingConsumptionRows": 3,
+        "nonPositiveOrMissingWeightRows": 0,
+        "incomeColumn": "anon_income",
+        "consumptionColumn": "p600",
+        "weightColumn": "weighta",
+        "essentialIncomeBasis": "monthly"
+      }
+    },
+    {
+      "method": "legacy-match",
+      "methodRationale": "Legacy-compatible diagnostic method: the old 0.66 is matched by the unweighted median in the 400-480 weekly-income band, while the old 0.17 aligns with roughly the weighted 98.7th percentile rather than the literal weighted 99th percentile.",
+      "selectedConfigValues": {
+        "ESSENTIAL_CONSUMPTION_FRACTION": 0.65,
+        "MAXIMUM_CONSUMPTION_FRACTION": 0.19
+      },
+      "rawValues": {
+        "ESSENTIAL_CONSUMPTION_FRACTION": 0.6474558967570224,
+        "MAXIMUM_CONSUMPTION_FRACTION": 0.18512435832893398
+      },
+      "estimates": [
+        {
+          "key": "ESSENTIAL_CONSUMPTION_FRACTION",
+          "value": 0.6474558967570224,
+          "rounded_config_value": 0.65,
+          "sample_rows": 325,
+          "weight_sum": 2157.6859304068985,
+          "statistic": "median",
+          "ratio_numerator": "p600t",
+          "ratio_denominator": "anon_income",
+          "filter_description": "anon_income between 400 and 480 weekly"
+        },
+        {
+          "key": "MAXIMUM_CONSUMPTION_FRACTION",
+          "value": 0.18512435832893398,
+          "rounded_config_value": 0.19,
+          "sample_rows": 4155,
+          "weight_sum": 28156.680823660718,
+          "statistic": "weighted_quantile_0.987",
+          "ratio_numerator": "p600t",
+          "ratio_denominator": "12 * anon_income",
+          "filter_description": "anon_income * 52 > 5900"
+        }
+      ],
+      "diagnostics": {
+        "rawRows": 4202,
+        "validRows": 4197,
+        "droppedRows": 5,
+        "nonPositiveOrMissingIncomeRows": 2,
+        "nonPositiveOrMissingConsumptionRows": 3,
+        "nonPositiveOrMissingWeightRows": 0,
+        "incomeColumn": "anon_income",
+        "consumptionColumn": "p600t",
+        "weightColumn": "weighta",
+        "essentialIncomeBasis": "weekly"
+      }
+    }
+  ]
+}

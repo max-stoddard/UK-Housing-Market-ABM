@@ -1190,6 +1190,32 @@
           "decision_logic": "Objective=direct method justification; Why=hhageGR4 is the only populated granular HRP age field in the supplied FRS household file and gross4 is the household grossing weight; Tradeoff=the last three output bins are an explicit uniform tail split from 75+ rather than directly observed 75-79, 80-84, and 85+ bins."
         }
       ]
+    },
+    {
+      "version_id": "v4.12",
+      "snapshot_folder": "v4.12",
+      "validation_dataset": "r8",
+      "config_parameters": [
+        "ESSENTIAL_CONSUMPTION_FRACTION",
+        "MAXIMUM_CONSUMPTION_FRACTION"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "ESSENTIAL_CONSUMPTION_FRACTION",
+          "dataset_source": "private-datasets/lcfs/2024/dvhh_ukanon_v2_2023.tab"
+        },
+        {
+          "config_parameter": "MAXIMUM_CONSUMPTION_FRACTION",
+          "dataset_source": "private-datasets/lcfs/2024/dvhh_ukanon_v2_2023.tab"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary regenerated on 2026-04-28T13:12:10Z after correcting the LCFS 2023/24 weighted-modern thresholds and recalibrating ESSENTIAL_CONSUMPTION_FRACTION to 0.6510123541 and MAXIMUM_CONSUMPTION_FRACTION to 0.1964658008. ESSENTIAL_CONSUMPTION_FRACTION uses annual-weighted median p600t / p344p for p344p between 520 and 640 weekly; MAXIMUM_CONSUMPTION_FRACTION uses the annual-weighted 99th percentile p600t / (12 * p344p) for p344p * 52 > 7400. overallCompositeLoss=0.580818 versus v4.11=0.559981 (delta +0.020837), and versus the earlier v4.12 LCFS note=0.586644 (delta -0.005826). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: Household Debt to Income. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus the earlier v4.12 note: Household Debt to Income fail->warn. The correction improves the promoted LCFS threshold alignment and validation loss relative to the earlier v4.12 calibration while remaining worse than v4.11 overall."
+      }
     }
   ]
 }

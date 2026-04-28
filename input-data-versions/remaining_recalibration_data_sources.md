@@ -7,19 +7,15 @@ Maintenance note:
 - If a recalibration or validation task recalibrates, newly confirms, or otherwise removes a parameter from the remaining set, update this file in the same change.
 - The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the `v4.10` progress counts in `input-data-versions/AGENTS.md`.
 
-Total remaining parameters: `36`
+Total remaining parameters: `34`
 
 Audit note:
 - This note has been updated for `v4.10` after the promotion of `BANK_ICR_HARD_MIN` and a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers.
+- `ESSENTIAL_CONSUMPTION_FRACTION` and `MAXIMUM_CONSUMPTION_FRACTION` are now removed from the remaining set after the `v4.12` LCFS 2023/24 weighted consumption-fraction recalibration.
 - The grouping below was cross-checked against the current `input-data-versions/v4.10/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
 - One corrected point from that review: `BTL_PROBABILITY_MULTIPLIER` is source-backed by a WAS wave 3 note and is therefore grouped under `WAS wave 3 household data`.
 
 ## Explicit Source-Backed Groups
-
-### Living Costs and Food Survey (LCFS) data for 2011 (collected by ONS)
-2 parameters
-- `ESSENTIAL_CONSUMPTION_FRACTION`
-- `MAXIMUM_CONSUMPTION_FRACTION`
 
 ### CML - BTL data for 2014, statistics obtained from FSSR-MRD (David Seaward)
 2 parameters

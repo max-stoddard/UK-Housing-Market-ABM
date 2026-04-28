@@ -1,0 +1,7 @@
+datasetYear,method,parameter,value,roundedConfigValue,sampleRows,weightSum,statistic,ratioNumerator,ratioDenominator,filterDescription
+2024,weighted-modern,ESSENTIAL_CONSUMPTION_FRACTION,0.6510123540753682,0.6510123541,374,2535.934836513503,weighted_median,p600t,p344p,p344p between 520 and 640 weekly
+2024,weighted-modern,MAXIMUM_CONSUMPTION_FRACTION,0.19646580079025444,0.1964658008,4101,27818.159639347235,weighted_quantile_0.99,p600t,12 * p344p,p344p * 52 > 7400
+2024,transparent-literal,ESSENTIAL_CONSUMPTION_FRACTION,1.93422847082498,1.9342284708,10,51.27182154433571,weighted_median,p600,anon_income,anon_income converted to monthly income between 400 and 480
+2024,transparent-literal,MAXIMUM_CONSUMPTION_FRACTION,0.1919597126762125,0.1919597127,4155,28156.680823660718,weighted_quantile_0.99,p600,12 * anon_income,anon_income * 52 > 5900
+2024,legacy-match,ESSENTIAL_CONSUMPTION_FRACTION,0.6474558967570224,0.65,325,2157.6859304068985,median,p600t,anon_income,anon_income between 400 and 480 weekly
+2024,legacy-match,MAXIMUM_CONSUMPTION_FRACTION,0.18512435832893398,0.19,4155,28156.680823660718,weighted_quantile_0.987,p600t,12 * anon_income,anon_income * 52 > 5900

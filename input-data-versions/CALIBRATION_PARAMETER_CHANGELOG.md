@@ -1056,3 +1056,31 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.11.json`
 - Version(s) affected:
   - `v4.11`
+
+### v4.12
+- Script path: `scripts/python/calibration/lcfs/consumption_fractions.py`
+- Outputs/keys produced: `ESSENTIAL_CONSUMPTION_FRACTION`, `MAXIMUM_CONSUMPTION_FRACTION`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.lcfs.consumption_fractions --output-json input-data-versions/calibration-evidence/lcfs-consumption-v4.12/LcfsConsumptionFractionsSummary.json --evidence-dir input-data-versions/calibration-evidence/lcfs-consumption-v4.12`
+  - `python3 -m scripts.python.calibration.lcfs.consumption_fractions --dataset-year 2011 --method legacy-match`
+  - `bash input-data-versions/validate.sh v4.12 --output-dir tmp/validation/v4.12 --workers 20`
+- Expected result snippet:
+  - `ESSENTIAL_CONSUMPTION_FRACTION = 0.6510123541`
+  - `MAXIMUM_CONSUMPTION_FRACTION = 0.1964658008`
+  - legacy reproduction command: `ESSENTIAL_CONSUMPTION_FRACTION = 0.66`, `MAXIMUM_CONSUMPTION_FRACTION = 0.17`
+  - tracked validation: `overallCompositeLoss = 0.580818`
+- Method chosen:
+  - `weighted-modern` = LCFS 2023/24 `dvhh_ukanon_v2_2023.tab`, `weighta` annual weights, `p344p` gross normal weekly household income, and `p600t` all-person total consumption expenditure.
+  - `ESSENTIAL_CONSUMPTION_FRACTION` is the annual-weighted median `p600t / p344p` for households with `p344p` between `520` and `640` weekly.
+  - `MAXIMUM_CONSUMPTION_FRACTION` is the annual-weighted 99th percentile `p600t / (12 * p344p)` for households with `p344p * 52 > 7400`.
+- Method-selection decision logic:
+  - `Objective=post-2020 evidence refresh with explicit historical reproduction; Why=the promoted method uses the 2023/24 LCFS household weight, gross weekly income, and all-person total-consumption fields directly, with the essential-consumption weekly income band aligned to 520-640 and the maximum-consumption floor aligned to 7400 from 2024/25 income-support reasoning; Tradeoff=tracked 2024 validation remains worse than v4.11 (overallCompositeLoss 0.580818 versus 0.559981, delta +0.020837), but improves versus the earlier v4.12 LCFS note (0.586644) and restores Household Debt to Income from fail to warn while preserving transparent-literal and legacy-match diagnostics on their historical thresholds.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/lcfs-consumption-v4.12/LcfsConsumptionFractionsSourceValues.csv`
+  - `input-data-versions/calibration-evidence/lcfs-consumption-v4.12/LcfsConsumptionFractionsSummary.json`
+  - `input-data-versions/validation/v4.12.json`
+- Version(s) affected:
+  - `v4.12`
+
