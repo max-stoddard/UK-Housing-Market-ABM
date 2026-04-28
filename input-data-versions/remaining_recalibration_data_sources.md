@@ -12,6 +12,7 @@ Total remaining parameters: `34`
 Audit note:
 - This note has been updated for `v4.10` after the promotion of `BANK_ICR_HARD_MIN` and a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers.
 - `ESSENTIAL_CONSUMPTION_FRACTION` and `MAXIMUM_CONSUMPTION_FRACTION` are now removed from the remaining set after the `v4.12` LCFS 2023/24 weighted consumption-fraction recalibration.
+- `DATA_INCOME_GIVEN_AGE` remains outside the remaining set after the `v4.14` FRS 2023/24 gross-non-rent income-age recalibration; this does not change the remaining count because the parameter was already post-2020-backed before `v4.14`.
 - The grouping below was cross-checked against the current `input-data-versions/v4.10/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
 - One corrected point from that review: `BTL_PROBABILITY_MULTIPLIER` is source-backed by a WAS wave 3 note and is therefore grouped under `WAS wave 3 household data`.
 

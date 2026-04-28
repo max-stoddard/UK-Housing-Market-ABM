@@ -1255,6 +1255,45 @@
           "decision_logic": "Objective=direct source-year correction and unit consistency; Why=the calendar-month conversion preserves the official annual entitlement in the model's monthly input, whereas multiplying by four undercounts annual support by treating a year as 48 weeks; Tradeoff=Household Debt to Income moves from warn to fail even though overallCompositeLoss improves versus v4.12."
         }
       ]
+    },
+    {
+      "version_id": "v4.14",
+      "snapshot_folder": "v4.14",
+      "validation_dataset": "r8",
+      "description": "Replaced DATA_INCOME_GIVEN_AGE with an FRS 2023-24 weighted household gross non-rent income by HRP age joint distribution.",
+      "updated_data_sources": [
+        "frs"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/frs/income_age_joint_dist.py"
+      ],
+      "config_parameters": [
+        "DATA_INCOME_GIVEN_AGE"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "DATA_INCOME_GIVEN_AGE",
+          "dataset_source": "private-datasets/frs/23-24/househol.csv"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-04-28T14:47:51Z after replacing DATA_INCOME_GIVEN_AGE with the FRS 2023-24 weighted household gross non-rent income by HRP age joint distribution using the WAS income-age method adapted to FRS. The calibration validated dictionary contracts for hhagegrp, hhageGR4, hhinc, SUBLET, SUBRENT, and gross4, selected hhageGR4 because hhagegrp is anonymized/unusable in househol.csv, derived weekly gross_non_rent_income as hhinc minus rental_income_for_derivation, coerced 16704 non-subletter rows with SUBLET == 2 to zero rental income, required valid non-negative SUBRENT only for the 50 subletter rows with SUBLET == 1, retained 16326 rows after dropping 95 non-positive derived-income rows and 333 rows through 1% lower/upper annual-income trimming, annualized derived weekly income with *52, and wrote row-normalized log-income probabilities for FRS age bins 16-20 through 85-95. No empty age-bin fallback was needed. overallCompositeLoss=0.565682 versus v4.13=0.566435 (delta -0.000753) and versus the earlier sparse SUBRENT-filtered result 0.683570 (delta -0.117889). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: Household Debt to Income. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.13: Household Debt to Income changed from fail to warn; no required metric changed between pass and fail. Tradeoff: the method better aligns the file with gross non-rent income semantics and corrects the non-subletter SUBRENT not-applicable encoding, while Income Distribution Realism JSD remains worse than v4.13 but still passes."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "DATA_INCOME_GIVEN_AGE"
+          ],
+          "improvement_summary": "Rebased the model income-given-age file to FRS 2023-24 derived gross non-rent income with FRS-aligned age bins and WAS-style income filtering.",
+          "why_changed": "To align the household income-age input with the model's gross non-rent income semantics, a newer household survey year, the FRS age source already used for DATA_AGE_DISTRIBUTION, and the existing WAS income-age calibration method.",
+          "method_chosen": "Weighted FRS gross_non_rent_income histogram conditional on FRS HRP age bins using gross4 weights; gross_non_rent_income is derived as hhinc - rental_income_for_derivation before filtering. hhagegrp is preferred when populated, but the supplied househol.csv has hhagegrp anonymized as A, so the script reuses the age_dist.py fallback to hhageGR4 and splits the 75+ source tail into 75-80, 80-85, and 85-95. SUBLET == 2 rows use rental income 0.0 because SUBRENT is not applicable; SUBLET == 1 rows require valid non-negative numeric SUBRENT. Positive derived weekly income is annualized with *52, trimmed by the WAS 1% lower/upper income-tail rule, logged, and histogrammed into 25 equal-width log-income bins.",
+          "decision_logic": "Objective=match the WAS gross non-rent income-age method with FRS data; Why=the model consumes DATA_INCOME_GIVEN_AGE as gross non-rent/employment-style income, WAS derives non-rent income before filtering, and FRS encodes non-subletter SUBRENT as not applicable; Tradeoff=overallCompositeLoss slightly improves versus v4.13 and the sparse SUBRENT-filtered artifact is avoided, but Income Distribution Realism JSD remains worse than v4.13 while still passing."
+        }
+      ]
     }
   ]
 }

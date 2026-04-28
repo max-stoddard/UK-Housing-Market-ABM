@@ -1111,3 +1111,32 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.13.json`
 - Version(s) affected:
   - `v4.13`
+
+### v4.14
+- Script path: `scripts/python/calibration/frs/income_age_joint_dist.py`
+- Outputs/keys produced: `DATA_INCOME_GIVEN_AGE` via `AgeGrossIncomeJointDist.csv`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.frs.income_age_joint_dist --output-dir input-data-versions/v4.14 --evidence-dir input-data-versions/calibration-evidence/frs-income-age-v4.14`
+  - `bash input-data-versions/validate.sh v4.14 --output-dir tmp/validation/v4.14 --workers 20`
+- Expected result snippet:
+  - `DATA_INCOME_GIVEN_AGE = src/main/resources/AgeGrossIncomeJointDist.csv`
+  - `Selected age column: hhageGR4`
+  - `Valid rows: 16326`
+  - row probability sums: `16-20` through `85-95` each sum to `1.0` within floating-point tolerance
+  - no empty age-bin fallbacks are needed in `FrsIncomeAgeJointDistSummary.json`
+  - zero-bin counts are retained in `FrsIncomeAgeJointDistSummary.json`; the sparse `16-20` group has `14` zero log-income bins
+  - tracked validation: `overallCompositeLoss = 0.565682`
+- Method chosen:
+  - Weighted FRS 2023-24 household gross non-rent income by HRP age joint distribution using derived `gross_non_rent_income = hhinc - rental_income_for_derivation`, `gross4`, and the same age-selection contract as `scripts/python/calibration/frs/age_dist.py`.
+  - The script validates the FRS dictionary contracts for `gross4`, `hhinc`, `SUBLET`, `SUBRENT`, `hhagegrp`, and `hhageGR4`; treats `SUBLET == 2` not-applicable `SUBRENT` values as `0.0`; requires non-negative numeric `SUBRENT` only for `SUBLET == 1`; requires positive derived gross non-rent income and positive finite `gross4`; annualizes the derived weekly income with `* 52`; applies the WAS 1% lower/upper income-tail trim; takes `log(annual_income)`; and writes row-normalized probabilities for FRS age bins `16-20` through `85-95`.
+  - `hhagegrp` is preferred when populated, but the supplied `househol.csv` has `hhagegrp` anonymized as `A`; therefore the promoted run uses the populated `hhageGR4` fallback and the existing `75+` tail split.
+- Method-selection decision logic:
+  - `Objective=match the WAS gross non-rent income-age method with FRS data; Why=the model consumes this file as gross non-rent/employment-style income and WAS derives non-rent income before filtering, while FRS encodes non-subletter SUBRENT as not applicable; therefore FRS now uses SUBLET to set non-subletter rental income to zero before deriving hhinc - rental_income_for_derivation; Tradeoff=overallCompositeLoss slightly improves versus v4.13 (0.565682 versus 0.566435, delta -0.000753) and improves versus the earlier sparse SUBRENT-filtered run (0.683570, delta -0.117889), but Income Distribution Realism JSD remains worse than v4.13 (0.090645 versus 0.062847) while still passing. Household Debt to Income changes from fail to warn; no required metric changes between pass and fail.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/frs-income-age-v4.14/FrsIncomeAgeJointDistSourceValues.csv`
+  - `input-data-versions/calibration-evidence/frs-income-age-v4.14/FrsIncomeAgeJointDistSummary.json`
+  - `input-data-versions/validation/v4.14.json`
+- Version(s) affected:
+  - `v4.14`
