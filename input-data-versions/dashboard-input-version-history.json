@@ -1216,6 +1216,45 @@
         "financial_wealth_diff_pct": null,
         "note": "Tracked 2024 validation summary regenerated on 2026-04-28T13:12:10Z after correcting the LCFS 2023/24 weighted-modern thresholds and recalibrating ESSENTIAL_CONSUMPTION_FRACTION to 0.6510123541 and MAXIMUM_CONSUMPTION_FRACTION to 0.1964658008. ESSENTIAL_CONSUMPTION_FRACTION uses annual-weighted median p600t / p344p for p344p between 520 and 640 weekly; MAXIMUM_CONSUMPTION_FRACTION uses the annual-weighted 99th percentile p600t / (12 * p344p) for p344p * 52 > 7400. overallCompositeLoss=0.580818 versus v4.11=0.559981 (delta +0.020837), and versus the earlier v4.12 LCFS note=0.586644 (delta -0.005826). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: Household Debt to Income. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus the earlier v4.12 note: Household Debt to Income fail->warn. The correction improves the promoted LCFS threshold alignment and validation loss relative to the earlier v4.12 calibration while remaining worse than v4.11 overall."
       }
+    },
+    {
+      "version_id": "v4.13",
+      "snapshot_folder": "v4.13",
+      "validation_dataset": "r8",
+      "description": "Corrected GOVERNMENT_MONTHLY_INCOME_SUPPORT to the 2024/25 GOV.UK Income Support couple rate and converted the weekly source rate to a calendar-month equivalent.",
+      "updated_data_sources": [
+        "gov"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/official/gov_income_support_2024.py"
+      ],
+      "config_parameters": [
+        "GOVERNMENT_MONTHLY_INCOME_SUPPORT"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "GOVERNMENT_MONTHLY_INCOME_SUPPORT",
+          "dataset_source": "input-data-versions/calibration-evidence/gov-income-support-v4.13/benefit-and-pension-rates-2024-to-2025.html"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-04-28T13:33:53Z after recalibrating GOVERNMENT_MONTHLY_INCOME_SUPPORT to 616.4166666667 from the downloaded GOV.UK 2024/25 Income Support personal allowance for a couple, both 18 or over. The source weekly rate is 142.25; v4.13 uses 142.25 * 52 / 12 instead of the old four-week-month convention because the model stores this as a monthly value and annualizes it by multiplying by 12. overallCompositeLoss=0.566435 versus v4.12=0.580818 (delta -0.014383). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.12: Household Debt to Income warn->fail. The change improves source-year accuracy and overall validation loss, while documenting the Household Debt to Income regression caused by the higher calendar-month support floor."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "GOVERNMENT_MONTHLY_INCOME_SUPPORT"
+          ],
+          "improvement_summary": "Replaced the 2025/26 four-week-month support value with the 2024/25 weekly Income Support couple rate converted to a calendar-month equivalent.",
+          "why_changed": "To align the 2024 calibration snapshot with the 2024/25 policy source and preserve the annual support floor implied by 52 weekly payments when the model later multiplies the monthly value by 12.",
+          "method_chosen": "Downloaded GOV.UK 2024/25 benefit-rates HTML, Income Support section, personal allowances row 'Both 18 or over', Rates 2024/25 = 142.25; selected monthly scalar = 142.25 * 52 / 12 = 616.4166666667.",
+          "decision_logic": "Objective=direct source-year correction and unit consistency; Why=the calendar-month conversion preserves the official annual entitlement in the model's monthly input, whereas multiplying by four undercounts annual support by treating a year as 48 weeks; Tradeoff=Household Debt to Income moves from warn to fail even though overallCompositeLoss improves versus v4.12."
+        }
+      ]
     }
   ]
 }

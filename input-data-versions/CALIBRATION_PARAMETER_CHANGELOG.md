@@ -1084,3 +1084,30 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
 - Version(s) affected:
   - `v4.12`
 
+### v4.13
+- Script path: `scripts/python/calibration/official/gov_income_support_2024.py`
+- Outputs/keys produced: `GOVERNMENT_MONTHLY_INCOME_SUPPORT`
+- Exact run command:
+  - `curl -L -o input-data-versions/calibration-evidence/gov-income-support-v4.13/benefit-and-pension-rates-2024-to-2025.html https://www.gov.uk/government/publications/benefit-and-pension-rates-2024-to-2025/benefit-and-pension-rates-2024-to-2025`
+  - `python3 -m scripts.python.calibration.official.gov_income_support_2024 --output-dir input-data-versions/calibration-evidence/gov-income-support-v4.13`
+  - `bash input-data-versions/validate.sh v4.13 --output-dir tmp/validation/v4.13 --workers 20`
+- Expected result snippet:
+  - source weekly rate: `142.25`
+  - `GOVERNMENT_MONTHLY_INCOME_SUPPORT = 616.4166666667`
+  - tracked validation: `overallCompositeLoss = 0.566435`
+- Method chosen:
+  - Downloaded GOV.UK `Benefit and pension rates 2024 to 2025` HTML page retained in the evidence bundle.
+  - Extracted the `Income Support` personal allowances row `Both 18 or over`, column `Rates 2024/25`.
+  - Converted weekly rate to the model's monthly scalar as `142.25 * 52 / 12 = 616.4166666667`.
+- Method-selection decision logic:
+  - `Objective=direct source-year correction and unit consistency; Why=the calendar-month conversion preserves the official annual entitlement in the model's monthly input, whereas multiplying by four undercounts annual support by treating a year as 48 weeks; Tradeoff=Household Debt to Income moves from warn to fail even though overallCompositeLoss improves versus v4.12 (0.566435 versus 0.580818, delta -0.014383).`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.13/README.md`
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.13/benefit-and-pension-rates-2024-to-2025.html`
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.13/GovIncomeSupport2024SourceValues.csv`
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.13/GovIncomeSupport2024Summary.json`
+  - `input-data-versions/validation/v4.13.json`
+- Version(s) affected:
+  - `v4.13`
