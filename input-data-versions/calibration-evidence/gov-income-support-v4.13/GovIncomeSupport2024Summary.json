@@ -1,0 +1,32 @@
+{
+  "sourceUrl": "https://www.gov.uk/government/publications/benefit-and-pension-rates-2024-to-2025/benefit-and-pension-rates-2024-to-2025",
+  "sourcePath": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/gov-income-support-v4.13/benefit-and-pension-rates-2024-to-2025.html",
+  "sourceSection": "Income Support",
+  "method": "weekly-source-rate-annualized-to-calendar-month",
+  "methodRationale": "The model stores this support floor as a monthly value and later annualizes it by multiplying by 12. Converting the weekly GOV.UK rate with 52 / 12 preserves the official annual entitlement implied by 52 weekly payments, unlike the old four-week month convention.",
+  "selectedConfigValues": {
+    "GOVERNMENT_MONTHLY_INCOME_SUPPORT": 616.4166666667
+  },
+  "observation": {
+    "parameter_key": "GOVERNMENT_MONTHLY_INCOME_SUPPORT",
+    "weekly_rate": 142.25,
+    "annual_equivalent": 7397.0,
+    "monthly_equivalent": 616.4166666666666,
+    "selected_config_value": 616.4166666667,
+    "source_path": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/gov-income-support-v4.13/benefit-and-pension-rates-2024-to-2025.html",
+    "source_url": "https://www.gov.uk/government/publications/benefit-and-pension-rates-2024-to-2025/benefit-and-pension-rates-2024-to-2025",
+    "source_section": "Income Support",
+    "row_label": "Both 18 or over",
+    "rate_column": "Rates 2024/25",
+    "calculation": "142.25 * 52 / 12",
+    "notes": "The model stores this support floor as a monthly value and later annualizes it by multiplying by 12. Converting the weekly GOV.UK rate with 52 / 12 preserves the official annual entitlement implied by 52 weekly payments, unlike the old four-week month convention."
+  },
+  "legacyComparison": {
+    "v4_12_config_value": 578.6,
+    "v4_12_source_year": "2025/26",
+    "four_week_month_value_from_2024_25_rate": 569.0,
+    "selected_minus_four_week_value": 47.4166666667,
+    "annualized_selected_value": 7397.0,
+    "annualized_four_week_value": 6828.0
+  }
+}
