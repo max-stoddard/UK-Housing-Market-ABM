@@ -1,27 +1,24 @@
-# Remaining Recalibration Data Sources For `v4.10`
+# Remaining Recalibration Data Sources For Current `v4.14` Baseline
 Author: Max Stoddard
 
-This maintained note tracks which `v4.10` parameters in `input-data-versions/v4.10/config.properties` still lack post-2020 recalibration or source-confirmation work. Use the live `v4.10` calibration ledgers in `input-data-versions/dashboard-input-version-history.json` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md` as the canonical source for promoted recalibrations, then keep this note aligned with whichever parameters still remain.
+This maintained note tracks which scoped parameters in the current `input-data-versions/v4.14/config.properties` baseline still lack post-2020 recalibration or source-confirmation work. Scope follows the recalibration-status definition in `input-data-versions/AGENTS.md`: Central Bank policy, input-calibrated parameters, and output-calibrated parameters are in scope; user-set and legacy parameters are out of scope. Use the live calibration ledgers in `input-data-versions/dashboard-input-version-history.json` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md` as the canonical source for promoted recalibrations, then keep this note aligned with whichever parameters still remain.
 
 Maintenance note:
 - If a recalibration or validation task recalibrates, newly confirms, or otherwise removes a parameter from the remaining set, update this file in the same change.
-- The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the `v4.10` progress counts in `input-data-versions/AGENTS.md`.
+- The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the recalibration-status progress counts in `input-data-versions/AGENTS.md`.
 
-Total remaining parameters: `34`
+Total remaining parameters: `35`
 
 Audit note:
-- This note has been updated for `v4.10` after the promotion of `BANK_ICR_HARD_MIN` and a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers.
+- This note has been updated for the current `v4.14` baseline after the promotion of `BANK_ICR_HARD_MIN` and a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers.
 - `ESSENTIAL_CONSUMPTION_FRACTION` and `MAXIMUM_CONSUMPTION_FRACTION` are now removed from the remaining set after the `v4.12` LCFS 2023/24 weighted consumption-fraction recalibration.
 - `DATA_INCOME_GIVEN_AGE` remains outside the remaining set after the `v4.14` FRS 2023/24 gross-non-rent income-age recalibration; this does not change the remaining count because the parameter was already post-2020-backed before `v4.14`.
-- The grouping below was cross-checked against the current `input-data-versions/v4.10/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
+- `DOWNPAYMENT_BTL_MEAN` and `DOWNPAYMENT_BTL_EPSILON` are now outside this remaining set because the current config classifies them under `LEGACY PARAMETERS`.
+- `DOWNPAYMENT_BTL_SCALE`, `DOWNPAYMENT_BTL_SHAPE`, and `BTL_ALTERNATIVE_RETURN` are now inside this remaining set because the current scoped config keeps them as TODO placeholders for default-off BTL modes.
+- The grouping below was cross-checked against the current `input-data-versions/v4.14/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
 - One corrected point from that review: `BTL_PROBABILITY_MULTIPLIER` is source-backed by a WAS wave 3 note and is therefore grouped under `WAS wave 3 household data`.
 
 ## Explicit Source-Backed Groups
-
-### CML - BTL data for 2014, statistics obtained from FSSR-MRD (David Seaward)
-2 parameters
-- `DOWNPAYMENT_BTL_MEAN`
-- `DOWNPAYMENT_BTL_EPSILON`
 
 ### Zoopla data (raw collated listings) from 2003 to 2015 and Katie Low's HPI data. BLOCKED.
 1 parameter
@@ -53,7 +50,7 @@ Audit note:
 1 parameter
 - `DATA_INITIAL_RENT_MARKUP_DIST`
 
-### Literature: Philippe Bracke (Bank of England) paper matching Zoopla and Land Registry data plus ARLA's annual report for 2013
+### Literature: Philippe Bracke (Bank of England) paper matching Zoopla and Land Registry data plus ARLA's annual report for 2013. BLOCKED.
 1 parameter
 - `RENT_GROSS_YIELD`
 
@@ -78,6 +75,12 @@ Audit note:
 - `CENTRAL_BANK_LTI_MONTHS_TO_CHECK`
 - `CENTRAL_BANK_AFFORDABILITY_HARD_MAX`
 - `CENTRAL_BANK_ICR_HARD_MIN`
+
+### TODO placeholder with no explicit external source
+3 parameters
+- `DOWNPAYMENT_BTL_SCALE`
+- `DOWNPAYMENT_BTL_SHAPE`
+- `BTL_ALTERNATIVE_RETURN`
 
 ### Design decision note with no explicit external source
 4 parameters
