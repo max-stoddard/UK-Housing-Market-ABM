@@ -802,7 +802,6 @@ const expectedIds = [
 ];
 
 const unchangedNewlyAddedIds = [
-  'household_consumption_fractions',
   'initial_sale_markup_distribution',
   'price_reduction_probabilities',
   'sale_reduction_gaussian',
@@ -1786,6 +1785,24 @@ for (const item of unchangedCards.items) {
   assert.equal(item.unchanged, true, `Expected newly added card ${item.id} to remain unchanged across versions`);
 }
 
+const householdConsumptionCompare = compareParameters(
+  repoRoot,
+  'v0',
+  latestVersion,
+  ['household_consumption_fractions'],
+  'range'
+);
+assert.equal(householdConsumptionCompare.items.length, 1, 'Expected household_consumption_fractions compare payload');
+assert.equal(
+  householdConsumptionCompare.items[0]?.unchanged,
+  false,
+  'Expected household_consumption_fractions to differ from v0 once the v4.12 LCFS promotion is included'
+);
+assert.ok(
+  householdConsumptionCompare.items[0]?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.12'),
+  'Expected household_consumption_fractions provenance to include the v4.12 LCFS promotion'
+);
+
 const hpaExpectationCompare = compareParameters(repoRoot, 'v0', latestVersion, ['hpa_expectation_params'], 'range');
 assert.equal(hpaExpectationCompare.items.length, 1, 'Expected hpa_expectation_params compare payload');
 assert.equal(
@@ -2122,7 +2139,8 @@ if (ageDistV411 && ageDistV411.visualPayload.type === 'binned_distribution') {
   assert.equal((series[1] as any)?.data?.length, 15, 'Right interval series should use v4.11 source bins');
 }
 
-const incomeAge = compare.items.find((item) => item.id === 'income_given_age_joint');
+const incomeAgeV40 = compareParameters(repoRoot, 'v0', 'v4.0', ['income_given_age_joint']);
+const incomeAge = incomeAgeV40.items.find((item) => item.id === 'income_given_age_joint');
 assert.ok(incomeAge && incomeAge.visualPayload.type === 'joint_distribution');
 if (incomeAge && incomeAge.visualPayload.type === 'joint_distribution') {
   const xLabels = incomeAge.visualPayload.matrix.xAxis.labels;
