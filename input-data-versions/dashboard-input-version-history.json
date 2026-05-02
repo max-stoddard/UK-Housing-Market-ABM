@@ -1313,6 +1313,45 @@
           "decision_logic": "Objective=match the WAS gross non-rent income-age method with FRS data; Why=the model consumes DATA_INCOME_GIVEN_AGE as gross non-rent/employment-style income, WAS derives non-rent income before filtering, and FRS encodes non-subletter SUBRENT as not applicable; Tradeoff=overallCompositeLoss slightly improves versus v4.13 and the sparse SUBRENT-filtered artifact is avoided, but Income Distribution Realism JSD remains worse than v4.13 while still passing."
         }
       ]
+    },
+    {
+      "version_id": "v4.14o",
+      "snapshot_folder": "v4.14o",
+      "validation_dataset": "r8",
+      "description": "Output-calibrated BTL_PROBABILITY_MULTIPLIER against the weighted WAS R8 positive-gross-rental-income prevalence target while leaving DATA_BTL_PROBABILITY unchanged.",
+      "updated_data_sources": [
+        "was"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/btl_probability_multiplier.py"
+      ],
+      "config_parameters": [
+        "BTL_PROBABILITY_MULTIPLIER"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-btl-probability-multiplier-v4.14o/BtlProbabilityMultiplierCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-02T14:28:52Z after output-calibrating BTL_PROBABILITY_MULTIPLIER from 1.76 to 0.435. The calibration used script defaults: v4.14 source snapshot, seeds 1..4, 20 workers, N_STEPS=2000, t >= 200, coarse grid 0.05..2.00 by 0.05, fine grid 0.30..0.60 by 0.005 around the 0.45 coarse winner, and the weighted WAS R8 positive-gross-rental-income target 0.0515255103048705. DATA_BTL_PROBABILITY remained unchanged. The expanded search bracketed the target in both stages and selected an interior closest candidate rather than an exact target hit: final calibration mean rental-income-positive share=0.051635, absolute gap=0.000109. Machine-readable searchDiagnostics record targetBracketed=true for coarse and fine, selectedOnLowerBoundary=false, selectedOnUpperBoundary=false, and warnings only for not exactly hitting the target at 1e-12 tolerance. overallCompositeLoss=0.658907 versus v4.14=0.565682 (delta +0.093225). Required metrics passing: Advances to FTB, Advances to BTL, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Household Debt to Income, House Price to Household Disposable Income, House Price Growth, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.14: Advances to BTL fail->pass, Household Debt to Income warn->fail, and House Price Growth pass->fail. The change closely matches the BTL prevalence bridge and fixes the Advances to BTL validation status, but worsens the tracked composite validation score."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BTL_PROBABILITY_MULTIPLIER"
+          ],
+          "improvement_summary": "Reduced the multiplier from 1.76 to 0.435 through an expanded snapshot-local common-random-number sweep against the weighted WAS R8 rental-income prevalence target.",
+          "why_changed": "To replace the legacy Wave-3-oriented multiplier with an output calibration using the current R8-backed source target requested for v4.14 while keeping DATA_BTL_PROBABILITY explicitly out of scope.",
+          "method_chosen": "BTL-only grid search using model-side share of households with MonthlyGrossRentalIncome > 0, averaged over t >= 200 and seeds 1..4. The script ran 40 coarse candidates from 0.05 to 2.00 and 61 fine candidates from 0.30 to 0.60 at 0.005 precision. Selection used the smallest absolute primary target gap only.",
+          "decision_logic": "Objective=output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the weighted WAS R8 positive-gross-rental-income target; Tradeoff=the expanded search brackets the target and 0.435 nearly matches the prevalence target, with Advances to BTL moving from fail to pass, but the tracked 2024 validation composite worsens versus v4.14 and House Price Growth moves from pass to fail."
+        }
+      ]
     }
   ]
 }

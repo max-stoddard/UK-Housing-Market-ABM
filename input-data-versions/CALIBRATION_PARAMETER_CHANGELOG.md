@@ -1140,3 +1140,33 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.14.json`
 - Version(s) affected:
   - `v4.14`
+
+### v4.14o
+- Script path: `scripts/python/calibration/output/btl_probability_multiplier.py`
+- Outputs/keys produced: `BTL_PROBABILITY_MULTIPLIER`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.btl_probability_multiplier --version v4.14 --output-version v4.14o --workers 20 --precision 0.005 --overwrite-version`
+  - `bash input-data-versions/validate.sh v4.14o --output-dir tmp/validation/v4.14o --workers 20`
+- Expected result snippet:
+  - `BTL_PROBABILITY_MULTIPLIER = 0.435`
+  - `DATA_BTL_PROBABILITY` unchanged from `v4.14`
+  - weighted WAS R8 positive-gross-rental-income target: `0.0515255103048705`
+  - selected model-side rental-income-positive share: `0.0516349791549360`
+  - selected absolute target gap: `0.0001094688500655`
+  - tracked validation: `overallCompositeLoss = 0.658907`
+- Method chosen:
+  - BTL-only snapshot-local common-random-number grid search over `BTL_PROBABILITY_MULTIPLIER`.
+  - The script used seeds `1..4`, `20` workers, `N_STEPS = 2000`, `t >= 200`, `recordRentalIncome = true`, and `recordCoreIndicators = true`.
+  - Coarse grid: `0.05..2.00` by `0.05`; fine grid: `0.30..0.60` by `0.005` after the coarse winner landed at `0.45`.
+  - Selection minimized only the absolute gap between the weighted WAS R8 target and the model-side share of households with `MonthlyGrossRentalIncome > 0`.
+  - Machine-readable `searchDiagnostics` show that both the coarse and fine stages bracketed the target, selected an interior candidate, and only warn that the selected candidate is not an exact target hit at `1e-12` tolerance.
+- Method-selection decision logic:
+  - `Objective=output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the weighted WAS R8 positive-gross-rental-income target while DATA_BTL_PROBABILITY was explicitly out of scope; Tradeoff=the expanded search brackets the target and selects an interior closest candidate (0.435) with a small residual target gap, and Advances to BTL moves from fail to pass, but tracked 2024 validation worsens versus v4.14 (overallCompositeLoss 0.658907 versus 0.565682, delta +0.093225) and House Price Growth moves from pass to fail.`
+- Rationale category:
+  - output calibration
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-btl-probability-multiplier-v4.14o/BtlProbabilityMultiplierCandidates.csv`
+  - `input-data-versions/calibration-evidence/output-btl-probability-multiplier-v4.14o/BtlProbabilityMultiplierCalibrationSummary.json`
+  - `input-data-versions/validation/v4.14o.json`
+- Version(s) affected:
+  - `v4.14o`
