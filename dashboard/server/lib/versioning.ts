@@ -2,10 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 export function parseVersionParts(version: string): number[] {
-  return version
+  const normalized = version
     .replace(/^v/i, '')
+    .toLowerCase();
+  const suffixRank = normalized.endsWith('o') ? 1 : 0;
+  const numeric = suffixRank === 1 ? normalized.slice(0, -1) : normalized;
+  return numeric
     .split('.')
-    .map((part) => Number.parseInt(part, 10));
+    .map((part) => Number.parseInt(part, 10))
+    .concat(suffixRank);
 }
 
 export function compareVersions(a: string, b: string): number {
@@ -33,7 +38,7 @@ export function listVersions(inputDataDir: string): string[] {
     .readdirSync(inputDataDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter((name) => /^v\d+(?:\.\d+)*$/.test(name))
+    .filter((name) => /^v\d+(?:\.\d+)*o?$/i.test(name))
     .filter((name) => name !== 'v1')
     .sort(compareVersions)
     .filter((name) => fs.existsSync(path.join(inputDataDir, name, 'config.properties')));
