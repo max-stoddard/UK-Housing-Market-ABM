@@ -1,22 +1,22 @@
-# Remaining Recalibration Data Sources For Current `v4.14` Baseline
+# Remaining Recalibration Data Sources For Current `v4.14o` Baseline
 Author: Max Stoddard
 
-This maintained note tracks which scoped parameters in the current `input-data-versions/v4.14/config.properties` baseline still lack post-2020 recalibration or source-confirmation work. Scope follows the recalibration-status definition in `input-data-versions/AGENTS.md`: Central Bank policy, input-calibrated parameters, and output-calibrated parameters are in scope; user-set and legacy parameters are out of scope. Use the live calibration ledgers in `input-data-versions/dashboard-input-version-history.json` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md` as the canonical source for promoted recalibrations, then keep this note aligned with whichever parameters still remain.
+This maintained note tracks which scoped parameters in the current `input-data-versions/v4.14o/config.properties` baseline still lack post-2020 recalibration or source-confirmation work. Scope follows the recalibration-status definition in `input-data-versions/AGENTS.md`: Central Bank policy, input-calibrated parameters, and output-calibrated parameters are in scope; user-set and legacy parameters are out of scope. Use the live calibration ledgers in `input-data-versions/dashboard-input-version-history.json` and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md` as the canonical source for promoted recalibrations, then keep this note aligned with whichever parameters still remain.
 
 Maintenance note:
 - If a recalibration or validation task recalibrates, newly confirms, or otherwise removes a parameter from the remaining set, update this file in the same change.
 - The same change must also update `input-data-versions/dashboard-input-version-history.json`, `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`, and the recalibration-status progress counts in `input-data-versions/AGENTS.md`.
 
-Total remaining parameters: `35`
+Total remaining parameters: `34`
 
 Audit note:
-- This note has been updated for the current `v4.14` baseline after the promotion of `BANK_ICR_HARD_MIN` and a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers.
+- This note has been updated for the current `v4.14o` baseline after the promotion of `BANK_ICR_HARD_MIN`, a consistency correction for the already-promoted `v4.1` hard-LTV alignment parameters in the version-history and calibration-changelog ledgers, and the `v4.14o` BTL probability multiplier output calibration.
 - `ESSENTIAL_CONSUMPTION_FRACTION` and `MAXIMUM_CONSUMPTION_FRACTION` are now removed from the remaining set after the `v4.12` LCFS 2023/24 weighted consumption-fraction recalibration.
 - `DATA_INCOME_GIVEN_AGE` remains outside the remaining set after the `v4.14` FRS 2023/24 gross-non-rent income-age recalibration; this does not change the remaining count because the parameter was already post-2020-backed before `v4.14`.
 - `DOWNPAYMENT_BTL_MEAN` and `DOWNPAYMENT_BTL_EPSILON` are now outside this remaining set because the current config classifies them under `LEGACY PARAMETERS`.
 - `DOWNPAYMENT_BTL_SCALE`, `DOWNPAYMENT_BTL_SHAPE`, and `BTL_ALTERNATIVE_RETURN` are now inside this remaining set because the current scoped config keeps them as TODO placeholders for default-off BTL modes.
-- The grouping below was cross-checked against the current `input-data-versions/v4.14/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
-- One corrected point from that review: `BTL_PROBABILITY_MULTIPLIER` is source-backed by a WAS wave 3 note and is therefore grouped under `WAS wave 3 household data`.
+- The grouping below was cross-checked against the current `input-data-versions/v4.14o/config.properties`, `input-data-versions/dashboard-input-version-history.json`, and `input-data-versions/CALIBRATION_PARAMETER_CHANGELOG.md`.
+- `BTL_PROBABILITY_MULTIPLIER` is now removed from the remaining set after the refreshed `v4.14o` output calibration against the weighted WAS R8 positive-gross-rental-income prevalence target. The expanded search brackets the target and selects the closest interior candidate, with a small residual target gap rather than an exact hit.
 
 ## Explicit Source-Backed Groups
 
@@ -59,10 +59,6 @@ Audit note:
 - `BANK_LTI_HARD_MAX_FTB`
 - `BANK_LTI_HARD_MAX_HM`
 - `BANK_AFFORDABILITY_HARD_MAX`
-
-### WAS wave 3 household data
-1 parameter
-- `BTL_PROBABILITY_MULTIPLIER`
 
 ## Parameters With No Explicit External Source Note
 
