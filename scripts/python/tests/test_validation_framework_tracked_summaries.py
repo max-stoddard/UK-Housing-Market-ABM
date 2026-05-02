@@ -9,6 +9,8 @@ import json
 import unittest
 from pathlib import Path
 
+from scripts.python.validation.model.validate_all_input_data_versions import parse_version_parts
+
 
 class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
     def test_all_tracked_summaries_score_new_required_metrics(self) -> None:
@@ -21,7 +23,7 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
                 for path in version_dir.iterdir()
                 if path.is_dir() and path.name.startswith("v") and (path / "config.properties").exists()
             ],
-            key=lambda version: [int(part) for part in version.removeprefix("v").split(".")],
+            key=parse_version_parts,
         )
         required_metric_ids = {
             "core_advancesToFTB",

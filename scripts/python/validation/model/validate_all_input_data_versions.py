@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from scripts.python.validation.model.runner import (
     run_validation_seed,
 )
 from scripts.python.validation.model.validation_profiles import resolve_validation_profile
+
+VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*o?$", re.IGNORECASE)
 
 
 def parse_args() -> argparse.Namespace:
@@ -52,7 +55,11 @@ def parse_seed_list(seed_text: str) -> list[int]:
 
 
 def parse_version_parts(version: str) -> list[int]:
-    return [int(part) for part in version.lower().removeprefix("v").split(".")]
+    normalized = version.lower().removeprefix("v")
+    suffix_rank = 1 if normalized.endswith("o") else 0
+    if suffix_rank:
+        normalized = normalized[:-1]
+    return [int(part) for part in normalized.split(".")] + [suffix_rank]
 
 
 def compare_versions(left: str, right: str) -> int:
@@ -75,7 +82,7 @@ def list_versions(repo_root: Path) -> list[str]:
         path.name
         for path in input_data_dir.iterdir()
         if path.is_dir()
-        and path.name.startswith("v")
+        and VERSION_NAME_PATTERN.match(path.name)
         and (path / "config.properties").exists()
     ]
     return sorted(versions, key=lambda version: parse_version_parts(version))
