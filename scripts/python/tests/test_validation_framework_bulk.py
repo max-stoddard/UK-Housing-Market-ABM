@@ -10,10 +10,47 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from scripts.python.validation.model.validate_all_input_data_versions import run_validation_campaign
+from scripts.python.validation.model.validate_all_input_data_versions import (
+    list_versions,
+    parse_version_parts,
+    resolve_versions,
+    run_validation_campaign,
+)
 
 
 class TestValidationFrameworkBulk(unittest.TestCase):
+    def test_version_sorting_supports_repeated_output_suffixes(self) -> None:
+        unsorted_versions = ["v4.14oo", "v0oo", "v4.14", "v0", "v4.14o", "v0o"]
+
+        self.assertEqual(parse_version_parts("v0oo"), [0, 2])
+        self.assertEqual(parse_version_parts("v4.14oo"), [4, 14, 2])
+        self.assertEqual(
+            sorted(unsorted_versions, key=parse_version_parts),
+            ["v0", "v0o", "v0oo", "v4.14", "v4.14o", "v4.14oo"],
+        )
+
+    def test_list_versions_discovers_repeated_output_suffixes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            input_data_dir = repo_root / "input-data-versions"
+            input_data_dir.mkdir()
+            for version in ["v0oo", "v0", "v0o", "v4.14oo", "v4.14o", "v4.14"]:
+                version_dir = input_data_dir / version
+                version_dir.mkdir()
+                (version_dir / "config.properties").write_text("", encoding="utf-8")
+            ignored_dir = input_data_dir / "v0ooo-draft"
+            ignored_dir.mkdir()
+            (ignored_dir / "config.properties").write_text("", encoding="utf-8")
+
+            self.assertEqual(
+                list_versions(repo_root),
+                ["v0", "v0o", "v0oo", "v4.14", "v4.14o", "v4.14oo"],
+            )
+            self.assertEqual(
+                resolve_versions(repo_root, "v4.14oo,v0oo,v0o"),
+                ["v0o", "v0oo", "v4.14oo"],
+            )
+
     def test_run_validation_campaign_requires_positive_workers(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo_root = Path(tmp_dir)
