@@ -9,9 +9,9 @@
     "description": "Human description of what changed for this version.",
     "updated_data_sources": "Short source tags previously shown in brackets.",
     "calibration_files": "Calibration or update script path(s) for this version.",
-    "config_parameters": "Config keys changed at this version milestone.",
-    "parameter_changes": "Per-parameter change list with config key and resolved dataset source (or null for scalar-only changes).",
-    "config_parameter": "Changed config key name.",
+    "config_parameters": "Config keys changed or explicitly status-confirmed at this version milestone.",
+    "parameter_changes": "Per-parameter change/status list with config key and resolved dataset source (or null for scalar-only changes).",
+    "config_parameter": "Changed or status-confirmed config key name.",
     "dataset_source": "Resolved config value for file-backed parameters (for example src/main/resources/*.csv); null when not file-backed.",
     "validation": {
       "status": "Validation status recorded for the snapshot entry: complete | in_progress.",
@@ -1350,6 +1350,174 @@
           "why_changed": "To replace the legacy Wave-3-oriented multiplier with an output calibration using the current R8-backed source target requested for v4.14 while keeping DATA_BTL_PROBABILITY explicitly out of scope.",
           "method_chosen": "BTL-only grid search using model-side share of households with MonthlyGrossRentalIncome > 0, averaged over t >= 200 and seeds 1..4. The script ran 40 coarse candidates from 0.05 to 2.00 and 61 fine candidates from 0.30 to 0.60 at 0.005 precision. Selection used the smallest absolute primary target gap only.",
           "decision_logic": "Objective=output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the weighted WAS R8 positive-gross-rental-income target; Tradeoff=the expanded search brackets the target and 0.435 nearly matches the prevalence target, with Advances to BTL moving from fail to pass, but the tracked 2024 validation composite worsens versus v4.14 and House Price Growth moves from pass to fail."
+        }
+      ]
+    },
+    {
+      "version_id": "v0o",
+      "snapshot_folder": "v0o",
+      "validation_dataset": "r8",
+      "description": "Output-calibrated BTL_PROBABILITY_MULTIPLIER on the original v0 snapshot against the weighted WAS R8 positive-gross-rental-income prevalence target.",
+      "updated_data_sources": [
+        "was"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/btl_probability_multiplier.py"
+      ],
+      "config_parameters": [
+        "BTL_PROBABILITY_MULTIPLIER"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o/BtlProbabilityMultiplierCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-03T09:51:13Z after output-calibrating BTL_PROBABILITY_MULTIPLIER from 1.76 to 1.63 on the original v0 snapshot. The calibration used source snapshot v0, seeds 1..4, 20 workers, N_STEPS=2000, t >= 200, coarse grid 0.05..2.00 by 0.05, fine grid 1.50..1.80 by 0.005 around the 1.65 coarse winner, and the weighted WAS R8 positive-gross-rental-income target 0.0752616555661275. The expanded search bracketed the target in both stages and selected an interior closest candidate: final calibration mean rental-income-positive share=0.075122, absolute gap=0.000140. overallCompositeLoss=0.716773 versus v0=0.710294 (delta +0.006478). Required metrics passing: House Price to Household Disposable Income, House Price Growth, HPI Mean, HPI Cycle Period, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to FTB, Advances to Home Movers, Advances to BTL, Household Debt to Income, HPI Std, Owner-Occupier Debt to Income, Rental Yield, Interest Rate Spread, and Housing Wealth Distribution Realism. Status changes versus v0: Housing Transactions warn->fail and HPI Mean warn->pass. The change closely matches the BTL prevalence bridge but slightly worsens the tracked 2024 composite validation score."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BTL_PROBABILITY_MULTIPLIER"
+          ],
+          "improvement_summary": "Reduced the original snapshot multiplier from 1.76 to 1.63 through an expanded snapshot-local common-random-number sweep against the weighted WAS R8 rental-income prevalence target.",
+          "why_changed": "To create a v0-derived output-calibrated bridge that keeps the original input-data file set while matching the modern WAS R8 positive-gross-rental-income prevalence target more closely.",
+          "method_chosen": "BTL-only grid search using model-side share of households with MonthlyGrossRentalIncome > 0, averaged over t >= 200 and seeds 1..4. The script ran 40 coarse candidates from 0.05 to 2.00 and 61 fine candidates from 1.50 to 1.80 at 0.005 precision. Selection used the smallest absolute primary target gap only.",
+          "decision_logic": "Objective=output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the weighted WAS R8 positive-gross-rental-income target; Tradeoff=the selected multiplier nearly matches the prevalence target, but the tracked 2024 validation composite slightly worsens versus v0."
+        }
+      ]
+    },
+    {
+      "version_id": "v0oo",
+      "snapshot_folder": "v0oo",
+      "validation_dataset": "r8",
+      "description": "Applied a four-parameter ESMDA output calibration to v0o using the v0-only 2011 reference validation profile, while publishing the canonical 2024 tracked validation summary.",
+      "updated_data_sources": [
+        "config-only"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/four_parameter_esmda.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo/FourParameterEsmdaCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-03T09:51:13Z after applying the four-parameter ESMDA output calibration to v0o. The calibration used validation-reference-v0-2011 with WAS W3 targets, source snapshot v0o, seeds 1..4, 20 workers, ensemble size 40, 4 assimilation steps, rng seed 20260502, and selected iteration 0 member 30: PSYCHOLOGICAL_COST_OF_RENTING=0.25, SENSITIVITY_RENT_OR_PURCHASE=0.0014, BTL_CHOICE_INTENSITY=100, MARKET_AVERAGE_PRICE_DECAY=0.6. The 2011-profile calibration loss improved from baseline 0.505610 to 0.449527. The canonical tracked 2024 summary has overallCompositeLoss=0.705098 versus v0o=0.716773 (delta -0.011675). Required metrics passing: House Price to Household Disposable Income, House Price Growth, HPI Mean, HPI Cycle Period, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Std. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to FTB, Advances to Home Movers, Advances to BTL, Household Debt to Income, Owner-Occupier Debt to Income, Rental Yield, Interest Rate Spread, and Housing Wealth Distribution Realism. Status changes versus v0o: HPI Std fail->warn. The change improves both the 2011 calibration objective and the tracked 2024 composite score versus v0o, while remaining a v0-derived reference branch rather than the modern baseline."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Selected a snapped four-parameter output calibration for the v0o branch using the v0-only 2011 reference validation profile.",
+          "why_changed": "To test whether output-calibrating the original-style branch against the 2011 reference profile could reduce reference loss without changing the v0 input-data file set.",
+          "method_chosen": "Four-parameter ESMDA over PSYCHOLOGICAL_COST_OF_RENTING, SENSITIVITY_RENT_OR_PURCHASE, BTL_CHOICE_INTENSITY, and MARKET_AVERAGE_PRICE_DECAY with seeds 1..4, 20 workers, ensemble size 40, 4 assimilation steps, rng seed 20260502, and snapped selected parameters written to v0oo.",
+          "decision_logic": "Objective=target reproduction; Why=the 2011 reference validation profile is the intended target for a v0-derived output calibration branch; Tradeoff=the promoted branch is documented with canonical 2024 tracked validation for dashboard comparability, but it is not a modern input-data baseline."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.14oo",
+      "snapshot_folder": "v4.14oo",
+      "validation_dataset": "r8",
+      "description": "Applied a four-parameter ESMDA output calibration to the current v4.14o baseline against the 2024 validation profile and status-confirmed HPA_YEARS_TO_CHECK as calibrated.",
+      "updated_data_sources": [
+        "config-only"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/four_parameter_esmda.py",
+        "N/A (documentation-only HPA_YEARS_TO_CHECK status correction)"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY",
+        "HPA_YEARS_TO_CHECK"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v4.14oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v4.14oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v4.14oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v4.14oo/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "HPA_YEARS_TO_CHECK",
+          "dataset_source": null
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-03T09:51:13Z after applying the four-parameter ESMDA output calibration to v4.14o. The calibration used validation-2024 with WAS R8 targets, source snapshot v4.14o, seeds 1..4, 20 workers, ensemble size 40, 4 assimilation steps, rng seed 20260502, and selected iteration 2 member 35: PSYCHOLOGICAL_COST_OF_RENTING=0.25, SENSITIVITY_RENT_OR_PURCHASE=0.00078, BTL_CHOICE_INTENSITY=250, MARKET_AVERAGE_PRICE_DECAY=0.78. The ESMDA calibration loss improved from baseline 0.653469 to 0.552406. The canonical tracked 2024 summary has overallCompositeLoss=0.607765 versus v4.14o=0.658907 (delta -0.051142). Required metrics passing: Advances to FTB, Advances to BTL, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: House Price Growth. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.14o: House Price Growth fail->warn. The change improves the current-baseline tracked 2024 composite score and upgrades House Price Growth to warning, while several required market-level metrics remain outside target bands. Documentation-only recalibration-status correction also marks unchanged HPA_YEARS_TO_CHECK=2 as completed because the current config records it as the robustness-selected setting after pre- and post-full-calibration analysis."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Selected a snapped four-parameter output calibration for the current v4.14o branch using the 2024 validation profile.",
+          "why_changed": "To reduce tracked 2024 validation loss after the v4.14o BTL prevalence bridge using output-calibrated behavioral and price-adjustment parameters that remain in the scoped recalibration set.",
+          "method_chosen": "Four-parameter ESMDA over PSYCHOLOGICAL_COST_OF_RENTING, SENSITIVITY_RENT_OR_PURCHASE, BTL_CHOICE_INTENSITY, and MARKET_AVERAGE_PRICE_DECAY with seeds 1..4, 20 workers, ensemble size 40, 4 assimilation steps, rng seed 20260502, and snapped selected parameters written to v4.14oo.",
+          "decision_logic": "Objective=target reproduction; Why=the 2024 validation profile is the current-baseline target and the selected member reduces both ESMDA calibration loss and the canonical 8-seed tracked composite loss versus v4.14o; Tradeoff=output calibration improves aggregate validation fit but does not resolve all failing market-level metrics."
+        },
+        {
+          "config_parameters": [
+            "HPA_YEARS_TO_CHECK"
+          ],
+          "improvement_summary": "Status-confirmed the unchanged two-year HPA lookback as the calibrated robustness-selected setting.",
+          "why_changed": "To keep the recalibration-status ledgers aligned with the current config, which already documents HPA_YEARS_TO_CHECK=2 as optimal after pre- and post-full-calibration robustness analysis.",
+          "method_chosen": "Documentation-only status correction; no parameter value changed.",
+          "decision_logic": "Objective=stability/robustness; Why=the current config already documents values 1, 2, and 3 as robustness-tested and value 2 as optimal after full model calibration; Tradeoff=this corrects calibration-status bookkeeping without adding new empirical evidence or changing model behavior."
         }
       ]
     }

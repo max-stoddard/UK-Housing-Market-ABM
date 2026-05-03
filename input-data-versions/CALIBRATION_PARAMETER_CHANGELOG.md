@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.10`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.14oo`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -1170,3 +1170,116 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.14o.json`
 - Version(s) affected:
   - `v4.14o`
+
+### v0o
+- Script path: `scripts/python/calibration/output/btl_probability_multiplier.py`
+- Outputs/keys produced: `BTL_PROBABILITY_MULTIPLIER`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.btl_probability_multiplier --version v0 --output-version v0o --seeds 1,2,3,4 --workers 20 --precision 0.005 --coarse-min 0.05 --coarse-max 2 --coarse-step 0.05 --fine-radius 0.15 --target 0.0752616555661275 --output-root tmp/output-calibration`
+  - `python3 -m scripts.python.validation.model.validate_all_input_data_versions --versions v0o,v0oo,v4.14oo --seeds 1,2,3,4,5,6,7,8 --workers 20 --output-root tmp/validation`
+- Expected result snippet:
+  - `BTL_PROBABILITY_MULTIPLIER = 1.63`
+  - weighted WAS R8 positive-gross-rental-income target: `0.0752616555661275`
+  - selected model-side rental-income-positive share: `0.0751221178308202`
+  - selected absolute target gap: `0.0001395377353073`
+  - tracked validation: `overallCompositeLoss = 0.716773`
+- Method chosen:
+  - BTL-only snapshot-local common-random-number grid search over `BTL_PROBABILITY_MULTIPLIER`.
+  - The script used seeds `1..4`, `20` workers, `N_STEPS = 2000`, `t >= 200`, `recordRentalIncome = true`, and `recordCoreIndicators = true`.
+  - Coarse grid: `0.05..2.00` by `0.05`; fine grid: `1.50..1.80` by `0.005` after the coarse winner landed at `1.65`.
+  - Selection minimized only the absolute gap between the weighted WAS R8 target and the model-side share of households with `MonthlyGrossRentalIncome > 0`.
+- Method-selection decision logic:
+  - `Objective=output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the weighted WAS R8 positive-gross-rental-income target; Tradeoff=the selected multiplier nearly matches the prevalence target, but tracked 2024 validation slightly worsens versus v0 (overallCompositeLoss 0.716773 versus 0.710294, delta +0.006478).`
+- Rationale category:
+  - output calibration
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o/BtlProbabilityMultiplierCandidates.csv`
+  - `input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o/BtlProbabilityMultiplierCalibrationSummary.json`
+  - `input-data-versions/validation/v0o.json`
+- Version(s) affected:
+  - `v0o`
+
+### v0oo
+- Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.four_parameter_esmda --version v0o --output-version v0oo --validation-year 2011 --seeds 1,2,3,4 --workers 20 --ensemble-size 40 --assimilation-steps 4 --rng-seed 20260502 --output-root tmp/output-calibration`
+  - `python3 -m scripts.python.validation.model.validate_all_input_data_versions --versions v0o,v0oo,v4.14oo --seeds 1,2,3,4,5,6,7,8 --workers 20 --output-root tmp/validation`
+- Expected result snippet:
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.25`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0014`
+  - `BTL_CHOICE_INTENSITY = 100`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.6`
+  - selected 2011-profile calibration loss: `0.449527` versus baseline `0.505610`
+  - tracked 2024 validation: `overallCompositeLoss = 0.705098`
+- Method chosen:
+  - Four-parameter ESMDA output calibration against the `validation-reference-v0-2011` profile.
+  - The script used source snapshot `v0o`, seeds `1..4`, `20` workers, ensemble size `40`, `4` assimilation steps, rng seed `20260502`, and selected snapped iteration `0` member `30`.
+  - Canonical 8-seed 2024 validation was then published for dashboard comparability.
+- Method-selection decision logic:
+  - `Objective=target reproduction; Why=the 2011 reference validation profile is the intended target for a v0-derived output calibration branch; Tradeoff=the promoted branch improves tracked 2024 validation versus v0o (overallCompositeLoss 0.705098 versus 0.716773, delta -0.011675), but it remains a v0-derived reference branch rather than the modern baseline.`
+- Rationale category:
+  - output calibration
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo/AllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo/FourParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/validation/v0oo.json`
+- Version(s) affected:
+  - `v0oo`
+
+### v4.14oo
+- Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.four_parameter_esmda --version v4.14o --output-version v4.14oo --validation-year 2024 --seeds 1,2,3,4 --workers 20 --ensemble-size 40 --assimilation-steps 4 --rng-seed 20260502 --output-root tmp/output-calibration`
+  - `python3 -m scripts.python.validation.model.validate_all_input_data_versions --versions v0o,v0oo,v4.14oo --seeds 1,2,3,4,5,6,7,8 --workers 20 --output-root tmp/validation`
+- Expected result snippet:
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.25`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.00078`
+  - `BTL_CHOICE_INTENSITY = 250`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.78`
+  - selected 2024-profile calibration loss: `0.552406` versus baseline `0.653469`
+  - tracked 2024 validation: `overallCompositeLoss = 0.607765`
+- Method chosen:
+  - Four-parameter ESMDA output calibration against the `validation-2024` profile.
+  - The script used source snapshot `v4.14o`, seeds `1..4`, `20` workers, ensemble size `40`, `4` assimilation steps, rng seed `20260502`, and selected snapped iteration `2` member `35`.
+  - Canonical 8-seed 2024 validation was then published and improved the current-baseline composite loss versus `v4.14o`.
+- Method-selection decision logic:
+  - `Objective=target reproduction; Why=the 2024 validation profile is the current-baseline target and the selected member reduces both ESMDA calibration loss and the canonical 8-seed tracked composite loss versus v4.14o; Tradeoff=output calibration improves aggregate validation fit and upgrades House Price Growth from fail to warn, but several required market-level metrics remain outside target bands.`
+- Rationale category:
+  - output calibration
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v4.14oo/AllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v4.14oo/FourParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/validation/v4.14oo.json`
+- Version(s) affected:
+  - `v4.14oo`
+
+### v4.14oo HPA robustness status correction
+- Script path: `N/A (documentation-only recalibration-status correction)`
+- Outputs/keys produced:
+  - `HPA_YEARS_TO_CHECK`
+- Exact run command:
+  - `N/A`
+- Expected result snippet:
+  - `HPA_YEARS_TO_CHECK = 2`
+  - no config value change
+- Method chosen:
+  - Status-confirm the existing config note that `2` is the robustness-selected setting after pre- and post-full-calibration analysis.
+- Method-selection decision logic:
+  - `Objective=stability/robustness; Why=the current config already documents values 1, 2, and 3 as robustness-tested and value 2 as optimal after full model calibration; Tradeoff=this is a ledger correction and does not add new empirical evidence or change model behavior.`
+- Rationale category:
+  - stability/robustness
+- Evidence links:
+  - `input-data-versions/v4.14oo/config.properties`
+  - `input-data-versions/remaining_recalibration_data_sources.md`
+- Version(s) affected:
+  - `v4.14oo`
