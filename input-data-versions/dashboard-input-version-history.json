@@ -1520,6 +1520,51 @@
           "decision_logic": "Objective=stability/robustness; Why=the current config already documents values 1, 2, and 3 as robustness-tested and value 2 as optimal after full model calibration; Tradeoff=this corrects calibration-status bookkeeping without adding new empirical evidence or changing model behavior."
         }
       ]
+    },
+    {
+      "version_id": "v4.15",
+      "snapshot_folder": "v4.15",
+      "validation_dataset": "r8",
+      "description": "Recalibrated TENANCY_LENGTH_MIN and TENANCY_LENGTH_MAX from the public EHS 2023-24 rented-sectors Annex Table 2.10 AST tenancy-length distribution.",
+      "updated_data_sources": [
+        "ehs"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/official/ehs_tenancy_length_2024.py"
+      ],
+      "config_parameters": [
+        "TENANCY_LENGTH_MIN",
+        "TENANCY_LENGTH_MAX"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "TENANCY_LENGTH_MIN",
+          "dataset_source": "input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/EhsTenancyLengthSummary.json"
+        },
+        {
+          "config_parameter": "TENANCY_LENGTH_MAX",
+          "dataset_source": "input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/EhsTenancyLengthSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-03T15:51:30Z after cloning v4.14 to v4.15 and recalibrating TENANCY_LENGTH_MIN from 12 to 6 and TENANCY_LENGTH_MAX from 24 to 18. The retained public source artifact is input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/EHS_23-24_Rented_Sectors_Chapter_2_Annex_Tables.ods, downloaded from https://assets.publishing.service.gov.uk/media/6874f2a3730a1bf28e2f9321/EHS_23-24_Rented_Sectors_Chapter_2_Annex_Tables.ods. Source table AT2_10 reports, among private renters with assured shorthold tenancies resident less than 3 years, 23.6% had 6-month initial agreements, 61.3% had 12-month, 3.8% had 18-month, and 11.3% reported other. Because the Java model currently draws tenancy length uniformly between min/max rather than from a multinomial distribution, v4.15 promotes the explicit source support bounds while retaining the full source distribution for audit. overallCompositeLoss=0.631380 versus v4.14=0.565682 (delta +0.065699). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.14: Household Debt to Income warn->fail. This release should be treated as an official EHS tenancy-length source refresh that improves input provenance but worsens the tracked composite validation score."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "TENANCY_LENGTH_MIN",
+            "TENANCY_LENGTH_MAX"
+          ],
+          "improvement_summary": "Rebased rental-contract support bounds to the explicit 6-, 12-, and 18-month AST initial-agreement categories in the public EHS 2023-24 rented-sectors annex table.",
+          "why_changed": "To replace the legacy ARLA 2013 Q4 tenancy-length assumption with newer official EHS evidence for assured shorthold private tenancy agreement lengths.",
+          "method_chosen": "AT2_10 -> assured shorthold column -> private renters resident less than 3 years: 6 months=23.6%, 12 months=61.3%, 18 months=3.8%, other=11.3%; selected MIN=6 and MAX=18 as the explicit empirical month-category support bounds.",
+          "decision_logic": "Objective=direct method justification; Why=the EHS 2023-24 rented-sectors annex table is a newer official tenancy-length source than the legacy ARLA 2013 Q4 assumption and directly reports AST initial agreement lengths; Tradeoff=this improves source currency and auditability, but the current Java model only exposes TENANCY_LENGTH_MIN/MAX and therefore cannot encode the full empirical discrete distribution without a behavioral code change."
+        }
+      ]
     }
   ]
 }

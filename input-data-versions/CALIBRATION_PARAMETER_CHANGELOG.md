@@ -1283,3 +1283,35 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/remaining_recalibration_data_sources.md`
 - Version(s) affected:
   - `v4.14oo`
+
+### v4.15
+- Script path: `scripts/python/calibration/official/ehs_tenancy_length_2024.py`
+- Outputs/keys produced:
+  - `TENANCY_LENGTH_MIN`
+  - `TENANCY_LENGTH_MAX`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.official.ehs_tenancy_length_2024 --output-dir input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15`
+  - `bash input-data-versions/validate.sh v4.15 --output-dir tmp/validation/v4.15 --workers 20`
+- Expected result snippet:
+  - `6 months: 23.6% (rounded 24%)`
+  - `12 months: 61.3% (rounded 61%)`
+  - `18 months: 3.8% (rounded 4%)`
+  - `other: 11.3% (rounded 11%)`
+  - `TENANCY_LENGTH_MIN = 6`
+  - `TENANCY_LENGTH_MAX = 18`
+- Method chosen:
+  - Published EHS 2023-24 rented-sectors Annex Table 2.10 extraction from `AT2_10`.
+  - The retained artifact is `input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/EHS_23-24_Rented_Sectors_Chapter_2_Annex_Tables.ods`, downloaded from `https://assets.publishing.service.gov.uk/media/6874f2a3730a1bf28e2f9321/EHS_23-24_Rented_Sectors_Chapter_2_Annex_Tables.ods`.
+  - The selected population is private renters with assured shorthold tenancies resident less than 3 years.
+  - The model currently supports only uniform discrete support bounds for tenancy length, so `6` and `18` are promoted as the explicit empirical month-category bounds while the full discrete source distribution remains retained for audit.
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the EHS 2023-24 rented-sectors annex table is a newer official tenancy-length source than the legacy ARLA 2013 Q4 assumption and directly reports AST initial agreement lengths; Tradeoff=this improves source currency and auditability but does not implement the full empirical multinomial distribution because the current Java model only exposes TENANCY_LENGTH_MIN/MAX support bounds.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/README.md`
+  - `input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/EhsTenancyLengthSourceValues.csv`
+  - `input-data-versions/calibration-evidence/ehs-tenancy-length-v4.15/EhsTenancyLengthSummary.json`
+  - `input-data-versions/validation/v4.15.json`
+- Version(s) affected:
+  - `v4.15`
