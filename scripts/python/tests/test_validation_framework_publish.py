@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 from scripts.python.validation.model.runner import (
     build_validation_summary,
+    publish_reference_validation_only,
     resolve_was_data_root,
     run_validation_for_version,
     run_validation_seed,
@@ -136,6 +137,53 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             )
             self.assertEqual(extract_mock.call_count, 8)
             self.assertFalse((repo_root / "input-data-versions" / "validation" / "v0-reference-2011.json").exists())
+
+    def test_reference_only_validation_writes_version_specific_v0_family_overlay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            output_dir = repo_root / "tmp" / "validation" / "v0o"
+            for seed in range(1, 9):
+                (output_dir / f"seed-{seed}").mkdir(parents=True)
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                patch(
+                    "scripts.python.validation.model.runner._extract_seed_metrics",
+                    return_value=self._synthetic_metrics(),
+                ) as extract_mock,
+            ):
+                summary = publish_reference_validation_only(
+                    repo_root=repo_root,
+                    version="v0o",
+                    seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+                    output_dir=output_dir,
+                )
+
+            reference_summary = json.loads(
+                (output_dir / "reference-2011" / "validation_summary.json").read_text(encoding="utf-8")
+            )
+            tracked_reference_overlay = json.loads(
+                (repo_root / "input-data-versions" / "validation-overlays" / "v0o-2011.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+
+            self.assertEqual(summary["version"], "v0o")
+            self.assertEqual(summary["validationTargetYear"], 2011)
+            self.assertEqual(reference_summary["validationTargetYear"], 2011)
+            self.assertEqual(tracked_reference_overlay["version"], "v0o")
+            self.assertEqual(tracked_reference_overlay["validationTargetYear"], 2011)
+            self.assertEqual(tracked_reference_overlay["artifactType"], "reference_overlay")
+            self.assertEqual(
+                tracked_reference_overlay["referenceSourceOutputDir"],
+                "tmp/validation/v0o",
+            )
+            self.assertEqual(extract_mock.call_count, 8)
+            self.assertFalse((repo_root / "input-data-versions" / "validation" / "v0o.json").exists())
+            self.assertFalse((repo_root / "input-data-versions" / "validation-overlays" / "v0-2011.json").exists())
 
     def test_run_validation_for_version_can_reuse_existing_output_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

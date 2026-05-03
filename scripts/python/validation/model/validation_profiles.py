@@ -51,6 +51,8 @@ VALIDATION_PROFILE_REFERENCE_V0_2011 = ValidationProfile(
     },
 )
 
+V0_2011_REFERENCE_VERSIONS = frozenset({"v0", "v0o", "v0oo"})
+
 
 def resolve_validation_profile(version: str) -> ValidationProfile:
     """Resolve the tracked validation profile for one input-data version."""
@@ -62,7 +64,7 @@ def resolve_reference_validation_profile(version: str) -> ValidationProfile | No
     """Resolve an optional non-tracked reference profile for one version."""
 
     normalized_version = version.strip().lower()
-    if normalized_version == "v0":
+    if normalized_version in V0_2011_REFERENCE_VERSIONS:
         return VALIDATION_PROFILE_REFERENCE_V0_2011
     return None
 
@@ -71,6 +73,7 @@ __all__ = [
     "ValidationProfile",
     "VALIDATION_PROFILE_2024",
     "VALIDATION_PROFILE_REFERENCE_V0_2011",
+    "V0_2011_REFERENCE_VERSIONS",
     "resolve_reference_validation_profile",
     "resolve_validation_profile",
 ]

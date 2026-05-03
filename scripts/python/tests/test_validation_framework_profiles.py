@@ -24,13 +24,17 @@ class TestValidationFrameworkProfiles(unittest.TestCase):
         self.assertEqual(latest_profile.validation_target_year, 2024)
         self.assertEqual(latest_profile.was_dataset, "R8")
 
-    def test_resolve_reference_validation_profile_routes_only_v0_to_2011_overlay(self) -> None:
+    def test_resolve_reference_validation_profile_routes_only_v0_family_to_2011_overlay(self) -> None:
         v0_profile = resolve_reference_validation_profile("v0")
+        v0o_profile = resolve_reference_validation_profile("v0o")
+        v0oo_profile = resolve_reference_validation_profile("v0oo")
         latest_profile = resolve_reference_validation_profile("v4.1")
 
         self.assertIsNotNone(v0_profile)
         self.assertEqual(v0_profile.validation_target_year, 2011)
         self.assertEqual(v0_profile.was_dataset, "W3")
+        self.assertIs(v0o_profile, v0_profile)
+        self.assertIs(v0oo_profile, v0_profile)
         self.assertIsNone(latest_profile)
 
     def test_v0_reference_profile_preserves_metric_ids_while_switching_household_reference_wave(self) -> None:

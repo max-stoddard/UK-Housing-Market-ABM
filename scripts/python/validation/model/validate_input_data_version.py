@@ -8,7 +8,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scripts.python.validation.model.runner import run_validation_for_version
+from scripts.python.validation.model.runner import publish_reference_validation_only, run_validation_for_version
 from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
 
@@ -25,6 +25,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Reuse existing per-seed outputs from --output-dir instead of rerunning the model",
     )
+    parser.add_argument(
+        "--reference-only",
+        action="store_true",
+        help="Publish only the optional 2011 reference overlay from existing per-seed outputs.",
+    )
     return parser.parse_args()
 
 
@@ -35,15 +40,32 @@ def parse_seed_list(seed_text: str) -> list[int]:
 def main() -> None:
     args = parse_args()
     repo_root = Path(__file__).resolve().parents[4]
+    seeds = parse_seed_list(args.seeds)
+    was_data_root = Path(args.was_data_root) if args.was_data_root else None
+    if args.reference_only:
+        summary = publish_reference_validation_only(
+            repo_root=repo_root,
+            version=args.version,
+            seeds=seeds,
+            output_dir=Path(args.output_dir),
+            was_data_root=was_data_root,
+        )
+        print(
+            f"Published reference validation overlay for {summary['version']} "
+            f"(targetYear={summary['validationTargetYear']}) "
+            f"with overallCompositeLoss={summary['overallCompositeLoss']:.6f}"
+        )
+        return
+
     validation_profile = resolve_validation_profile(args.version)
     summary = run_validation_for_version(
         repo_root=repo_root,
         version=args.version,
-        seeds=parse_seed_list(args.seeds),
+        seeds=seeds,
         output_dir=Path(args.output_dir),
         maven_bin=args.maven_bin,
         workers=args.workers,
-        was_data_root=Path(args.was_data_root) if args.was_data_root else None,
+        was_data_root=was_data_root,
         reuse_existing_output=args.reuse_existing_output,
     )
     print(

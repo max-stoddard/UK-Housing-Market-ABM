@@ -66,8 +66,20 @@ VALIDATION_RECORDING_OVERRIDES = {
 }
 
 REFERENCE_ARTIFACT_DIRNAME = "reference-2011"
-REFERENCE_OVERLAY_NAME = "v0-2011"
-V0_REFERENCE_ARTIFACT_LABEL = "Tracked 8-seed v0 validation outputs rescored against the v0-only 2011 reference catalog"
+REFERENCE_OVERLAY_SUFFIX = "2011"
+
+
+def reference_overlay_name(version: str) -> str:
+    """Return the dashboard overlay name for one v0-family 2011 reference summary."""
+
+    normalized_version = version.strip().lower()
+    if not normalized_version:
+        raise ValueError("version must not be empty")
+    return f"{normalized_version}-{REFERENCE_OVERLAY_SUFFIX}"
+
+
+def _reference_artifact_label(version: str) -> str:
+    return f"Tracked 8-seed {version} validation outputs rescored against the v0-only 2011 reference catalog"
 
 
 def run_validation_for_version(
@@ -118,6 +130,36 @@ def run_validation_for_version(
         run_results=run_results,
         validation_profile=validation_profile,
         was_data_root=resolved_was_data_root,
+    )
+
+
+def publish_reference_validation_only(
+    *,
+    repo_root: Path,
+    version: str,
+    seeds: Sequence[int],
+    output_dir: Path,
+    was_data_root: Path | None = None,
+) -> dict:
+    """Publish only the optional 2011 reference overlay from existing seed output directories."""
+
+    reference_profile = resolve_reference_validation_profile(version)
+    if reference_profile is None:
+        raise RuntimeError(f"No 2011 reference validation profile is available for {version}")
+
+    resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
+    reference_seed_results = _extract_reference_seed_results_from_output_dir(
+        output_dir=output_dir,
+        seeds=seeds,
+        was_data_root=resolved_was_data_root,
+        reference_profile=reference_profile,
+    )
+    return _write_reference_validation_artifacts(
+        repo_root=repo_root,
+        version=version,
+        output_dir=output_dir,
+        reference_seed_results=reference_seed_results,
+        reference_profile=reference_profile,
     )
 
 
@@ -649,13 +691,35 @@ def publish_reference_validation_artifacts(
     run_results: Sequence[dict[str, object]],
     was_data_root: Path | None = None,
 ) -> dict | None:
-    """Publish the tracked v0-only 2011 reference overlay plus transient audit artifacts."""
+    """Publish the tracked v0-family 2011 reference overlay plus transient audit artifacts."""
 
     reference_profile = resolve_reference_validation_profile(version)
     if reference_profile is None:
         return None
 
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
+    reference_seed_results = _extract_reference_seed_results_from_run_results(
+        repo_root=repo_root,
+        run_results=run_results,
+        was_data_root=resolved_was_data_root,
+        reference_profile=reference_profile,
+    )
+    return _write_reference_validation_artifacts(
+        repo_root=repo_root,
+        version=version,
+        output_dir=output_dir,
+        reference_seed_results=reference_seed_results,
+        reference_profile=reference_profile,
+    )
+
+
+def _extract_reference_seed_results_from_run_results(
+    *,
+    repo_root: Path,
+    run_results: Sequence[dict[str, object]],
+    was_data_root: Path,
+    reference_profile: ValidationProfile,
+) -> list[dict[str, object]]:
     reference_seed_results: list[dict[str, object]] = []
     for tracked_seed_result in run_results:
         seed = int(tracked_seed_result["seed"])
@@ -671,12 +735,48 @@ def publish_reference_validation_artifacts(
                 "outputDir": str(seed_output_dir),
                 "metrics": _extract_seed_metrics(
                     seed_output_dir=seed_output_dir,
-                    was_data_root=resolved_was_data_root,
+                    was_data_root=was_data_root,
                     validation_profile=reference_profile,
                 ),
             }
         )
+    return reference_seed_results
 
+
+def _extract_reference_seed_results_from_output_dir(
+    *,
+    output_dir: Path,
+    seeds: Sequence[int],
+    was_data_root: Path,
+    reference_profile: ValidationProfile,
+) -> list[dict[str, object]]:
+    reference_seed_results: list[dict[str, object]] = []
+    for seed in seeds:
+        seed_output_dir = output_dir / f"seed-{seed}"
+        if not seed_output_dir.exists():
+            raise RuntimeError(f"Missing existing validation output directory: {seed_output_dir}")
+        reference_seed_results.append(
+            {
+                "seed": seed,
+                "outputDir": str(seed_output_dir),
+                "metrics": _extract_seed_metrics(
+                    seed_output_dir=seed_output_dir,
+                    was_data_root=was_data_root,
+                    validation_profile=reference_profile,
+                ),
+            }
+        )
+    return reference_seed_results
+
+
+def _write_reference_validation_artifacts(
+    *,
+    repo_root: Path,
+    version: str,
+    output_dir: Path,
+    reference_seed_results: Sequence[dict[str, object]],
+    reference_profile: ValidationProfile,
+) -> dict:
     seeds = [int(seed_result["seed"]) for seed_result in reference_seed_results]
     summary = build_validation_summary(
         version=version,
@@ -685,7 +785,7 @@ def publish_reference_validation_artifacts(
         validation_profile=reference_profile,
     )
     summary["artifactType"] = "reference_overlay"
-    summary["artifactLabel"] = V0_REFERENCE_ARTIFACT_LABEL
+    summary["artifactLabel"] = _reference_artifact_label(version)
     summary["referenceSourceOutputDir"] = _display_repo_relative_path(
         repo_root=repo_root,
         path=output_dir,
@@ -697,7 +797,7 @@ def publish_reference_validation_artifacts(
     )
     write_validation_overlay_summary(
         repo_root=repo_root,
-        overlay_name=REFERENCE_OVERLAY_NAME,
+        overlay_name=reference_overlay_name(version),
         summary=summary,
     )
     return summary

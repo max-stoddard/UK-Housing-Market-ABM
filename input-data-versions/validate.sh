@@ -6,7 +6,7 @@ set -euo pipefail
 
 print_usage() {
   cat <<EOF
-Usage: $(basename "$0") <version> [--output-dir <path>] [--workers <n>] [--reuse-existing-output]
+Usage: $(basename "$0") <version> [--output-dir <path>] [--workers <n>] [--reuse-existing-output] [--reference-only]
 
 Arguments:
   <version>               Input-data version folder name (for example: v0, v1.0, v4.1).
@@ -15,6 +15,7 @@ Options:
   --output-dir <path>     Transient output directory. Defaults to tmp/validation/<version>.
   --workers <n>          Maximum parallel workers for per-seed validation runs. Defaults to 20.
   --reuse-existing-output Reuse existing per-seed outputs from --output-dir instead of rerunning the model.
+  --reference-only       Publish only the optional 2011 reference overlay from existing per-seed outputs.
 EOF
 }
 
@@ -29,6 +30,7 @@ shift
 output_dir=""
 workers=20
 reuse_existing_output="false"
+reference_only="false"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)
@@ -53,6 +55,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --reuse-existing-output)
       reuse_existing_output="true"
+      shift
+      ;;
+    --reference-only)
+      reference_only="true"
       shift
       ;;
     *)
@@ -81,6 +87,10 @@ validation_args=(
 
 if [[ "${reuse_existing_output}" == "true" ]]; then
   validation_args+=(--reuse-existing-output)
+fi
+
+if [[ "${reference_only}" == "true" ]]; then
+  validation_args+=(--reference-only)
 fi
 
 python3 "${validation_args[@]}"
