@@ -22,6 +22,8 @@ type ValidationSortMode =
   | 'status_severity';
 
 const DEFAULT_SORT_MODE: ValidationSortMode = 'highest_loss';
+const TRACKED_VALIDATION_SERIES_NAME = 'Validation loss';
+const V0_FAMILY_REFERENCE_SERIES_NAME = '2011 validation (v0 family)';
 
 function formatNumber(value: number | null, digits = 3): string {
   if (value === null) {
@@ -143,7 +145,7 @@ function buildSourceReferences(metric: ValidationMetricSummary): Array<{ key: st
 
 interface ValidationTooltipRow {
   axisValue?: string;
-  data?: number | { value?: number };
+  data?: number | null | { value?: number | null };
   marker?: string;
   seriesName?: string;
 }
@@ -174,6 +176,7 @@ function getTooltipValue(data: ValidationTooltipRow['data']): number | null {
 function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
   const selectedIndex = overview.trend.points.findIndex((point) => point.version === overview.selectedVersion);
   const pointsByVersion = new Map(overview.trend.points.map((point) => [point.version, point]));
+  const referencePointsByVersion = new Map(overview.trend.referencePoints.map((point) => [point.version, point]));
   const referenceLine = overview.trend.referenceLine;
   const referenceLineLabel = referenceLine
     ? formatReferenceLineLabel(referenceLine.label, referenceLine.validationTargetYear)
@@ -201,7 +204,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
 
   series.push({
     type: 'line',
-    name: 'Validation loss',
+    name: TRACKED_VALIDATION_SERIES_NAME,
     smooth: true,
     showSymbol: true,
     symbol: 'circle',
@@ -248,13 +251,45 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
         : undefined
   });
 
+  const referenceSeriesData = overview.trend.points.map((point) => {
+    const referencePoint = referencePointsByVersion.get(point.version);
+    if (!referencePoint) {
+      return null;
+    }
+    return {
+      name: point.version,
+      value: referencePoint.overallCompositeLoss
+    };
+  });
+  if (referenceSeriesData.some((point) => point !== null)) {
+    series.push({
+      type: 'line',
+      name: V0_FAMILY_REFERENCE_SERIES_NAME,
+      smooth: false,
+      showSymbol: true,
+      symbol: 'diamond',
+      symbolSize: 11,
+      connectNulls: false,
+      data: referenceSeriesData,
+      lineStyle: { color: '#6741d9', width: 2.2 },
+      itemStyle: { color: '#6741d9' },
+      z: 3
+    });
+  }
+
   return {
+    legend: {
+      top: 8,
+      left: 56,
+      textStyle: { color: '#50625a' }
+    },
     tooltip: {
       trigger: 'axis',
       formatter: (rawParams: unknown) => {
         const rows = (Array.isArray(rawParams) ? rawParams : [rawParams]) as ValidationTooltipRow[];
         const axisValue = String(rows[0]?.axisValue ?? '');
         const point = pointsByVersion.get(axisValue);
+        const referencePoint = referencePointsByVersion.get(axisValue);
         if (!point) {
           return '';
         }
@@ -269,13 +304,20 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
           if (value === null) {
             continue;
           }
-          tooltipRows.push(`${row.marker ?? ''}${row.seriesName ?? 'Validation loss'}: ${formatNumber(value, 4)}`);
+          const seriesName = row.seriesName ?? TRACKED_VALIDATION_SERIES_NAME;
+          const evidenceLabel =
+            seriesName === V0_FAMILY_REFERENCE_SERIES_NAME && referencePoint
+              ? formatValidationTargetYearLabel(referencePoint.validationTargetYear)
+              : seriesName === referenceLineLabel && referenceLine
+                ? formatValidationTargetYearLabel(referenceLine.validationTargetYear)
+                : formatValidationTargetYearLabel(point.validationTargetYear);
+          tooltipRows.push(`${row.marker ?? ''}${seriesName}: ${formatNumber(value, 4)} (${evidenceLabel})`);
         }
 
         return tooltipRows.join('<br/>');
       }
     },
-    grid: { left: 64, right: 28, top: 22, bottom: 56, containLabel: true },
+    grid: { left: 64, right: 28, top: 52, bottom: 56, containLabel: true },
     xAxis: {
       type: 'category',
       data: overview.trend.points.map((point) => point.version),
@@ -464,7 +506,11 @@ export function ValidationPage() {
     }
 
     const params = rawParams as ValidationChartClickParams;
-    if (params.seriesName !== 'Validation loss' || typeof params.name !== 'string' || params.name === selectedVersion) {
+    if (
+      params.seriesName !== TRACKED_VALIDATION_SERIES_NAME ||
+      typeof params.name !== 'string' ||
+      params.name === selectedVersion
+    ) {
       return;
     }
 
@@ -477,9 +523,10 @@ export function ValidationPage() {
         <h2>Validation</h2>
         <div className="validation-intro-copy">
           <p>
-            This page keeps the trend chart on the tracked 2024 timeline and lets you switch the table between the
-            tracked summary and the full <code>v0-2011</code> reference summary. The tracked timeline still includes
-            <code>v0</code> across eight-seed validation summaries.
+            This page keeps the trend chart on the tracked 2024 timeline, overlays the v0-family 2011 validation
+            comparison, and lets you switch the table between the tracked summary and the full <code>v0-2011</code>
+            reference summary. The tracked timeline still includes <code>v0</code> across eight-seed validation
+            summaries.
           </p>
           {viewMode === 'reference_2011' && (
             <p>
@@ -513,7 +560,8 @@ export function ValidationPage() {
               {viewMode === 'tracked' ? (
                 <>
                   Lower validation loss means the model is closer to the external targets and more stable across seeds.
-                  Click a point to load that tracked version in the metric results below.
+                  Click a tracked 2024 point to load that version in the metric results below; the 2011 series is a
+                  sparse v0-family comparison.
                 </>
               ) : (
                 <>

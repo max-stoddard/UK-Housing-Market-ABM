@@ -11,6 +11,7 @@ import { compareVersions } from './versioning';
 
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
+const V0_FAMILY_REFERENCE_VERSIONS = ['v0', 'v0o', 'v0oo'] as const;
 export type ValidationOverviewViewMode = 'tracked' | 'reference_2011';
 const V0_REFERENCE_HPI_STD_BAND_NOTE =
   'Intentionally benchmarked to the same official UK IndexSA population std over 2005-01 through 2024-12 used by the tracked 2024 view; this 2011 reference summary only changes the displayed comparison window.';
@@ -316,6 +317,10 @@ function readValidationOverlay(repoRoot: string, overlayName: string): Validatio
   return parseValidationSummary(filePath, { normalizeTrackedTimeline: false });
 }
 
+function referenceOverlayName(version: string): string {
+  return `${version}-2011`;
+}
+
 function readValidationReferenceSummary(repoRoot: string): ValidationVersionSummary | null {
   const summary = readValidationOverlay(repoRoot, V0_REFERENCE_OVERLAY_NAME);
   if (!summary) {
@@ -341,6 +346,28 @@ function readValidationReferenceSummary(repoRoot: string): ValidationVersionSumm
     version: V0_REFERENCE_OVERLAY_NAME,
     metrics
   };
+}
+
+function readV0FamilyReferencePoints(repoRoot: string, availableVersions: string[]): ValidationReferenceLine[] {
+  const availableVersionSet = new Set(availableVersions);
+  return V0_FAMILY_REFERENCE_VERSIONS.flatMap((version) => {
+    if (!availableVersionSet.has(version)) {
+      return [];
+    }
+    const summary = readValidationOverlay(repoRoot, referenceOverlayName(version));
+    if (!summary) {
+      return [];
+    }
+    return [
+      {
+        version: summary.version,
+        label: `${summary.version} 2011 validation`,
+        description: `${summary.version} validation loss rescored against the v0-family 2011 reference profile.`,
+        overallCompositeLoss: summary.overallCompositeLoss,
+        validationTargetYear: summary.validationTargetYear
+      }
+    ];
+  });
 }
 
 function addLossDeltaVsReference2011(
@@ -414,7 +441,8 @@ export function getValidationOverview(
       validationTargetYear: summary.validationTargetYear,
       overallCompositeLoss: summary.overallCompositeLoss
     })),
-    referenceLine
+    referenceLine,
+    referencePoints: readV0FamilyReferencePoints(repoRoot, availableVersions)
   };
   if (viewMode === 'reference_2011' && !referenceSummary) {
     throw new Error(`Missing validation summary for ${V0_REFERENCE_OVERLAY_NAME}`);

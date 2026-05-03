@@ -325,6 +325,7 @@ export interface ValidationCompositeTrendPoint {
 export interface ValidationCompositeTrendPayload {
   points: ValidationCompositeTrendPoint[];
   referenceLine: ValidationReferenceLine | null;
+  referencePoints: ValidationReferenceLine[];
 }
 
 export interface ValidationOverviewPayload {

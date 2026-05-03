@@ -51,6 +51,7 @@ import { cancelExperimentJob, getExperimentJobLogs, listExperimentJobs } from '.
 import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFilePath } from '../server/lib/io.js';
 import { createWriteAuthController, getWriteAuthConfigurationError, resolveDashboardWriteAccess } from '../server/lib/writeAuth.js';
 import { loadDashboardInputVersionHistory } from '../server/lib/dashboardInputVersionHistory.js';
+import { compareVersions, listVersions, parseVersionParts } from '../server/lib/versioning.js';
 import { assertAxisSpecComplete, getAxisSpec } from '../src/lib/chartAxes.js';
 import { binnedOption } from '../src/lib/compareChartOptions.js';
 import {
@@ -1124,6 +1125,14 @@ const versions = getVersions(repoRoot);
 assert.ok(versions.length > 0, 'Expected at least one version folder');
 assert.ok(!versions.includes('v1'), 'v1 should be excluded after cleanup');
 assert.equal(versions[0], 'v0', 'Oldest version should be v0');
+assert.deepEqual(parseVersionParts('v0oo'), [0, 2], 'Repeated output suffixes should count in version sorting');
+assert.deepEqual(parseVersionParts('v4.14oo'), [4, 14, 2], 'Dotted repeated output suffixes should count in version sorting');
+assert.ok(compareVersions('v0o', 'v0oo') < 0, 'v0o should sort before v0oo');
+assert.ok(compareVersions('v4.14o', 'v4.14oo') < 0, 'v4.14o should sort before v4.14oo');
+assert.deepEqual(listVersions(path.join(repoRoot, 'input-data-versions')), versions, 'Version service should expose raw sorted version folders');
+for (const version of ['v0o', 'v0oo', 'v4.14oo']) {
+  assert.ok(versions.includes(version), `Expected ${version} to be listed as a snapshot version`);
+}
 const inProgressVersions = getInProgressVersions(repoRoot);
 assert.ok(
   inProgressVersions.every((version) => versions.includes(version)),
@@ -1287,6 +1296,20 @@ assert.equal(
 assert.ok(
   referenceValidationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
   'Reference validation mode should keep the trend chart on the tracked 2024 timeline'
+);
+const v0FamilyReferencePoints = validationOverview.trend.referencePoints.filter((point) =>
+  ['v0', 'v0o', 'v0oo'].includes(point.version)
+);
+assert.deepEqual(
+  v0FamilyReferencePoints.map((point) => point.version),
+  ['v0', 'v0o', 'v0oo'],
+  'Validation overview should expose sparse v0-family 2011 reference points'
+);
+assert.ok(
+  v0FamilyReferencePoints.every(
+    (point) => point.validationTargetYear === 2011 && Number.isFinite(point.overallCompositeLoss)
+  ),
+  'Validation overview 2011 reference points should expose finite 2011 losses'
 );
 assert.equal(
   readValidationSummary(repoRoot, 'v0').validationTargetYear,
@@ -1676,6 +1699,11 @@ assert.equal(
   overviewWithReferenceLine.trend.referenceLine?.validationTargetYear,
   2011,
   'Validation overview should keep the dashed comparator on the 2011 reference timeline'
+);
+assert.deepEqual(
+  overviewWithReferenceLine.trend.referencePoints.map((point) => point.version),
+  ['v0'],
+  'Validation overview should expose available sparse 2011 reference points keyed to tracked versions'
 );
 assert.equal(
   overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_mortgageApprovals')
@@ -3366,8 +3394,10 @@ assert.ok(
 );
 assert.ok(
   validationPageSource.includes('tracked 2024 timeline') &&
-    validationPageSource.includes('full <code>v0-2011</code> reference summary'),
-  'Validation page should explain that the trend chart stays tracked while the table can switch to the v0-2011 reference view'
+    validationPageSource.includes('v0-family 2011') &&
+    validationPageSource.includes('full <code>v0-2011</code>') &&
+    validationPageSource.includes('reference summary'),
+  'Validation page should explain that the trend chart stays tracked while showing the v0-family 2011 comparison'
 );
 assert.ok(
   validationPageSource.includes('core_hpiStd') &&
@@ -3397,9 +3427,11 @@ assert.ok(
 );
 assert.ok(
   validationPageSource.includes('referenceLineLabel') &&
+    validationPageSource.includes('referencePointsByVersion') &&
+    validationPageSource.includes('2011 validation (v0 family)') &&
     validationPageSource.includes('Tracked summary:') &&
     !validationPageSource.includes('Dashed comparator:'),
-  'Validation page tooltip should keep the tracked-summary copy and remove the dashed-comparator line'
+  'Validation page tooltip should distinguish tracked and v0-family 2011 validation series'
 );
 assert.ok(
   !validationPageSource.includes('Click to filter the table'),
@@ -3520,7 +3552,8 @@ assert.ok(
 );
 assert.ok(
   validationPageSource.includes('handleChartClick') &&
-    validationPageSource.includes('Click a point to load that tracked version') &&
+    validationPageSource.includes('Click a tracked 2024 point') &&
+    validationPageSource.includes('TRACKED_VALIDATION_SERIES_NAME') &&
     validationPageSource.includes('onClick={handleChartClick}'),
   'Validation page should wire chart point clicks to tracked-version selection'
 );
