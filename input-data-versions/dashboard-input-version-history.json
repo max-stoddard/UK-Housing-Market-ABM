@@ -1565,6 +1565,63 @@
           "decision_logic": "Objective=direct method justification; Why=the EHS 2023-24 rented-sectors annex table is a newer official tenancy-length source than the legacy ARLA 2013 Q4 assumption and directly reports AST initial agreement lengths; Tradeoff=this improves source currency and auditability, but the current Java model only exposes TENANCY_LENGTH_MIN/MAX and therefore cannot encode the full empirical discrete distribution without a behavioral code change."
         }
       ]
+    },
+    {
+      "version_id": "v4.16",
+      "snapshot_folder": "v4.16",
+      "validation_dataset": "r8",
+      "description": "Aligned central-bank owner-occupier LTI soft caps and flow-limit fractions to the Bank of England November 2024 FPC LTI flow-limit recommendation.",
+      "updated_data_sources": [
+        "boe"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source alignment)"
+      ],
+      "config_parameters": [
+        "CENTRAL_BANK_LTI_SOFT_MAX_FTB",
+        "CENTRAL_BANK_LTI_SOFT_MAX_HM",
+        "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB",
+        "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "CENTRAL_BANK_LTI_SOFT_MAX_FTB",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/CentralBankLtiSoftMaxSummary.json"
+        },
+        {
+          "config_parameter": "CENTRAL_BANK_LTI_SOFT_MAX_HM",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/CentralBankLtiSoftMaxSummary.json"
+        },
+        {
+          "config_parameter": "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/CentralBankLtiSoftMaxSummary.json"
+        },
+        {
+          "config_parameter": "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/CentralBankLtiSoftMaxSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-03T16:41:06Z after cloning v4.15 to v4.16, changing CENTRAL_BANK_LTI_SOFT_MAX_FTB from 5.4 to 4.5 and CENTRAL_BANK_LTI_SOFT_MAX_HM from 5.6 to 4.5, and source-confirming CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB/HM at 0.15. The retained Bank of England source artifacts are input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/bank-of-england-fpc-record-november-2024.html and input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/fpc-record-november-2024.pdf, downloaded from https://www.bankofengland.co.uk/financial-policy-summary-and-record/2024/november-2024 and https://www.bankofengland.co.uk/-/media/boe/files/financial-policy-summary-and-record/2024/fpc-record-november-2024.pdf. The Bank of England November 2024 FPC Record states that mortgage lenders should not extend more than 15% of total new residential mortgages at LTI ratios at or greater than 4.5. The official policy is aggregate across new residential mortgages; because the model stores FTB and HM parameters separately, v4.16 applies the same source-backed threshold and fraction to both, which uses the existing shared-quota Java path. The November 2024 de minimis threshold update to GBP 150 million annual residential mortgage lending is retained for audit but not encoded because the model has no lender-size threshold parameter. overallCompositeLoss=0.628715 versus v4.15=0.631380 (delta -0.002665). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.15: none. This release should be treated as an official central-bank policy source alignment that improves policy fidelity and slightly improves the tracked composite validation score."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "CENTRAL_BANK_LTI_SOFT_MAX_FTB",
+            "CENTRAL_BANK_LTI_SOFT_MAX_HM",
+            "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB",
+            "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM"
+          ],
+          "improvement_summary": "Replaced the prior non-binding central-bank LTI soft caps with the official 4.5x Bank of England FPC threshold and retained the 15% flow-limit fraction as source-backed policy.",
+          "why_changed": "To align the central-bank owner-occupier LTI policy parameters with the actual 2024 FPC LTI flow-limit recommendation instead of leaving the soft caps equal to the representative-bank hard LTI limits.",
+          "method_chosen": "Direct source promotion from the Bank of England November 2024 FPC Record: paragraph 44 states no more than 15% of total new residential mortgages should be at LTI ratios at or greater than 4.5; selected 4.5 for both FTB and HM soft caps and retained 0.15 for both FTB and HM max-fraction parameters.",
+          "decision_logic": "Objective=direct method justification; Why=the Bank of England November 2024 FPC Record is the official 2024 central-bank policy source and directly states the 4.5 LTI threshold and 15% flow limit; Tradeoff=the model approximates the aggregate FPC recommendation with equal FTB/HM parameters and cannot encode the lender-size de minimis threshold."
+        }
+      ]
     }
   ]
 }

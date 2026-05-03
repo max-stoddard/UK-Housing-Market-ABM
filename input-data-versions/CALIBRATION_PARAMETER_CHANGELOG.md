@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.14oo`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.16`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -1315,3 +1315,38 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.15.json`
 - Version(s) affected:
   - `v4.15`
+
+### v4.16
+- Script path: `N/A (direct official-policy source alignment)`
+- Outputs/keys produced:
+  - `CENTRAL_BANK_LTI_SOFT_MAX_FTB`
+  - `CENTRAL_BANK_LTI_SOFT_MAX_HM`
+  - `CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB`
+  - `CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM`
+- Exact run command:
+  - `curl -L https://www.bankofengland.co.uk/financial-policy-summary-and-record/2024/november-2024 -o input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/bank-of-england-fpc-record-november-2024.html`
+  - `curl -L https://www.bankofengland.co.uk/-/media/boe/files/financial-policy-summary-and-record/2024/fpc-record-november-2024.pdf -o input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/fpc-record-november-2024.pdf`
+  - `bash input-data-versions/validate.sh v4.16 --output-dir tmp/validation/v4.16 --workers 20`
+- Expected result snippet:
+  - Bank of England FPC Record paragraph 44: LTI flow limit at loan-to-income ratios at or greater than `4.5`
+  - Bank of England FPC Record paragraph 44: no more than `15%` of total new residential mortgages over that threshold
+  - `CENTRAL_BANK_LTI_SOFT_MAX_FTB = 4.5`
+  - `CENTRAL_BANK_LTI_SOFT_MAX_HM = 4.5`
+  - `CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB = 0.15`
+  - `CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM = 0.15`
+- Method chosen:
+  - Directly promote the official Bank of England November 2024 FPC LTI flow-limit threshold and fraction into the model's central-bank owner-occupier LTI policy parameters.
+  - The retained artifacts are `input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/bank-of-england-fpc-record-november-2024.html` and `input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/fpc-record-november-2024.pdf`.
+  - The official policy is aggregate across new residential mortgages; the model exposes FTB and HM parameters, so both borrower groups are set to the same source-backed values. Equal FTB/HM flow-limit fractions use the existing Java shared-quota path.
+  - The November 2024 de minimis threshold update to GBP 150 million annual residential mortgage lending is retained for audit but not encoded because the model has no lender-size threshold parameter.
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the Bank of England November 2024 FPC Record is the official 2024 central-bank policy source and directly states the 4.5 LTI threshold and 15% flow limit; Tradeoff=the model approximates the aggregate FPC recommendation with equal FTB/HM parameters and cannot encode the lender-size de minimis threshold.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/README.md`
+  - `input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/CentralBankLtiSoftMaxSourceValues.csv`
+  - `input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/CentralBankLtiSoftMaxSummary.json`
+  - `input-data-versions/validation/v4.16.json`
+- Version(s) affected:
+  - `v4.16`
