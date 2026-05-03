@@ -1,0 +1,117 @@
+{
+  "sourceVersion": "v0",
+  "outputVersion": "v0o",
+  "outputVersionDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/v0o",
+  "target": 0.0752616555661275,
+  "targetDescription": "Weighted WAS R8 positive gross rental income household share.",
+  "dataBtlProbabilityChanged": false,
+  "seeds": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "workers": 20,
+  "nSteps": 2000,
+  "window": {
+    "startTime": 200,
+    "endTime": 2000
+  },
+  "precision": 0.005,
+  "coarseGrid": {
+    "min": 0.05,
+    "max": 2.0,
+    "step": 0.05,
+    "candidateCount": 40
+  },
+  "fineGrid": {
+    "center": 1.65,
+    "radius": 0.15,
+    "precision": 0.005,
+    "candidateCount": 61
+  },
+  "selected": {
+    "multiplier": 1.63,
+    "stage": "fine",
+    "rentalIncomePositiveShareMean": 0.07512211783082023,
+    "targetGap": 0.00013953773530726854,
+    "activeBtlShareMean": 0.07390164966908243,
+    "latentBtlShareMean": 0.12217008140948674,
+    "btlStockFractionMean": 0.2515570516379789
+  },
+  "bestCoarse": {
+    "stage": "coarse",
+    "multiplier": 1.65,
+    "target": 0.0752616555661275,
+    "target_gap": 0.00022133945300099878,
+    "rental_income_positive_share_mean": 0.0750403161131265,
+    "rental_income_positive_share_stdev": 0.0024333650004859484,
+    "active_btl_share_mean": 0.07415055513986826,
+    "latent_btl_share_mean": 0.12252190352268545,
+    "btl_stock_fraction_mean": 0.24789722376457524,
+    "seed_count": 4,
+    "seeds": [
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "bestFine": {
+    "stage": "fine",
+    "multiplier": 1.63,
+    "target": 0.0752616555661275,
+    "target_gap": 0.00013953773530726854,
+    "rental_income_positive_share_mean": 0.07512211783082023,
+    "rental_income_positive_share_stdev": 0.0015442311714899547,
+    "active_btl_share_mean": 0.07390164966908243,
+    "latent_btl_share_mean": 0.12217008140948674,
+    "btl_stock_fraction_mean": 0.2515570516379789,
+    "seed_count": 4,
+    "seeds": [
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  "searchDiagnostics": {
+    "targetTolerance": 1e-12,
+    "coarse": {
+      "candidateCount": 40,
+      "minMultiplier": 0.05,
+      "maxMultiplier": 2.0,
+      "minRentalIncomePositiveShareMean": 0.017687672447993005,
+      "maxRentalIncomePositiveShareMean": 0.09060790114633543,
+      "selectedMultiplier": 1.65,
+      "selectedTargetGap": 0.00022133945300099878,
+      "selectedOnLowerBoundary": false,
+      "selectedOnUpperBoundary": false,
+      "targetBracketed": true,
+      "targetHit": false,
+      "targetPosition": "within_candidate_output_range"
+    },
+    "fine": {
+      "candidateCount": 61,
+      "minMultiplier": 1.5,
+      "maxMultiplier": 1.8,
+      "minRentalIncomePositiveShareMean": 0.06934494383184156,
+      "maxRentalIncomePositiveShareMean": 0.0837101911804277,
+      "selectedMultiplier": 1.63,
+      "selectedTargetGap": 0.00013953773530726854,
+      "selectedOnLowerBoundary": false,
+      "selectedOnUpperBoundary": false,
+      "targetBracketed": true,
+      "targetHit": false,
+      "targetPosition": "within_candidate_output_range"
+    },
+    "warnings": [
+      "coarse selected candidate does not exactly hit the target.",
+      "fine selected candidate does not exactly hit the target."
+    ],
+    "promotedWithWarnings": true
+  },
+  "selectionRule": "minimize primary target gap; deterministic lower-multiplier ordering only for exact equal gaps",
+  "runOutputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v0o",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o"
+}

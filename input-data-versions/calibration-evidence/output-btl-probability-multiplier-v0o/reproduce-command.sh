@@ -1,0 +1,12 @@
+python3 -m scripts.python.calibration.output.btl_probability_multiplier \
+  --version v0 \
+  --output-version v0o \
+  --seeds 1,2,3,4 \
+  --workers 20 \
+  --precision 0.005 \
+  --coarse-min 0.05 \
+  --coarse-max 2 \
+  --coarse-step 0.05 \
+  --fine-radius 0.15 \
+  --target 0.0752616555661275 \
+  --output-root tmp/output-calibration
