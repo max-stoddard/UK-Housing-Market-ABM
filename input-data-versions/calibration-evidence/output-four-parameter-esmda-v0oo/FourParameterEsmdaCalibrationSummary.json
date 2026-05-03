@@ -1,0 +1,312 @@
+{
+  "workflow": "four-parameter-esmda",
+  "sourceVersion": "v0o",
+  "outputVersion": "v0oo",
+  "parameters": [
+    "PSYCHOLOGICAL_COST_OF_RENTING",
+    "SENSITIVITY_RENT_OR_PURCHASE",
+    "BTL_CHOICE_INTENSITY",
+    "MARKET_AVERAGE_PRICE_DECAY"
+  ],
+  "sourceParameters": {
+    "PSYCHOLOGICAL_COST_OF_RENTING": 0.4,
+    "SENSITIVITY_RENT_OR_PURCHASE": 0.001,
+    "BTL_CHOICE_INTENSITY": 100.0,
+    "MARKET_AVERAGE_PRICE_DECAY": 0.5
+  },
+  "validationProfile": {
+    "profileId": "validation-reference-v0-2011",
+    "validationTargetYear": 2011,
+    "wasDataset": "W3",
+    "metricCount": 17,
+    "requiredMetricCount": 17
+  },
+  "validationLossHandling": "Validation metricLoss and overallCompositeLoss values are target-normalized but unbounded; values greater than 1.0 are expected for severe misses and must not be clipped or treated as probabilities.",
+  "seeds": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "workers": 20,
+  "candidateParallelism": 5,
+  "ensembleSize": 40,
+  "assimilationSteps": 4,
+  "rngSeed": 20260502,
+  "alphaSchedule": [
+    2.533,
+    3.6185714285714288,
+    5.169387755102041,
+    7.384839650145774
+  ],
+  "alphaScheduleCheckSumInverse": 1.0,
+  "parameterSpecs": [
+    {
+      "name": "PSYCHOLOGICAL_COST_OF_RENTING",
+      "lower": 0.0,
+      "upper": 0.8,
+      "prior_lower": 0.2,
+      "prior_upper": 0.6,
+      "transform": "bounded_logit",
+      "final_snap": 0.05,
+      "final_sigfigs": null
+    },
+    {
+      "name": "SENSITIVITY_RENT_OR_PURCHASE",
+      "lower": 0.0001,
+      "upper": 0.002,
+      "prior_lower": 0.0005,
+      "prior_upper": 0.0015,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": 2
+    },
+    {
+      "name": "BTL_CHOICE_INTENSITY",
+      "lower": 25.0,
+      "upper": 250.0,
+      "prior_lower": 50.0,
+      "prior_upper": 150.0,
+      "transform": "log10",
+      "final_snap": 10.0,
+      "final_sigfigs": null
+    },
+    {
+      "name": "MARKET_AVERAGE_PRICE_DECAY",
+      "lower": 0.25,
+      "upper": 0.85,
+      "prior_lower": 0.4,
+      "prior_upper": 0.7,
+      "transform": "bounded_logit",
+      "final_snap": 0.02,
+      "final_sigfigs": null
+    }
+  ],
+  "observations": [
+    {
+      "metric_id": "core_mortgageApprovals",
+      "observed_value": 49.28633333333333,
+      "loss_scale": 49.28633333333333,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.10192480674155781,
+      "target_lower": 42.883,
+      "target_upper": 52.93
+    },
+    {
+      "metric_id": "core_housingTransactions",
+      "observed_value": 73.55166666666666,
+      "loss_scale": 73.55166666666666,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.05764655231016739,
+      "target_lower": 68.68,
+      "target_upper": 77.16
+    },
+    {
+      "metric_id": "core_advancesToFTB",
+      "observed_value": 16.083333333333336,
+      "loss_scale": 16.083333333333336,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.14999999999999997,
+      "target_lower": 13.671,
+      "target_upper": 18.496
+    },
+    {
+      "metric_id": "core_advancesToHM",
+      "observed_value": 26.375,
+      "loss_scale": 26.375,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.1499905213270142,
+      "target_lower": 22.419,
+      "target_upper": 30.331
+    },
+    {
+      "metric_id": "core_advancesToBTL",
+      "observed_value": 7.0,
+      "loss_scale": 7.0,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.15000000000000005,
+      "target_lower": 5.95,
+      "target_upper": 8.05
+    },
+    {
+      "metric_id": "core_debtToIncome",
+      "observed_value": 162.93794051498202,
+      "loss_scale": 162.93794051498202,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.007228416058094502,
+      "target_lower": 161.8704279215477,
+      "target_upper": 164.2259943729304
+    },
+    {
+      "metric_id": "core_priceToIncome",
+      "observed_value": 4.240062566676624,
+      "loss_scale": 4.240062566676624,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.005094298469788563,
+      "target_lower": 4.225101341813285,
+      "target_upper": 4.268301630303742
+    },
+    {
+      "metric_id": "core_housePriceGrowth",
+      "observed_value": -0.3968031463238107,
+      "loss_scale": 0.1702610669693572,
+      "loss_scale_basis": "target_band_upper",
+      "normalized_observed_value": -2.330557146075124,
+      "normalized_error_std": 3.27506021863994,
+      "target_lower": -0.9449694274597076,
+      "target_upper": 0.1702610669693572
+    },
+    {
+      "metric_id": "core_hpiMean",
+      "observed_value": 0.9922839506172839,
+      "loss_scale": 0.9922839506172839,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.15,
+      "target_lower": 0.8434413580246913,
+      "target_upper": 1.1411265432098765
+    },
+    {
+      "metric_id": "core_hpiStd",
+      "observed_value": 0.2766701944903836,
+      "loss_scale": 0.2766701944903836,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.14999999999999994,
+      "target_lower": 0.23516966531682607,
+      "target_upper": 0.3181707236639411
+    },
+    {
+      "metric_id": "core_hpiCyclePeriod",
+      "observed_value": 171.33333333333334,
+      "loss_scale": 171.33333333333334,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.15,
+      "target_lower": 145.63333333333333,
+      "target_upper": 197.03333333333333
+    },
+    {
+      "metric_id": "core_ooDebtToIncome",
+      "observed_value": 99.20166107684075,
+      "loss_scale": 99.20166107684075,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.005717240932295265,
+      "target_lower": 98.61909294397614,
+      "target_upper": 99.75341253849653
+    },
+    {
+      "metric_id": "core_rentalYield",
+      "observed_value": 6.1,
+      "loss_scale": 6.1,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.14999999999999994,
+      "target_lower": 5.185,
+      "target_upper": 7.014999999999999
+    },
+    {
+      "metric_id": "core_interestRateSpread",
+      "observed_value": 2.4800784641069633,
+      "loss_scale": 2.4800784641069633,
+      "loss_scale_basis": "source_value",
+      "normalized_observed_value": 1.0,
+      "normalized_error_std": 0.04621859545761933,
+      "target_lower": 2.3975732465696207,
+      "target_upper": 2.626824733041048
+    },
+    {
+      "metric_id": "income_distribution_jsd",
+      "observed_value": 0.06,
+      "loss_scale": 0.12,
+      "loss_scale_basis": "target_band_upper",
+      "normalized_observed_value": 0.5,
+      "normalized_error_std": 0.5,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "housing_wealth_distribution_jsd",
+      "observed_value": 0.06,
+      "loss_scale": 0.12,
+      "loss_scale_basis": "target_band_upper",
+      "normalized_observed_value": 0.5,
+      "normalized_error_std": 0.5,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "financial_wealth_distribution_jsd",
+      "observed_value": 0.06,
+      "loss_scale": 0.12,
+      "loss_scale_basis": "target_band_upper",
+      "normalized_observed_value": 0.5,
+      "normalized_error_std": 0.5,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    }
+  ],
+  "outputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v0oo/four-parameter-esmda",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-four-parameter-esmda-v0oo",
+  "dryRun": false,
+  "createdOutputVersion": true,
+  "outputVersionDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/v0oo",
+  "selected": {
+    "iteration": 0,
+    "memberId": 30,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.25",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.0014",
+      "BTL_CHOICE_INTENSITY": "100",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.6"
+    },
+    "overallCompositeLoss": 0.44952690592694255,
+    "statusCounts": {
+      "pass": 7,
+      "warn": 1,
+      "fail": 9,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.2442963679860192,
+    "rankKey": [
+      0.44952690592694255,
+      9,
+      1,
+      0.2442963679860192
+    ]
+  },
+  "baseline": {
+    "iteration": 0,
+    "memberId": 0,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.4",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.001",
+      "BTL_CHOICE_INTENSITY": "100",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+    },
+    "overallCompositeLoss": 0.5056096536555562,
+    "statusCounts": {
+      "pass": 5,
+      "warn": 0,
+      "fail": 12,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.0,
+    "rankKey": [
+      0.5056096536555562,
+      12,
+      0,
+      0.0
+    ]
+  },
+  "warnings": [],
+  "finalValidationNote": "Selected snapped parameters were written to the output version. Run input-data-versions/validate.sh before claiming release calibration validity."
+}
