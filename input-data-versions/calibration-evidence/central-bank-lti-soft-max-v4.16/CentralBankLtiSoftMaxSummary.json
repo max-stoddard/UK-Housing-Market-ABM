@@ -1,0 +1,33 @@
+{
+  "version": "v4.16",
+  "generatedAt": "2026-05-03T16:38:22Z",
+  "source": {
+    "publisher": "Bank of England",
+    "documentTitle": "Financial Policy Committee Record - November 2024",
+    "publishedOn": "2024-11-29",
+    "meetingDate": "2024-11-15",
+    "htmlUrl": "https://www.bankofengland.co.uk/financial-policy-summary-and-record/2024/november-2024",
+    "pdfUrl": "https://www.bankofengland.co.uk/-/media/boe/files/financial-policy-summary-and-record/2024/fpc-record-november-2024.pdf",
+    "htmlArtifactPath": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/bank-of-england-fpc-record-november-2024.html",
+    "pdfArtifactPath": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/fpc-record-november-2024.pdf",
+    "htmlSha256": "c61d8a32b44ecde57ea862facdbf8dadb18c33e65d9785d72a00140a78c90157",
+    "pdfSha256": "0e567364b9f671c1d1857e5b982217412295c74a0762a112807a468acf6799de"
+  },
+  "sourceValues": {
+    "ltiThreshold": 4.5,
+    "flowLimitFraction": 0.15,
+    "deMinimisThresholdGbp": 150000000
+  },
+  "selectedConfigValues": {
+    "CENTRAL_BANK_LTI_SOFT_MAX_FTB": 4.5,
+    "CENTRAL_BANK_LTI_SOFT_MAX_HM": 4.5,
+    "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB": 0.15,
+    "CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM": 0.15
+  },
+  "modelMapping": {
+    "borrowerSegmentation": "The official FPC LTI flow limit is aggregate across new residential mortgages. The model stores separate first-time buyer and home mover soft caps and max-fraction parameters, so v4.16 sets both borrower groups to the same threshold and fraction.",
+    "sharedQuota": "Because the FTB and HM max-fraction parameters are equal, the Java bank logic uses the shared owner-occupier quota path.",
+    "deMinimisThreshold": "The November 2024 FPC Record recommends increasing the lender-size de minimis threshold to GBP 150 million, but this model has no lender-size threshold parameter. The value is retained for audit only."
+  },
+  "methodDecision": "Objective=direct method justification; Why=the Bank of England November 2024 FPC Record is the official 2024 central-bank policy source and directly states the 4.5 LTI threshold and 15% flow limit; Tradeoff=the model approximates the aggregate FPC recommendation with equal FTB/HM parameters and cannot encode the lender-size de minimis threshold."
+}

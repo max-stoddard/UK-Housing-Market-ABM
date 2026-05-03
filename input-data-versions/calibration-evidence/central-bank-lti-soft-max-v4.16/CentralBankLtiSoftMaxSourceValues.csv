@@ -1,0 +1,6 @@
+source,source_date,source_line,source_field,source_value,normalized_value,config_parameter,notes
+Bank of England FPC Record November 2024,2024-11-29,44,LTI threshold at or greater than,4.5,4.5,CENTRAL_BANK_LTI_SOFT_MAX_FTB,Official policy is aggregate across residential mortgages; model stores FTB and HM soft caps separately.
+Bank of England FPC Record November 2024,2024-11-29,44,LTI threshold at or greater than,4.5,4.5,CENTRAL_BANK_LTI_SOFT_MAX_HM,Official policy is aggregate across residential mortgages; model stores FTB and HM soft caps separately.
+Bank of England FPC Record November 2024,2024-11-29,44,maximum share above threshold,15%,0.15,CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB,Official policy is aggregate; equal FTB/HM fractions trigger the model's shared-quota path.
+Bank of England FPC Record November 2024,2024-11-29,44,maximum share above threshold,15%,0.15,CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM,Official policy is aggregate; equal FTB/HM fractions trigger the model's shared-quota path.
+Bank of England FPC Record November 2024,2024-11-29,46,de minimis threshold,GBP 150 million,150000000,N/A,Retained for audit only; no lender-size threshold parameter exists in the model.
