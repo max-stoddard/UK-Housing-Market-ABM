@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.18`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.19`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -1416,3 +1416,37 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.18.json`
 - Version(s) affected:
   - `v4.18`
+
+### v4.19
+- Script path: `scripts/python/calibration/official/rent_gross_yield_2024.py`
+- Outputs/keys produced:
+  - `RENT_GROSS_YIELD`
+- Exact run command:
+  - `curl -L https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/Average-prices-2024-12.csv -o input-data-versions/calibration-evidence/rent-gross-yield-v4.19/Average-prices-2024-12.csv`
+  - `curl -L https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv -o input-data-versions/calibration-evidence/rent-gross-yield-v4.19/UK-HPI-full-file-2024-12.csv`
+  - `curl -L 'https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx' -o input-data-versions/calibration-evidence/rent-gross-yield-v4.19/priceindexofprivaterentsukmonthlypricestatistics.xlsx`
+  - `python3 -m scripts.python.calibration.official.rent_gross_yield_2024 --pipr-xlsx input-data-versions/calibration-evidence/rent-gross-yield-v4.19/priceindexofprivaterentsukmonthlypricestatistics.xlsx --hpi-full-csv input-data-versions/calibration-evidence/rent-gross-yield-v4.19/UK-HPI-full-file-2024-12.csv --average-prices-csv input-data-versions/calibration-evidence/rent-gross-yield-v4.19/Average-prices-2024-12.csv --output-dir input-data-versions/calibration-evidence/rent-gross-yield-v4.19`
+  - `bash input-data-versions/validate.sh v4.19 --output-dir tmp/validation/v4.19 --workers 20`
+- Expected result snippet:
+  - The December 2024 ONS PIPR workbook marks UK and Northern Ireland rent-price levels as `[x]`, so the selected numerator uses the highest available numeric aggregate, Great Britain.
+  - PIPR Great Britain rent-price mean, January-November 2024: `1271.1818181818182`.
+  - HM Land Registry UK HPI full-file United Kingdom `AveragePrice` mean, January-December 2024: `262397.5833333333`.
+  - `RENT_GROSS_YIELD = 12 * 1271.1818181818182 / 262397.5833333333 = 0.05813385026036566`, rounded in config to `0.0581338503`.
+  - Tracked validation summary generated on `2026-05-05T09:51:30Z` with `overallCompositeLoss=0.61541905307338`, improved from `v4.18=0.6287151104480216`.
+  - The `core_rentalYield` metric remains failing and moves from `5.8630533611111115%` in `v4.18` to `5.781926166666667%` in `v4.19`, still below the UK Finance 2024 observed target band `[6.88, 7.00]`.
+- Method chosen:
+  - Clone `v4.18` to `v4.19` and update only `RENT_GROSS_YIELD`.
+  - Use the requested rent-to-price formula with ONS PIPR Great Britain rent-price levels and HM Land Registry UK HPI full-file United Kingdom average prices.
+  - Retain the HMLR `Average-prices-2024-12.csv` file as a rejected comparator because the full file is richer, auditable, and already aligned with the repository's validation-source shape.
+  - Do not add transaction-volume weighting over monthly HPI prices because this parameter needs a price-level denominator rather than a transaction-flow-weighted denominator, and the December 2024 full file lacks UK `SalesVolume` for November and December.
+- Method-selection decision logic:
+  - `Objective=direct method justification; Why=the PIPR/HMLR formula replaces the legacy 2013 literature/ARLA source with official 2024 rent and price levels while documenting the unavailable literal UK rent numerator; Tradeoff=the numerator is Great Britain rather than UK, and the source-fidelity improvement does not directly fix the realized rental-yield validation metric.`
+- Rationale category:
+  - direct method justification
+- Evidence links:
+  - `input-data-versions/calibration-evidence/rent-gross-yield-v4.19/README.md`
+  - `input-data-versions/calibration-evidence/rent-gross-yield-v4.19/RentGrossYield2024SourceValues.csv`
+  - `input-data-versions/calibration-evidence/rent-gross-yield-v4.19/RentGrossYield2024Summary.json`
+  - `input-data-versions/validation/v4.19.json`
+- Version(s) affected:
+  - `v4.19`
