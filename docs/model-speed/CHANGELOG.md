@@ -10,6 +10,25 @@ This changelog is dedicated only to the model-speed improvement programme.
 - Benchmark and regression impact
 - Required follow-up
 
+## 2026-05-05 - v0 Canonical Baseline Set
+- Rebased the active model-speed benchmark strategy from `input-data-versions/v4.1` to the full `input-data-versions/v0` snapshot while preserving snapshot-local config materialisation.
+- Replaced the old active mode set with exactly two canonical baselines:
+  - `e2e-default-10k-s1` for exact correctness and output-contract regression
+  - `core-minimal-20k-s1` for primary single-run speed and scaling
+- Retired `core-minimal-10k` as a primary speed baseline identity; `10k` remains only in the full-output exact regression gate.
+- Rejected `core-minimal-100k-s1` as a routine canonical baseline after benchmark execution showed it was too slow for the programme's regular gate.
+- Rejected `core-minimal-10k-s8` as a routine canonical baseline because `N_SIMS = 8` currently measures expensive serial multi-simulation execution rather than worker-level parallel scaling.
+- Documented worker ladders `1`, `8`, and `16` as hardware-specific scaling experiments rather than canonical baseline identities.
+
+Regression policy from this point:
+- exact regression is anchored on `v0 / e2e-default-10k-s1`
+- the minimal-output baseline summary is speed and scaling evidence, not an exact correctness contract
+
+Required follow-up:
+- regenerate and review the v0 exact hash manifest for `e2e-default-10k-s1`
+- refresh summary snapshots for both canonical baselines after the first full benchmark set
+- refresh profiling artifacts against `core-minimal-20k-s1` when prioritising the next optimisation slice
+
 ## 2026-03-07 - Phase 1 Scaffolding
 - Froze the speed programme baseline at `input-data-versions/v4.1` with `r8` as the validation target.
 - Defined the primary engineering metric as `seconds_per_household_month = wall_clock_seconds / (TARGET_POPULATION * N_STEPS * N_SIMS)`.

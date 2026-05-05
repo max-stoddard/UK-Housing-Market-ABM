@@ -6,7 +6,7 @@ This folder is the canonical planning and operational home for iterative model-s
 
 The programme is intentionally performance-engineering-led:
 
-1. Freeze a reproducible benchmark baseline.
+1. Freeze reproducible benchmark baselines.
 2. Measure before changing anything.
 3. Profile before choosing hotspots.
 4. Optimise one hotspot family at a time.
@@ -14,8 +14,8 @@ The programme is intentionally performance-engineering-led:
 
 No speed change is accepted on anecdote alone.
 
-## Frozen Baseline
-- Input snapshot: `input-data-versions/v4.1`
+## Frozen Baselines
+- Input snapshot: `input-data-versions/v0`
 - Validation dataset target: `r8`
 - Benchmark host assumption: WSL2 Ubuntu
 - Runtime toolchain target: OpenJDK 25, Maven 3.8.7
@@ -24,7 +24,7 @@ No speed change is accepted on anecdote alone.
 Important:
 - The speed harness is snapshot-local and does **not** mutate `src/main/resources`.
 - This is deliberate because the repository often has active uncommitted resource edits.
-- The legacy validation entrypoint `bash input-data-versions/validate.sh v4.1 r8 --no-graphs` still switches live resources and should therefore be run only from a clean or explicitly prepared worktree state.
+- The legacy validation entrypoint `bash input-data-versions/validate.sh v0 r8 --no-graphs` still switches live resources and should therefore be run only from a clean or explicitly prepared worktree state.
 
 ## Metrics
 Primary engineering metric:
@@ -42,7 +42,7 @@ Guardrail metric:
 - `end-to-end wall_clock_seconds` for the whole model run, including JVM startup and output generation for the chosen benchmark mode
 
 Supporting metrics:
-- `model_computing_seconds` from the model’s own stdout
+- `model_computing_seconds` from the model's own stdout
 - `max_rss_kb`
 - `user_cpu_seconds`
 - `system_cpu_seconds`
@@ -50,41 +50,39 @@ Supporting metrics:
 - `gc_pause_count`
 - `gc_pause_time_ms_total`
 
-## Scale SLO
-First major scale SLO:
-- `v4.1`
-- `core-minimal-100k`
-- `TARGET_POPULATION = 100000`
-- practical runtime target: under `60s` on the pinned benchmark setup
-
-This SLO is used to decide whether exact single-thread optimisation is sufficient or whether a later parallel track is justified.
-
-## Benchmark Modes
+## Canonical Baselines
 Authoritative tracked mode definitions live under [`scripts/model/configs`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/scripts/model/configs).
 
 At runtime the harness materialises a full snapshot-local config copy under `tmp/model-speed/generated-configs/` by:
-- loading `input-data-versions/v4.1/config.properties`
-- rewriting resource paths to `input-data-versions/v4.1/...`
+- loading `input-data-versions/v0/config.properties`
+- rewriting resource paths to `input-data-versions/v0/...`
 - applying the pinned mode overrides
 
-Supported modes:
-- `e2e-default-10k`: `v4.1` default output contract at `TARGET_POPULATION = 10000`
-- `core-minimal-10k`: same economic model, recorder-heavy outputs disabled, `TARGET_POPULATION = 10000`
-- `core-minimal-100k`: same minimal-output contract, `TARGET_POPULATION = 100000`
+The canonical baselines are:
+- `e2e-default-10k-s1`: `TARGET_POPULATION = 10000`, `N_STEPS = 2000`, `N_SIMS = 1`, default/full output contract. This is the exact correctness and output-contract regression gate.
+- `core-minimal-20k-s1`: `TARGET_POPULATION = 20000`, `N_STEPS = 2000`, `N_SIMS = 1`, minimal outputs. This is the primary single-run simulation speed and scaling gate.
+
+The `10k` e2e baseline is not the primary speed baseline. Its purpose is to preserve exact model/output correctness while speed work is evaluated on the minimal-output core baselines.
 
 ## Workflow
 ### 1. Benchmark First
-Canonical benchmark command:
+Run the two canonical benchmark baselines:
 
 ```bash
 bash scripts/model/run-speed-benchmark.sh \
-  --snapshot v4.1 \
-  --mode e2e-default-10k \
+  --snapshot v0 \
+  --mode e2e-default-10k-s1 \
+  --repeat 5 \
+  --output-root tmp/model-speed/benchmarks
+
+bash scripts/model/run-speed-benchmark.sh \
+  --snapshot v0 \
+  --mode core-minimal-20k-s1 \
   --repeat 5 \
   --output-root tmp/model-speed/benchmarks
 ```
 
-What it does:
+What each benchmark does:
 - compiles the Java project
 - resolves a direct runtime classpath
 - materialises a snapshot-local benchmark config
@@ -95,26 +93,26 @@ What it does:
 - emits a run TSV and aggregate summary JSON
 - re-runs the median measured case with JFR enabled
 
-For large-scale minimal benchmarking, enable the population ladder sanity check:
+For population-shape sanity checks, the existing ladder mode may be used on `core-minimal-20k-s1`:
 
 ```bash
 MODEL_SPEED_POPULATION_LADDER=1 \
 bash scripts/model/run-speed-benchmark.sh \
-  --snapshot v4.1 \
-  --mode core-minimal-100k \
+  --snapshot v0 \
+  --mode core-minimal-20k-s1 \
   --repeat 3 \
   --output-root tmp/model-speed/benchmarks
 ```
 
-The ladder run records one measured pass each at `10k`, `25k`, `50k`, and `100k`.
+The population ladder records one measured pass each at `10k` and `20k`. These points are diagnostics, not baseline identities.
 
 ### 2. Profile Second
 Canonical JFR profile command:
 
 ```bash
 bash scripts/model/profile-model.sh \
-  --snapshot v4.1 \
-  --mode core-minimal-10k \
+  --snapshot v0 \
+  --mode core-minimal-20k-s1 \
   --profiler jfr \
   --output-root tmp/model-speed/profiles
 ```
@@ -123,20 +121,15 @@ Canonical `perf` command:
 
 ```bash
 bash scripts/model/profile-model.sh \
-  --snapshot v4.1 \
-  --mode core-minimal-10k \
+  --snapshot v0 \
+  --mode core-minimal-20k-s1 \
   --profiler perf \
   --output-root tmp/model-speed/profiles
 ```
 
 Use JFR first. Only reach for `perf` if JFR does not make CPU or allocation hotspots clear enough on WSL.
 
-Current checked-in profiling artifacts from the existing smoke recordings live under [`docs/model-speed/profiles`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/docs/model-speed/profiles):
-- `core-minimal-10k-modelstep-flamegraph.svg`
-- `e2e-default-10k-modelstep-flamegraph.svg`
-- `JFR_METHOD_BREAKDOWN.md`
-
-These artifacts are generated from JFR `jdk.ExecutionSample` events and should be read as sample-share estimates, not exact per-method stopwatch timings.
+Current checked-in profiling artifacts from the earlier v4.1 smoke recordings live under [`docs/model-speed/profiles`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/docs/model-speed/profiles). These artifacts are historical hotspot evidence and are not current canonical baselines.
 
 ### 3. Optimise In Narrow Slices
 Default hotspot order unless profiling disproves it:
@@ -157,10 +150,10 @@ Exact regression command:
 
 ```bash
 bash scripts/model/run-speed-regression.sh \
-  --snapshot v4.1 \
-  --mode e2e-default-10k \
+  --snapshot v0 \
+  --mode e2e-default-10k-s1 \
   --contract exact \
-  --baseline-manifest docs/model-speed/baselines/v4.1-e2e-default-10k.exact.sha256 \
+  --baseline-manifest docs/model-speed/baselines/v0-e2e-default-10k-s1.exact.sha256 \
   --output-root tmp/model-speed/regressions
 ```
 
@@ -168,23 +161,23 @@ Future tolerance contract command shape:
 
 ```bash
 bash scripts/model/run-speed-regression.sh \
-  --snapshot v4.1 \
-  --mode e2e-default-10k \
+  --snapshot v0 \
+  --mode e2e-default-10k-s1 \
   --contract tolerance \
   --baseline-manifest path/to/tolerance-spec.json \
   --output-root tmp/model-speed/regressions
 ```
 
 Current policy:
-- single-thread speed work must remain bitwise exact
-- tolerance-based regression is reserved for a later explicitly approved parallel track
+- single-run speed work must remain bitwise exact against `e2e-default-10k-s1`
+- tolerance-based regression is reserved for a later explicitly approved track
 
 ## Acceptance Criteria
 Every accepted speed change must pass:
 - `mvn -q -DskipTests compile`
-- exact deterministic regression on `v4.1 / e2e-default-10k`
-- full benchmark rerun on the three fixed benchmark modes
-- `bash input-data-versions/validate.sh v4.1 r8 --no-graphs`
+- exact deterministic regression on `v0 / e2e-default-10k-s1`
+- full benchmark rerun on the two canonical baselines
+- `bash input-data-versions/validate.sh v0 r8 --no-graphs` when a model-code change needs live validation and the worktree is prepared for resource mutation
 
 Exact means:
 - same output file set
@@ -202,21 +195,19 @@ The benchmark delta report for each accepted speed change must show:
 Tracked baseline manifests and summary snapshots live in [`docs/model-speed/baselines`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/docs/model-speed/baselines).
 
 Rules:
-- only tracked manifests and summary snapshots belong there
+- exact hash manifests are tracked only for the e2e correctness gate
+- summary snapshots are tracked for both canonical baselines
 - raw run outputs belong in `tmp/model-speed/`
 - generated configs belong in `tmp/model-speed/generated-configs/`
 - `Results/` is not the canonical home for speed-regression baselines
 
-## Parallelisation Policy
-Parallel work is intentionally deferred.
+## Parallel And Scaling Experiments
+There is no canonical `N_SIMS > 1` baseline at present. The current Java path executes multiple simulations serially inside one process, so `N_SIMS = 8` is too expensive for routine gating and does not directly measure worker-level parallel execution.
 
-Open a separate parallel track only if:
-- exact single-thread work has plateaued
-- the `100k < 60s` SLO is still not met
-- the regression contract for the new track is explicitly written down first
+Worker ladders are scaling experiments, not baseline identities. Use `1`, `8`, and `16` workers when evaluating outer-loop parallel execution over independent single-simulation jobs on suitable hardware, and report the worker count alongside the host details. The `16` point is hardware-specific and must not define a canonical baseline name.
 
-Preferred order if that track opens:
+Preferred order for parallel work:
 1. outer-loop parallelism (`N_SIMS`, seed batches, sweeps)
 2. only then consider intra-run parallelism
 
-The exact single-thread path remains the canonical reference even after any future parallel track begins.
+The exact `e2e-default-10k-s1` path remains the canonical correctness reference after any parallel track begins.

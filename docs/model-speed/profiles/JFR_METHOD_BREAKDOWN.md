@@ -4,6 +4,8 @@ Author: Max Stoddard
 This report is derived from existing JFR `jdk.ExecutionSample` recordings.
 Percentages are sample-share estimates, not exact stopwatch timings.
 
+Note: these recordings are historical v4.1 smoke profiles. They remain useful hotspot evidence, but they are not the current canonical v0 benchmark baselines.
+
 ## Core Minimal 10K
 
 - Profile id: `core-minimal-10k`
