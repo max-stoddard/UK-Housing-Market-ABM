@@ -1622,6 +1622,90 @@
           "decision_logic": "Objective=direct method justification; Why=the Bank of England November 2024 FPC Record is the official 2024 central-bank policy source and directly states the 4.5 LTI threshold and 15% flow limit; Tradeoff=the model approximates the aggregate FPC recommendation with equal FTB/HM parameters and cannot encode the lender-size de minimis threshold."
         }
       ]
+    },
+    {
+      "version_id": "v4.17",
+      "snapshot_folder": "v4.17",
+      "validation_dataset": "r8",
+      "description": "Made the central-bank owner-occupier affordability hard cap explicitly non-binding after the Bank of England FPC withdrew its mortgage-market affordability-test Recommendation.",
+      "updated_data_sources": [
+        "boe"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source alignment)"
+      ],
+      "config_parameters": [
+        "CENTRAL_BANK_AFFORDABILITY_HARD_MAX"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "CENTRAL_BANK_AFFORDABILITY_HARD_MAX",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-affordability-hard-max-v4.17/CentralBankAffordabilityHardMaxSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-03T17:00:01Z after cloning v4.16 to v4.17 and changing CENTRAL_BANK_AFFORDABILITY_HARD_MAX from 0.4 to 0.9999. The retained Bank of England source artifact is input-data-versions/calibration-evidence/central-bank-affordability-hard-max-v4.17/bank-of-england-fpc-withdrawal-affordability-test-2022.html, downloaded from https://www.bankofengland.co.uk/news/2022/june/financial-policy-committee-confirms-withdrawal-of-mortgage-market-affordability-test. The Bank of England June 2022 news release confirms withdrawal of the FPC mortgage-market affordability-test Recommendation effective 2022-08-01, while leaving the LTI flow limit in place and noting that FCA MCOB responsible-lending affordability assessments continue to apply. v4.17 therefore encodes CENTRAL_BANK_AFFORDABILITY_HARD_MAX=0.9999 as a high non-binding sentinel for no separate central-bank hard affordability cap, while retaining BANK_AFFORDABILITY_HARD_MAX=0.4 as the representative-bank underwriting cap. Because Bank.java uses min(BANK_AFFORDABILITY_HARD_MAX, CENTRAL_BANK_AFFORDABILITY_HARD_MAX), the effective affordability cap remains 0.4. overallCompositeLoss=0.628715 versus v4.16=0.628715 (delta +0.000000). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.16: none. This release should be treated as an official central-bank policy source alignment that improves policy fidelity without changing the effective representative-bank affordability constraint or tracked validation profile."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "CENTRAL_BANK_AFFORDABILITY_HARD_MAX"
+          ],
+          "improvement_summary": "Encoded the central-bank affordability hard cap as non-binding rather than duplicating the representative-bank affordability cap.",
+          "why_changed": "To distinguish withdrawal of the central-bank affordability-test Recommendation from the representative-bank underwriting affordability constraint still used by the model.",
+          "method_chosen": "Direct source promotion from the Bank of England June 2022 news release confirming withdrawal of the FPC mortgage-market affordability-test Recommendation effective 2022-08-01; selected 0.9999 as the central-bank non-binding sentinel and retained BANK_AFFORDABILITY_HARD_MAX at 0.4.",
+          "decision_logic": "Objective=direct method justification; Why=the Bank of England June 2022 release directly confirms withdrawal of the FPC mortgage-market affordability-test Recommendation effective 2022-08-01, supporting a non-binding central-bank affordability cap; Tradeoff=0.9999 is a model sentinel rather than an observed affordability threshold, while the representative-bank cap preserves private-bank underwriting behavior."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.18",
+      "snapshot_folder": "v4.18",
+      "validation_dataset": "r8",
+      "description": "Source-confirmed the residual central-bank LTI rolling window and made the central-bank BTL ICR hard floor explicitly non-binding because the FPC has not used its DTI/ICR Direction powers.",
+      "updated_data_sources": [
+        "boe"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source alignment)"
+      ],
+      "config_parameters": [
+        "CENTRAL_BANK_LTI_MONTHS_TO_CHECK",
+        "CENTRAL_BANK_ICR_HARD_MIN"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "CENTRAL_BANK_LTI_MONTHS_TO_CHECK",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-residual-policy-v4.18/CentralBankResidualPolicySummary.json"
+        },
+        {
+          "config_parameter": "CENTRAL_BANK_ICR_HARD_MIN",
+          "dataset_source": "input-data-versions/calibration-evidence/central-bank-residual-policy-v4.18/CentralBankResidualPolicySummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-04T14:37:24Z after cloning v4.17 to v4.18, source-confirming CENTRAL_BANK_LTI_MONTHS_TO_CHECK at 12, and changing CENTRAL_BANK_ICR_HARD_MIN from 1.2 to 0.0. The retained residual-policy evidence bundle is input-data-versions/calibration-evidence/central-bank-residual-policy-v4.18/. It references the existing Bank of England November 2024 FPC Record LTI bundle at input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/ and retains the PRA 2017 four-quarter rolling LTI implementation artifact downloaded from https://www.bankofengland.co.uk/prudential-regulation/publication/2016/amendments-to-the-pras-rules-on-loan-to-income-ratios-in-mortgage-lending-november-2016. Four quarters map to 12 monthly model steps. The retained Bank of England 25 September 2024 FPC powers article was downloaded from https://www.bankofengland.co.uk/quarterly-bulletin/2024/2024/the-contribution-of-the-fpc-to-uk-financial-stability and states that the FPC has not yet used its powers of Direction over LTV or DTI/ICR limits for owner-occupier or buy-to-let mortgages. v4.18 therefore encodes CENTRAL_BANK_ICR_HARD_MIN=0.0 as no separate central-bank hard ICR floor, while retaining BANK_ICR_HARD_MIN=1.25 as the representative-bank underwriting floor. Because Bank.java uses max(BANK_ICR_HARD_MIN, CENTRAL_BANK_ICR_HARD_MIN), the effective ICR floor remains 1.25. overallCompositeLoss=0.628715 versus v4.17=0.628715 (delta +0.000000). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.17: none. This release should be treated as an official central-bank policy source alignment that improves policy semantics without changing the effective representative-bank ICR constraint or tracked validation profile."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "CENTRAL_BANK_LTI_MONTHS_TO_CHECK",
+            "CENTRAL_BANK_ICR_HARD_MIN"
+          ],
+          "improvement_summary": "Removed the final residual central-bank policy source-confirmation notes by documenting the 12-month LTI flow window and encoding no separate FPC hard ICR Direction.",
+          "why_changed": "To distinguish active FPC macroprudential policy from model time-step mapping and lender-side BTL underwriting constraints.",
+          "method_chosen": "Direct source alignment: active 2024 BoE LTI policy plus PRA four-quarter rolling implementation mapped to 12 monthly steps; BoE 2024 FPC powers article mapped to CENTRAL_BANK_ICR_HARD_MIN=0.0 because the FPC has not used its DTI/ICR Direction powers; BANK_ICR_HARD_MIN remains 1.25.",
+          "decision_logic": "Objective=direct method justification; Why=the residual central-bank policy keys should distinguish active FPC policy from lender-side underwriting constraints; Tradeoff=CENTRAL_BANK_LTI_MONTHS_TO_CHECK uses a 2017 implementation source to map the active 2024 LTI policy to monthly steps, while CENTRAL_BANK_ICR_HARD_MIN=0.0 is a non-binding model sentinel rather than an observed numeric ICR threshold."
+        }
+      ]
     }
   ]
 }

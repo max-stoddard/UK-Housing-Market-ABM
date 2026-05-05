@@ -1,0 +1,4 @@
+source,source_date,source_line,source_field,source_value,normalized_value,config_parameter,notes
+Bank of England FPC affordability-test withdrawal news release,2022-06-20,981,affordability-test Recommendation withdrawal,effective from 1 August 2022,0.9999,CENTRAL_BANK_AFFORDABILITY_HARD_MAX,Selected 0.9999 as the model sentinel for no separate central-bank hard affordability cap after withdrawal of the FPC affordability-test Recommendation.
+Bank of England FPC affordability-test withdrawal news release,2022-06-20,981,LTI flow limit status,not withdrawn,N/A,N/A,Retained for audit only; v4.16 already aligns the central-bank LTI flow-limit threshold and fraction.
+Bank of England FPC affordability-test withdrawal news release,2022-06-20,981,FCA responsible-lending affordability framework,remains applicable,N/A,N/A,Retained for audit only; the representative-bank affordability cap remains BANK_AFFORDABILITY_HARD_MAX = 0.4.

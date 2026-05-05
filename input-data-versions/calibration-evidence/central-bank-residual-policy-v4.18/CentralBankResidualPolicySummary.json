@@ -1,0 +1,48 @@
+{
+  "version": "v4.18",
+  "generatedAt": "2026-05-04T14:35:11Z",
+  "source": {
+    "ltiPolicy2024": {
+      "publisher": "Bank of England",
+      "documentTitle": "Financial Policy Committee Record - November 2024",
+      "publishedOn": "2024-11-29",
+      "url": "https://www.bankofengland.co.uk/financial-policy-summary-and-record/2024/november-2024",
+      "artifactPath": "input-data-versions/calibration-evidence/central-bank-lti-soft-max-v4.16/bank-of-england-fpc-record-november-2024.html",
+      "artifactSha256": "c61d8a32b44ecde57ea862facdbf8dadb18c33e65d9785d72a00140a78c90157"
+    },
+    "ltiRollingImplementation": {
+      "publisher": "Bank of England / Prudential Regulation Authority",
+      "documentTitle": "Amendments to the PRA's rules on loan to income ratios in mortgage lending - PS5/17",
+      "publishedOn": "2017-02-27",
+      "url": "https://www.bankofengland.co.uk/prudential-regulation/publication/2016/amendments-to-the-pras-rules-on-loan-to-income-ratios-in-mortgage-lending-november-2016",
+      "artifactPath": "input-data-versions/calibration-evidence/central-bank-residual-policy-v4.18/bank-of-england-pra-lti-four-quarter-rolling-2017.html",
+      "artifactSha256": "8399cf28d61c749db1a1b6a434d64cb8ce9885c945abdb1f872249e0cec68339"
+    },
+    "icrNoDirection2024": {
+      "publisher": "Bank of England",
+      "documentTitle": "The contribution of the Financial Policy Committee to UK financial stability",
+      "publishedOn": "2024-09-25",
+      "url": "https://www.bankofengland.co.uk/quarterly-bulletin/2024/2024/the-contribution-of-the-fpc-to-uk-financial-stability",
+      "artifactPath": "input-data-versions/calibration-evidence/central-bank-residual-policy-v4.18/bank-of-england-fpc-contribution-financial-stability-2024.html",
+      "artifactSha256": "dd59c978facc034d2bada2991024d5f0aae0576e153dcdd55b2c2825f641fec0"
+    },
+    "lenderIcrContext": {
+      "artifactPath": "input-data-versions/calibration-evidence/bank-icr-hard-min-v4.10/BankIcrHardMinCalibrationSummary.json",
+      "selectedConfigValue": 1.25
+    }
+  },
+  "selectedConfigValues": {
+    "CENTRAL_BANK_LTI_MONTHS_TO_CHECK": 12,
+    "CENTRAL_BANK_ICR_HARD_MIN": 0.0
+  },
+  "effectiveModelValues": {
+    "BANK_ICR_HARD_MIN": 1.25,
+    "effectiveIcrFloor": 1.25
+  },
+  "modelMapping": {
+    "ltiWindow": "The 2024 FPC Record confirms the active LTI flow-limit policy; PRA PS5/17 confirms four-quarter rolling compliance. The monthly Java model maps four quarters to 12 monthly model steps.",
+    "icrFloor": "The FPC has powers of Direction over DTI/ICR limits but had not used those powers for owner-occupier or buy-to-let mortgages as of the 25 September 2024 Bank of England article. CENTRAL_BANK_ICR_HARD_MIN is therefore set to 0.0 to represent no separate central-bank hard ICR floor.",
+    "effectiveIcrConstraint": "Bank.java uses max(BANK_ICR_HARD_MIN, CENTRAL_BANK_ICR_HARD_MIN), so the effective BTL ICR floor remains max(1.25, 0.0) = 1.25."
+  },
+  "methodDecision": "Objective=direct method justification; Why=the residual central-bank policy keys should distinguish active FPC policy from lender-side underwriting constraints; Tradeoff=CENTRAL_BANK_LTI_MONTHS_TO_CHECK uses a 2017 implementation source to map the active 2024 LTI policy to monthly steps, while CENTRAL_BANK_ICR_HARD_MIN=0.0 is a non-binding model sentinel rather than an observed numeric ICR threshold."
+}

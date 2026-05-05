@@ -1,0 +1,29 @@
+{
+  "version": "v4.17",
+  "generatedAt": "2026-05-03T16:58:35Z",
+  "source": {
+    "publisher": "Bank of England",
+    "documentTitle": "Financial Policy Committee confirms withdrawal of mortgage market affordability test",
+    "publishedOn": "2022-06-20",
+    "effectiveDate": "2022-08-01",
+    "htmlUrl": "https://www.bankofengland.co.uk/news/2022/june/financial-policy-committee-confirms-withdrawal-of-mortgage-market-affordability-test",
+    "htmlArtifactPath": "input-data-versions/calibration-evidence/central-bank-affordability-hard-max-v4.17/bank-of-england-fpc-withdrawal-affordability-test-2022.html",
+    "htmlSha256": "6775a69a8a737c46f4003a6d1f2d88597dcb979d984eb9edb821f35bae665a1b"
+  },
+  "sourceValues": {
+    "affordabilityTestRecommendationWithdrawn": true,
+    "withdrawalEffectiveDate": "2022-08-01",
+    "ltiFlowLimitWithdrawn": false,
+    "fcaMcobResponsibleLendingStillApplies": true
+  },
+  "selectedConfigValues": {
+    "CENTRAL_BANK_AFFORDABILITY_HARD_MAX": 0.9999,
+    "BANK_AFFORDABILITY_HARD_MAX": 0.4
+  },
+  "modelMapping": {
+    "sentinelValue": "The 0.9999 value is a high non-binding sentinel for no separate central-bank hard affordability cap after the FPC withdrew its affordability-test Recommendation.",
+    "effectiveAffordabilityCap": "The Java bank logic applies min(BANK_AFFORDABILITY_HARD_MAX, CENTRAL_BANK_AFFORDABILITY_HARD_MAX), so retaining BANK_AFFORDABILITY_HARD_MAX = 0.4 keeps the effective model affordability cap at 0.4.",
+    "policyBoundary": "The Bank of England source confirms withdrawal of the FPC affordability-test Recommendation while noting that FCA MCOB responsible-lending affordability assessments continue to apply. v4.17 therefore changes only the central-bank policy parameter and does not alter the representative-bank underwriting cap."
+  },
+  "methodDecision": "Objective=direct method justification; Why=the Bank of England June 2022 release directly confirms withdrawal of the FPC mortgage-market affordability-test Recommendation effective 2022-08-01, supporting a non-binding central-bank affordability cap; Tradeoff=0.9999 is a model sentinel rather than an observed affordability threshold, while the representative-bank cap preserves private-bank underwriting behavior."
+}
