@@ -806,11 +806,9 @@ const unchangedNewlyAddedIds = [
   'initial_sale_markup_distribution',
   'price_reduction_probabilities',
   'sale_reduction_gaussian',
-  'tenancy_length_range',
   'initial_rent_markup_distribution',
   'rent_reduction_gaussian',
   'bidup_multiplier',
-  'rent_gross_yield',
   'downpayment_btl_profile',
   'bank_lti_limits',
 ] as const;

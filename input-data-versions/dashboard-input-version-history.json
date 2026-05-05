@@ -1706,6 +1706,46 @@
           "decision_logic": "Objective=direct method justification; Why=the residual central-bank policy keys should distinguish active FPC policy from lender-side underwriting constraints; Tradeoff=CENTRAL_BANK_LTI_MONTHS_TO_CHECK uses a 2017 implementation source to map the active 2024 LTI policy to monthly steps, while CENTRAL_BANK_ICR_HARD_MIN=0.0 is a non-binding model sentinel rather than an observed numeric ICR threshold."
         }
       ]
+    },
+    {
+      "version_id": "v4.19",
+      "snapshot_folder": "v4.19",
+      "validation_dataset": "r8",
+      "description": "Recalibrated RENT_GROSS_YIELD from official 2024 ONS PIPR rent levels and HM Land Registry UK HPI average prices, replacing the legacy 2013 literature-backed value.",
+      "updated_data_sources": [
+        "ons",
+        "hmlr"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/official/rent_gross_yield_2024.py"
+      ],
+      "config_parameters": [
+        "RENT_GROSS_YIELD"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "RENT_GROSS_YIELD",
+          "dataset_source": "input-data-versions/calibration-evidence/rent-gross-yield-v4.19/RentGrossYield2024Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-05T09:51:30Z after cloning v4.18 to v4.19 and changing RENT_GROSS_YIELD from 0.05 to 0.0581338503. The retained rent-gross-yield evidence bundle is input-data-versions/calibration-evidence/rent-gross-yield-v4.19/. It contains the downloaded ONS PIPR December 2024 workbook, the downloaded HM Land Registry UK HPI December 2024 full file, the downloaded HM Land Registry Average-prices comparator, and script-derived JSON/CSV evidence. The selected formula is 12 * mean(PIPR Great Britain monthly rent, 2024-01 through 2024-11) / mean(HMLR UK HPI full-file United Kingdom AveragePrice, 2024-01 through 2024-12). The resulting source means are rentMean=1271.1818181818182 and housePriceMean=262397.5833333333, giving unrounded RENT_GROSS_YIELD=0.05813385026036566 and selected config value 0.0581338503. The source bundle documents that UK and Northern Ireland PIPR rent-price levels are unavailable in the requested workbook, so Great Britain is the highest available numeric PIPR rent aggregate. overallCompositeLoss=0.615419 versus v4.18=0.628715 (delta -0.013296). Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.18: none. The Rental Yield metric remains failing and moves from 5.863053% in v4.18 to 5.781926% in v4.19, still below the UK Finance 2024 target band [6.88, 7.00]. This release should be treated as a source-fidelity recalibration with a modest composite validation improvement, not as a realized rental-yield validation fix."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "RENT_GROSS_YIELD"
+          ],
+          "improvement_summary": "Replaced the legacy 0.05 rent-gross-yield value with an official 2024 rent-to-price calculation from ONS PIPR and HM Land Registry UK HPI sources.",
+          "why_changed": "To move RENT_GROSS_YIELD from 2013 literature/ARLA evidence to a reproducible 2024 source-backed calculation.",
+          "method_chosen": "Direct source calculation: 12 * mean(PIPR Great Britain monthly rent, January-November 2024) / mean(HM Land Registry UK HPI full-file United Kingdom AveragePrice, January-December 2024). The HMLR Average-prices file is retained as a rejected comparator, and no transaction-volume monthly weighting is applied.",
+          "decision_logic": "Objective=direct method justification; Why=the PIPR/HMLR formula replaces the legacy 2013 literature/ARLA source with official 2024 rent and price levels while documenting the unavailable literal UK rent numerator; Tradeoff=the numerator is Great Britain rather than UK, and the source-fidelity improvement does not directly fix the realized rental-yield validation metric."
+        }
+      ]
     }
   ]
 }
