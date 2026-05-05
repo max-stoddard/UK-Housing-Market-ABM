@@ -16,14 +16,14 @@ usage() {
 Usage: $(basename "$0") --snapshot <version> --mode <mode> --repeat <n> --output-root <dir>
 
 Required arguments:
-  --snapshot     Snapshot folder under input-data-versions (for now: v4.1)
-  --mode         e2e-default-10k | core-minimal-10k | core-minimal-100k
+  --snapshot     Snapshot folder under input-data-versions (canonical model-speed snapshot: v0)
+  --mode         e2e-default-10k-s1 | core-minimal-20k-s1
   --repeat       Number of measured repeats (one warm-up is always added)
   --output-root  Root directory for benchmark artifacts
 
 Environment:
   MODEL_SPEED_JAVA_OPTS          JVM flags for direct Java execution (default: -Xms1g -Xmx4g)
-  MODEL_SPEED_POPULATION_LADDER  Set to 1 to record the 10k/25k/50k/100k ladder for core-minimal-100k
+  MODEL_SPEED_POPULATION_LADDER  Set to 1 to record the 10k/20k population ladder for core-minimal-20k-s1
 EOF
 }
 
@@ -159,12 +159,12 @@ model_speed_run_model_once \
   "${median_jfr_dir}" \
   "-XX:StartFlightRecording=filename=${median_jfr_file},settings=profile,dumponexit=true"
 
-if [[ "${mode}" == "core-minimal-100k" && "${MODEL_SPEED_POPULATION_LADDER}" == "1" ]]; then
+if [[ "${mode}" == "core-minimal-20k-s1" && "${MODEL_SPEED_POPULATION_LADDER}" == "1" ]]; then
   ladder_tsv="${run_root}/population-ladder.tsv"
   printf '%s\n' \
     'population	wall_clock_seconds	seconds_per_household_month	output_bytes	max_rss_kb	gc_pause_count	gc_pause_time_ms_total	output_dir	manifest_path' \
     > "${ladder_tsv}"
-  for ladder_population in 10000 25000 50000 100000; do
+  for ladder_population in 10000 20000; do
     ladder_config="${generated_config_dir}/${snapshot}-${mode}-ladder-${ladder_population}.properties"
     ladder_run_dir="${run_root}/population-ladder/pop-${ladder_population}"
     log "Running population ladder point TARGET_POPULATION=${ladder_population}."

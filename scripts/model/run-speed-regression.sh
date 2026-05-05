@@ -17,7 +17,7 @@ Usage: $(basename "$0") --snapshot <version> --mode <mode> --contract <exact|tol
 
 Required arguments:
   --snapshot          Snapshot folder under input-data-versions
-  --mode              e2e-default-10k | core-minimal-10k | core-minimal-100k
+  --mode              e2e-default-10k-s1 | core-minimal-20k-s1
   --contract          exact | tolerance
   --baseline-manifest Exact SHA-256 manifest path or tolerance-spec JSON path
   --output-root       Root directory for regression artifacts
