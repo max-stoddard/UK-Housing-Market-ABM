@@ -1,0 +1,408 @@
+{
+  "methodId": "pipr_gb_mean_hmlr_uk_full_file_mean_2024",
+  "methodRationale": "RENT_GROSS_YIELD initializes expected gross BTL rental yield in the model. The selected calculation uses the requested PIPR/HPI rent-to-price formula while avoiding an unsupported UK rent-price level: the December 2024 PIPR workbook publishes Great Britain rent-price levels through November 2024, but marks UK and Northern Ireland rent-price levels as unavailable. The HPI denominator uses the United Kingdom unadjusted AveragePrice series from the full file for all twelve 2024 months.",
+  "selectedConfigValues": {
+    "RENT_GROSS_YIELD": 0.0581338503
+  },
+  "calculation": {
+    "targetYear": 2024,
+    "formula": "12 * mean(PIPR Great Britain monthly rent) / mean(HMLR UK HPI AveragePrice)",
+    "rentMean": 1271.1818181818182,
+    "rentMeanMonths": [
+      "2024-01-01",
+      "2024-02-01",
+      "2024-03-01",
+      "2024-04-01",
+      "2024-05-01",
+      "2024-06-01",
+      "2024-07-01",
+      "2024-08-01",
+      "2024-09-01",
+      "2024-10-01",
+      "2024-11-01"
+    ],
+    "rentMeanGeography": "Great Britain",
+    "housePriceMean": 262397.5833333333,
+    "housePriceMeanMonths": [
+      "2024-01-01",
+      "2024-02-01",
+      "2024-03-01",
+      "2024-04-01",
+      "2024-05-01",
+      "2024-06-01",
+      "2024-07-01",
+      "2024-08-01",
+      "2024-09-01",
+      "2024-10-01",
+      "2024-11-01",
+      "2024-12-01"
+    ],
+    "housePriceGeography": "United Kingdom",
+    "unroundedValue": 0.05813385026036566,
+    "selectedConfigValue": 0.0581338503
+  },
+  "sourceValues": {
+    "piprRentValues": [
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-01-01",
+        "value": 1226.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-02-01",
+        "value": 1238.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-03-01",
+        "value": 1246.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-04-01",
+        "value": 1254.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-05-01",
+        "value": 1262.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-06-01",
+        "value": 1271.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-07-01",
+        "value": 1279.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-08-01",
+        "value": 1286.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-09-01",
+        "value": 1295.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-10-01",
+        "value": 1307.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      },
+      {
+        "source": "ONS PIPR monthly price statistics",
+        "geography": "Great Britain",
+        "date": "2024-11-01",
+        "value": 1319.0,
+        "units": "GBP per month",
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Great Britain', year=2024, column 'Rental price'",
+        "notes": "Selected Great Britain because the requested December 2024 PIPR workbook does not publish UK rent-price levels."
+      }
+    ],
+    "hpiAveragePrices": [
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-01-01",
+        "value": 256021.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-02-01",
+        "value": 255153.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-03-01",
+        "value": 255284.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-04-01",
+        "value": 257208.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-05-01",
+        "value": 259541.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-06-01",
+        "value": 260719.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-07-01",
+        "value": 263521.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-08-01",
+        "value": 268174.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-09-01",
+        "value": 268615.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-10-01",
+        "value": 268130.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-11-01",
+        "value": 268318.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      },
+      {
+        "source": "HM Land Registry UK HPI full file",
+        "geography": "United Kingdom",
+        "date": "2024-12-01",
+        "value": 268087.0,
+        "units": "GBP",
+        "artifact": "UK-HPI-full-file-2024-12.csv",
+        "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+        "extraction_ref": "RegionName='United Kingdom', year=2024, column 'AveragePrice'",
+        "notes": "Selected unadjusted United Kingdom monthly AveragePrice from the richer HPI full file."
+      }
+    ],
+    "unavailablePiprRentLevels": [
+      {
+        "geography": "UK",
+        "months_observed": [
+          "2024-01-01",
+          "2024-02-01",
+          "2024-03-01",
+          "2024-04-01",
+          "2024-05-01",
+          "2024-06-01",
+          "2024-07-01",
+          "2024-08-01",
+          "2024-09-01",
+          "2024-10-01",
+          "2024-11-01"
+        ],
+        "raw_values": [
+          "[x]"
+        ],
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='UK', year=2024, column 'Rental price'",
+        "notes": "The requested December 2024 PIPR workbook marks this rent-price level as unavailable, so it is not used in the selected numerator."
+      },
+      {
+        "geography": "Northern Ireland",
+        "months_observed": [
+          "2024-01-01",
+          "2024-02-01",
+          "2024-03-01",
+          "2024-04-01",
+          "2024-05-01",
+          "2024-06-01",
+          "2024-07-01",
+          "2024-08-01",
+          "2024-09-01",
+          "2024-10-01",
+          "2024-11-01"
+        ],
+        "raw_values": [
+          "[x]"
+        ],
+        "artifact": "priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+        "extraction_ref": "sheet 'Table 1', Area name='Northern Ireland', year=2024, column 'Rental price'",
+        "notes": "The requested December 2024 PIPR workbook marks this rent-price level as unavailable, so it is not used in the selected numerator."
+      }
+    ]
+  },
+  "sourceArtifacts": [
+    {
+      "label": "ONS PIPR monthly price statistics, December 2024 edition",
+      "path": "input-data-versions/calibration-evidence/rent-gross-yield-v4.19/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+      "sha256": "698ceeb291c41a8db8f0174ed9fdc515a625cee75dd67061f5f40d34a3f2b364",
+      "source_url": "https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukmonthlypricestatistics/18december2024/priceindexofprivaterentsukmonthlypricestatistics.xlsx",
+      "notes": "Source workbook for Great Britain monthly rent-price levels."
+    },
+    {
+      "label": "HM Land Registry UK HPI full file, December 2024 edition",
+      "path": "input-data-versions/calibration-evidence/rent-gross-yield-v4.19/UK-HPI-full-file-2024-12.csv",
+      "sha256": "2b4682cf9f88f49657debc5bdba4fc5a8d2e4d9940fdaf9af263b994fd3bc6ce",
+      "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/UK-HPI-full-file-2024-12.csv",
+      "notes": "Selected source for the United Kingdom monthly AveragePrice denominator."
+    },
+    {
+      "label": "HM Land Registry Average-prices file, December 2024 edition",
+      "path": "input-data-versions/calibration-evidence/rent-gross-yield-v4.19/Average-prices-2024-12.csv",
+      "sha256": "bd05bc80a5e5e8560ad18d30b8e949be854ab2e00c65035306f9e53a4003d927",
+      "source_url": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/Average-prices-2024-12.csv",
+      "notes": "Retained comparator requested for source-choice audit."
+    }
+  ],
+  "sourceReferences": {
+    "onsPiprRelease": "https://www.ons.gov.uk/releases/privaterentandhousepricesukdecember2024",
+    "onsPiprMethodology": "https://www.ons.gov.uk/economy/inflationandpriceindices/methodologies/priceindexofprivaterentsdetailedmethodology",
+    "govukHpiDownloads": "https://www.gov.uk/government/statistical-data-sets/uk-house-price-index-data-downloads-december-2024"
+  },
+  "rejectedComparisons": [
+    {
+      "label": "Literal UK PIPR rent-price numerator",
+      "status": "rejected_unavailable",
+      "whyRejected": "The requested December 2024 PIPR workbook provides UK index rows, but the 'Rental price' column is marked unavailable for UK rows."
+    },
+    {
+      "label": "Transaction-volume-weighted monthly HPI denominator",
+      "status": "rejected_method_mismatch",
+      "whyRejected": "The December 2024 full file lacks SalesVolume for November and December UK rows, and transaction-volume weighting would convert a price-level denominator into a flow-weighted denominator. RENT_GROSS_YIELD is better represented by the full-year price-level mean."
+    },
+    {
+      "artifact": "Average-prices-2024-12.csv",
+      "sourceUrl": "https://publicdata.landregistry.gov.uk/market-trend-data/house-price-index-data/Average-prices-2024-12.csv",
+      "fieldNames": [
+        "Date",
+        "Region_Name",
+        "Area_Code",
+        "Average_Price",
+        "Monthly_Change",
+        "Annual_Change",
+        "Average_Price_SA"
+      ],
+      "targetYearUkRows": 12,
+      "hasWeightFields": false,
+      "status": "rejected_comparator",
+      "whyRejected": "Rejected for the selected calibration because the HPI full file contains the same selected AveragePrice field plus richer audit columns and is already the repo's validation-source shape. No extra monthly SalesVolume weighting is applied because RENT_GROSS_YIELD needs a price-level denominator rather than a transaction-flow-weighted denominator."
+    }
+  ]
+}
