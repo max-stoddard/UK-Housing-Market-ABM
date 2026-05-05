@@ -30,6 +30,11 @@ public abstract class HousingMarketRecord {
         id = id_pool++;
     }
 
+    /** Reset the run-local tie-breaker sequence before each simulation. */
+    static void resetIdPoolForNewSimulation() {
+        id_pool = 0;
+    }
+
     //----------------------//
     //----- Subclasses -----//
     //----------------------//

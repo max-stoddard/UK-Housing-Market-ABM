@@ -39,6 +39,11 @@ public class House implements Comparable<House> {
         this.quality = quality;
     }
 
+    /** Reset the run-local identifier sequence before each simulation. */
+    static void resetIdPoolForNewSimulation() {
+        id_pool = 0;
+    }
+
     //-------------------//
     //----- Methods -----//
     //-------------------//

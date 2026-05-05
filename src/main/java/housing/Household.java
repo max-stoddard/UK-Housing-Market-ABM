@@ -68,6 +68,11 @@ public class Household implements IHouseOwner {
         persistentLTILimit = -1; // Dummy value to catch usages before set up
     }
 
+    /** Reset the run-local identifier sequence before each simulation. */
+    static void resetIdPoolForNewSimulation() {
+        id_pool = 0;
+    }
+
     //-------------------//
     //----- Methods -----//
     //-------------------//

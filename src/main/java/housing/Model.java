@@ -186,6 +186,10 @@ public class Model {
         householdStats.init();
         creditSupply.init();
         households.clear();
+        // These identifiers are run-local; reset them so N_SIMS matches separate seeded JVM runs.
+        Household.resetIdPoolForNewSimulation();
+        House.resetIdPoolForNewSimulation();
+        HousingMarketRecord.resetIdPoolForNewSimulation();
     }
 
     private static void modelStep() {
