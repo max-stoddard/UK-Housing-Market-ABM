@@ -17,9 +17,14 @@ Usage: $(basename "$0") --snapshot <version> --mode <mode> --profiler <jfr|perf>
 
 Required arguments:
   --snapshot     Snapshot folder under input-data-versions
-  --mode         e2e-default-5k-s1 | core-minimal-10k-s1
+  --mode         e2e-default-5k-s1 | core-minimal-10k-s1 | core-minimal-20k-s1
   --profiler     jfr | perf
   --output-root  Root directory for profile artifacts
+
+Environment:
+  MODEL_SPEED_MAVEN_PROFILES          Optional Maven profiles for compile/classpath resolution
+  MODEL_SPEED_CPU_AFFINITY            CPU list used by taskset
+  MODEL_SPEED_ACTIVE_PROCESSOR_COUNT  JVM active processor count
 EOF
 }
 

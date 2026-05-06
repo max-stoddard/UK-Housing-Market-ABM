@@ -13,6 +13,7 @@ MODEL_SPEED_JAVA_OPTS="${MODEL_SPEED_JAVA_OPTS:--Xms1g -Xmx4g}"
 MODEL_SPEED_POPULATION_LADDER="${MODEL_SPEED_POPULATION_LADDER:-0}"
 MODEL_SPEED_CPU_AFFINITY="${MODEL_SPEED_CPU_AFFINITY:-}"
 MODEL_SPEED_ACTIVE_PROCESSOR_COUNT="${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-}"
+MODEL_SPEED_MAVEN_PROFILES="${MODEL_SPEED_MAVEN_PROFILES:-}"
 
 model_speed_log_init() {
   LOG_TAG="${LOG_TAG:-MODEL-SPEED}"
@@ -39,11 +40,21 @@ model_speed_tmp_root() {
   printf '%s\n' "${model_speed_repo_root}/tmp/model-speed"
 }
 
+model_speed_maven_profile_args() {
+  local -n out_ref="$1"
+  out_ref=()
+  if [[ -n "${MODEL_SPEED_MAVEN_PROFILES}" ]]; then
+    out_ref+=( "-P${MODEL_SPEED_MAVEN_PROFILES}" )
+  fi
+}
+
 model_speed_ensure_compiled() {
   log "Compiling Java sources for snapshot-local model-speed harness."
+  local -a profile_args=()
+  model_speed_maven_profile_args profile_args
   (
     cd "${model_speed_repo_root}"
-    mvn -q -DskipTests compile
+    mvn -q "${profile_args[@]}" -DskipTests clean compile
   )
 }
 
@@ -53,9 +64,11 @@ model_speed_resolve_classpath() {
     return 0
   fi
   local classpath
+  local -a profile_args=()
+  model_speed_maven_profile_args profile_args
   classpath="$(
     cd "${model_speed_repo_root}"
-    mvn -q -Dexec.classpathScope=runtime -Dexec.executable=echo -Dexec.args='%classpath' exec:exec | tail -n 1
+    mvn -q "${profile_args[@]}" -Dexec.classpathScope=runtime -Dexec.executable=echo -Dexec.args='%classpath' exec:exec | tail -n 1
   )"
   if [[ -z "${classpath}" ]]; then
     log_err "Failed to resolve runtime classpath."
@@ -160,6 +173,7 @@ model_speed_capture_environment() {
     printf 'snapshot=%s\n' "${snapshot}"
     printf 'mode=%s\n' "${mode}"
     printf 'java_opts=%s\n' "${MODEL_SPEED_JAVA_OPTS}"
+    printf 'maven_profiles=%s\n' "${MODEL_SPEED_MAVEN_PROFILES:-none}"
     printf 'cpu_affinity=%s\n' "${MODEL_SPEED_CPU_AFFINITY:-none}"
     printf 'active_processor_count=%s\n' "${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-default}"
     printf 'output_root=%s\n' "${output_root}"

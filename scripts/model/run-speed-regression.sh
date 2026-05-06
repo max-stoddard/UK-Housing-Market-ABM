@@ -17,7 +17,7 @@ Usage: $(basename "$0") --snapshot <version> --mode <mode> --contract <exact|tol
 
 Required arguments:
   --snapshot          Snapshot folder under input-data-versions
-  --mode              e2e-default-5k-s1 | core-minimal-10k-s1
+  --mode              e2e-default-5k-s1 | core-minimal-10k-s1 | core-minimal-20k-s1
   --contract          exact | tolerance
   --baseline-manifest Exact SHA-256 manifest path or tolerance-spec JSON path
   --output-root       Root directory for regression artifacts
@@ -26,6 +26,9 @@ Options:
   --repeat <n>                  Number of exact candidate repeats (default: 1)
   --pin-cpu <cpu-list>          Run Java through taskset -c <cpu-list>
   --active-processor-count <n>  Add -XX:ActiveProcessorCount=<n> to Java
+
+Environment:
+  MODEL_SPEED_MAVEN_PROFILES            Optional Maven profiles for compile/classpath resolution
 EOF
 }
 

@@ -17,7 +17,7 @@ Usage: $(basename "$0") --snapshot <version> --mode <mode> --repeat <n> --output
 
 Required arguments:
   --snapshot     Snapshot folder under input-data-versions (canonical model-speed snapshot: v0)
-  --mode         e2e-default-5k-s1 | core-minimal-10k-s1
+  --mode         e2e-default-5k-s1 | core-minimal-10k-s1 | core-minimal-20k-s1
   --repeat       Number of measured repeats
   --output-root  Root directory for benchmark artifacts
 
@@ -32,6 +32,7 @@ Environment:
   MODEL_SPEED_JAVA_OPTS                 JVM flags for direct Java execution (default: -Xms1g -Xmx4g)
   MODEL_SPEED_CPU_AFFINITY              CPU list used by taskset when --pin-cpu is omitted
   MODEL_SPEED_ACTIVE_PROCESSOR_COUNT    JVM active processor count when --active-processor-count is omitted
+  MODEL_SPEED_MAVEN_PROFILES            Optional Maven profiles for compile/classpath resolution
   MODEL_SPEED_POPULATION_LADDER         Set to 1 to record the 5k/10k population ladder for core-minimal-10k-s1
 EOF
 }
