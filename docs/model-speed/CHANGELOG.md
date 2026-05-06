@@ -10,6 +10,29 @@ This changelog is dedicated only to the model-speed improvement programme.
 - Benchmark and regression impact
 - Required follow-up
 
+## 2026-05-05 - v0 Contract Split And Uncertainty Reset
+- Replaced the active canonical model-speed populations with:
+  - `e2e-default-5k-s1` for three-run exact output similarity only
+  - `core-minimal-10k-s1` for primary minimal-output execution-time evidence
+- Changed canonical speed benchmarking to 10 measured 10k repeats, 0 warm-up runs, 0 cool-down runs, serial execution, and one-core pinning with JVM `-XX:ActiveProcessorCount=1`.
+- Removed mandatory median JFR capture from the benchmark path; profiling remains available through the profile harness or explicit benchmark JFR capture.
+- Extended benchmark summaries to report uncertainty for each numeric metric, including SEM, coefficient of variation, and a 95% CI for the mean.
+
+Regression policy from this point:
+- exact output similarity is anchored on three repeated `v0 / e2e-default-5k-s1` runs
+- speed claims are anchored on 10 repeated `v0 / core-minimal-10k-s1` runs and use `wall_clock_seconds` as the headline verdict metric
+
+Benchmark and regression impact:
+- Refreshed the tracked exact hash manifest for `e2e-default-5k-s1`.
+- Refreshed the 10k summary snapshot under the new one-core, no-warm-up policy.
+- Benchmarked the `monthlyGrossRentalIncome` cached-total experiment against the refreshed baselines:
+  - `e2e-default-5k-s1` is similarity-only and should not be used for a speed verdict.
+  - `core-minimal-10k-s1` was faster in the initial 8-run measurement, but the later 10-run wall-clock contract measurement was inconclusive/noise-dominated.
+- Abandoned and reverted the cached-total Java implementation because the model risk and added lifecycle state were not justified by the 10-run contract result.
+
+Required follow-up:
+- Treat the rental-income cached-total report as negative evidence and prioritise other speed work.
+
 ## 2026-05-05 - v0 Canonical Baseline Set
 - Rebased the active model-speed benchmark strategy from `input-data-versions/v4.1` to the full `input-data-versions/v0` snapshot while preserving snapshot-local config materialisation.
 - Replaced the old active mode set with exactly two canonical baselines:
