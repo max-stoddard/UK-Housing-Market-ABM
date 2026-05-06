@@ -20,6 +20,7 @@ import subprocess
 import sys
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -135,6 +136,51 @@ RESULTS_SUMMARY_SERIES: tuple[ResultsSummarySeries, ...] = (
         scale=1.0,
     ),
 )
+
+BENCHMARK_NUMERIC_KEYS: tuple[str, ...] = (
+    "wall_clock_seconds",
+    "model_computing_seconds",
+    "seconds_per_household_month",
+    "output_bytes",
+    "max_rss_kb",
+    "user_cpu_seconds",
+    "system_cpu_seconds",
+    "gc_pause_count",
+    "gc_pause_time_ms_total",
+)
+
+T_CRITICAL_95_TWO_SIDED: dict[int, float] = {
+    1: 12.706205,
+    2: 4.302653,
+    3: 3.182446,
+    4: 2.776445,
+    5: 2.570582,
+    6: 2.446912,
+    7: 2.364624,
+    8: 2.306004,
+    9: 2.262157,
+    10: 2.228139,
+    11: 2.200985,
+    12: 2.178813,
+    13: 2.160369,
+    14: 2.144787,
+    15: 2.131450,
+    16: 2.119905,
+    17: 2.109816,
+    18: 2.100922,
+    19: 2.093024,
+    20: 2.085963,
+    21: 2.079614,
+    22: 2.073873,
+    23: 2.068658,
+    24: 2.063899,
+    25: 2.059539,
+    26: 2.055529,
+    27: 2.051831,
+    28: 2.048407,
+    29: 2.045230,
+    30: 2.042272,
+}
 
 
 def parse_properties(path: Path) -> dict[str, str]:
@@ -677,9 +723,10 @@ def load_manifest(path: Path) -> dict[str, str]:
     return manifest
 
 
-def exact_compare(args: argparse.Namespace) -> int:
-    baseline = load_manifest(Path(args.baseline_manifest))
-    candidate = load_manifest(Path(args.candidate_manifest))
+def manifest_differences(
+    baseline: dict[str, str],
+    candidate: dict[str, str],
+) -> tuple[list[str], list[str], list[str]]:
     missing = sorted(set(baseline) - set(candidate))
     extra = sorted(set(candidate) - set(baseline))
     mismatched = sorted(
@@ -687,6 +734,13 @@ def exact_compare(args: argparse.Namespace) -> int:
         for rel_path in baseline
         if rel_path in candidate and baseline[rel_path] != candidate[rel_path]
     )
+    return missing, extra, mismatched
+
+
+def exact_compare(args: argparse.Namespace) -> int:
+    baseline = load_manifest(Path(args.baseline_manifest))
+    candidate = load_manifest(Path(args.candidate_manifest))
+    missing, extra, mismatched = manifest_differences(baseline, candidate)
     lines = [
         "# Exact Regression Report",
         f"baseline_manifest: {args.baseline_manifest}",
@@ -716,6 +770,72 @@ def exact_compare(args: argparse.Namespace) -> int:
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text("\n".join(lines), encoding="utf-8")
     return 0 if not (missing or extra or mismatched) else 1
+
+
+def exact_repeat_compare(args: argparse.Namespace) -> int:
+    baseline_path = Path(args.baseline_manifest)
+    candidate_paths = [Path(item) for item in args.candidate_manifest]
+    baseline = load_manifest(baseline_path)
+    candidate_manifests = [(path, load_manifest(path)) for path in candidate_paths]
+    failures: list[str] = []
+    lines = [
+        "# Exact Repeat Regression Report",
+        f"baseline_manifest: {args.baseline_manifest}",
+        f"candidate_manifest_count: {len(candidate_paths)}",
+        "",
+    ]
+    for index, (path, candidate) in enumerate(candidate_manifests, start=1):
+        missing, extra, mismatched = manifest_differences(baseline, candidate)
+        label = f"candidate-{index:03d}"
+        status = "PASS" if not (missing or extra or mismatched) else "FAIL"
+        lines.extend([f"## {label}", f"manifest: {path}", f"baseline_status: {status}", ""])
+        if missing:
+            failures.append(f"{label}: missing files")
+            lines.append("Missing files:")
+            lines.extend(f"- {item}" for item in missing)
+            lines.append("")
+        if extra:
+            failures.append(f"{label}: extra files")
+            lines.append("Extra files:")
+            lines.extend(f"- {item}" for item in extra)
+            lines.append("")
+        if mismatched:
+            failures.append(f"{label}: hash mismatches")
+            lines.append("Hash mismatches:")
+            for item in mismatched:
+                lines.append(f"- {item}")
+                lines.append(f"  baseline:  {baseline[item]}")
+                lines.append(f"  candidate: {candidate[item]}")
+            lines.append("")
+        if not (missing or extra or mismatched):
+            lines.append("All files matched the baseline exactly.")
+            lines.append("")
+
+    if candidate_manifests:
+        first_path, first_manifest = candidate_manifests[0]
+        lines.extend(["## Candidate Repeat Consistency", f"reference_manifest: {first_path}", ""])
+        for index, (path, candidate) in enumerate(candidate_manifests[1:], start=2):
+            missing, extra, mismatched = manifest_differences(first_manifest, candidate)
+            label = f"candidate-{index:03d}"
+            status = "PASS" if not (missing or extra or mismatched) else "FAIL"
+            lines.extend([f"- {label}: {status} (`{path}`)"])
+            if missing or extra or mismatched:
+                failures.append(f"{label}: differs from first candidate manifest")
+        if len(candidate_manifests) == 1:
+            lines.append("- candidate-001: PASS (only repeat)")
+        lines.append("")
+
+    status = "PASS" if not failures else "FAIL"
+    lines.insert(3, f"status: {status}")
+    lines.insert(4, "")
+    if failures:
+        lines.extend(["Failures:", *[f"- {failure}" for failure in failures], ""])
+    else:
+        lines.extend(["All candidate manifests matched the baseline and each other exactly.", ""])
+    report_path = Path(args.report_path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    return 0 if not failures else 1
 
 
 def is_numeric_token(token: str) -> bool:
@@ -862,23 +982,67 @@ def gc_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def t_critical_95_two_sided(df: float) -> float:
+    if df <= 0:
+        return 0.0
+    if df < 1:
+        return T_CRITICAL_95_TWO_SIDED[1]
+    nearest_df = int(round(df))
+    if abs(df - nearest_df) < 1.0e-9 and nearest_df in T_CRITICAL_95_TWO_SIDED:
+        return T_CRITICAL_95_TWO_SIDED[nearest_df]
+    if df <= 30:
+        lower_df = max(item for item in T_CRITICAL_95_TWO_SIDED if item <= df)
+        upper_df = min(item for item in T_CRITICAL_95_TWO_SIDED if item >= df)
+        if lower_df == upper_df:
+            return T_CRITICAL_95_TWO_SIDED[lower_df]
+        lower = T_CRITICAL_95_TWO_SIDED[lower_df]
+        upper = T_CRITICAL_95_TWO_SIDED[upper_df]
+        return lower + ((upper - lower) * ((df - lower_df) / (upper_df - lower_df)))
+    return 1.959964
+
+
+def metric_stats(values: list[float]) -> dict[str, object]:
+    if not values:
+        return {
+            "count": 0,
+            "min": None,
+            "max": None,
+            "mean": None,
+            "median": None,
+            "stdev": None,
+            "sem": None,
+            "cv": None,
+            "mean_ci95_low": None,
+            "mean_ci95_high": None,
+            "mean_ci95_half_width": None,
+        }
+    count = len(values)
+    mean = statistics.mean(values)
+    stdev = statistics.stdev(values) if count > 1 else 0.0
+    sem = stdev / math.sqrt(count) if count > 1 else 0.0
+    ci95_half_width = t_critical_95_two_sided(count - 1) * sem if count > 1 else 0.0
+    return {
+        "count": count,
+        "min": min(values),
+        "max": max(values),
+        "mean": mean,
+        "median": statistics.median(values),
+        "stdev": stdev,
+        "sem": sem,
+        "cv": None if mean == 0 else stdev / abs(mean),
+        "mean_ci95_low": mean - ci95_half_width,
+        "mean_ci95_high": mean + ci95_half_width,
+        "mean_ci95_half_width": ci95_half_width,
+    }
+
+
 def benchmark_summary(args: argparse.Namespace) -> int:
     rows: list[dict[str, object]] = []
     with Path(args.runs_tsv).open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         for row in reader:
             parsed = dict(row)
-            for key in (
-                "wall_clock_seconds",
-                "model_computing_seconds",
-                "seconds_per_household_month",
-                "output_bytes",
-                "max_rss_kb",
-                "user_cpu_seconds",
-                "system_cpu_seconds",
-                "gc_pause_count",
-                "gc_pause_time_ms_total",
-            ):
+            for key in BENCHMARK_NUMERIC_KEYS:
                 value = parsed.get(key, "")
                 if value in ("", None):
                     parsed[key] = None
@@ -891,50 +1055,259 @@ def benchmark_summary(args: argparse.Namespace) -> int:
         raise SystemExit("No measured runs found in TSV.")
 
     metric_summary: dict[str, dict[str, object]] = {}
-    numeric_keys = (
-        "wall_clock_seconds",
-        "model_computing_seconds",
-        "seconds_per_household_month",
-        "output_bytes",
-        "max_rss_kb",
-        "user_cpu_seconds",
-        "system_cpu_seconds",
-        "gc_pause_count",
-        "gc_pause_time_ms_total",
-    )
-    for key in numeric_keys:
+    for key in BENCHMARK_NUMERIC_KEYS:
         values = [float(row[key]) for row in rows if row[key] is not None]
-        if values:
-            metric_summary[key] = {
-                "count": len(values),
-                "min": min(values),
-                "max": max(values),
-                "mean": statistics.mean(values),
-                "median": statistics.median(values),
-                "stdev": statistics.stdev(values) if len(values) > 1 else 0.0,
-            }
-        else:
-            metric_summary[key] = {
-                "count": 0,
-                "min": None,
-                "max": None,
-                "mean": None,
-                "median": None,
-                "stdev": None,
-            }
+        metric_summary[key] = metric_stats(values)
 
     median_sorted_rows = sorted(rows, key=lambda item: float(item["wall_clock_seconds"]))
     median_row = median_sorted_rows[(len(median_sorted_rows) - 1) // 2]
     summary = {
         "run_count": len(rows),
+        "warmup_count": args.warmup_count,
+        "cooldown_count": args.cooldown_count,
         "median_run_id": median_row["run_id"],
         "best_run_id": min(rows, key=lambda item: float(item["wall_clock_seconds"]))["run_id"],
+        "median_jfr_captured": bool(args.jfr_captured),
         "metric_summary": metric_summary,
         "runs": rows,
     }
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return 0
+
+
+def load_json(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def parse_environment_file(path: Path | None) -> dict[str, object]:
+    if path is None or not path.exists():
+        return {}
+    result: dict[str, object] = {}
+    section: str | None = None
+    section_lines: dict[str, list[str]] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1]
+            section_lines.setdefault(section, [])
+            continue
+        if section is None and "=" in line:
+            key, value = line.split("=", 1)
+            result[key] = value
+        elif section is not None:
+            section_lines.setdefault(section, []).append(line)
+    if section_lines.get("uname -a"):
+        result["uname"] = section_lines["uname -a"][0]
+    if section_lines.get("java -version"):
+        result["java"] = section_lines["java -version"][0]
+    if section_lines.get("mvn -version"):
+        result["maven"] = section_lines["mvn -version"][0]
+    if section_lines.get("nproc"):
+        result["nproc"] = section_lines["nproc"][0]
+    return result
+
+
+def display_path(path: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return resolved.as_posix()
+
+
+def find_run(summary: dict[str, object], run_id: str) -> dict[str, object]:
+    for row in summary["runs"]:
+        if row["run_id"] == run_id:
+            return row
+    raise SystemExit(f"Run id not found in summary: {run_id}")
+
+
+def baseline_snapshot(args: argparse.Namespace) -> int:
+    summary_path = Path(args.summary)
+    summary = load_json(summary_path)
+    median_row = find_run(summary, str(summary["median_run_id"]))
+    manifest_path = Path(str(median_row["manifest_path"]))
+    if not manifest_path.is_absolute():
+        manifest_path = (Path.cwd() / manifest_path).resolve()
+    file_count = None
+    if manifest_path.exists():
+        file_count = sum(1 for line in manifest_path.read_text(encoding="utf-8").splitlines() if line.strip())
+    metrics = {
+        key: median_row[key]
+        for key in BENCHMARK_NUMERIC_KEYS
+        if key in median_row
+    }
+    source_run = {
+        "type": "snapshot_local_benchmark",
+        "benchmark_root": display_path(summary_path.parent),
+        "warmup_count": summary.get("warmup_count", 0),
+        "cooldown_count": summary.get("cooldown_count", 0),
+        "measured_repeat_count": summary.get("run_count"),
+        "median_run_id": summary.get("median_run_id"),
+        "best_run_id": summary.get("best_run_id"),
+        "median_jfr_captured": summary.get("median_jfr_captured", False),
+    }
+    payload = {
+        "baseline_id": args.baseline_id,
+        "status": "canonical",
+        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "snapshot": args.snapshot,
+        "validation_dataset": args.validation_dataset,
+        "mode": args.mode,
+        "purpose": args.purpose,
+        "contract": args.contract,
+        "manifest_path": None if args.manifest_path is None else args.manifest_path,
+        "source_run": source_run,
+        "environment": parse_environment_file(Path(args.environment) if args.environment else None),
+        "output_contract": {
+            "file_count": file_count,
+            "output_bytes_median": median_row.get("output_bytes"),
+        },
+        "metrics": metrics,
+        "metric_summary": summary["metric_summary"],
+        "notes": [
+            "Generated by the snapshot-local model-speed harness; raw outputs remain under tmp/model-speed/.",
+            "The harness loaded input-data-versions/v0/config.properties and applied only the pinned mode overrides.",
+        ],
+    }
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return 0
+
+
+def format_number(value: object, digits: int = 6) -> str:
+    if value is None:
+        return "n/a"
+    number = float(value)
+    if number == 0:
+        return "0"
+    if abs(number) >= 1000 or abs(number) < 0.001:
+        return f"{number:.{digits}e}"
+    return f"{number:.{digits}f}".rstrip("0").rstrip(".")
+
+
+def difference_stats(
+    baseline_stats: dict[str, object],
+    candidate_stats: dict[str, object],
+) -> dict[str, object]:
+    baseline_mean = baseline_stats["mean"]
+    candidate_mean = candidate_stats["mean"]
+    if baseline_mean is None or candidate_mean is None:
+        return {"mean": None, "ci95_low": None, "ci95_high": None, "ci95_half_width": None}
+    diff = float(candidate_mean) - float(baseline_mean)
+    baseline_count = int(baseline_stats["count"])
+    candidate_count = int(candidate_stats["count"])
+    baseline_stdev = float(baseline_stats["stdev"] or 0.0)
+    candidate_stdev = float(candidate_stats["stdev"] or 0.0)
+    baseline_var_over_n = (baseline_stdev * baseline_stdev) / baseline_count if baseline_count else 0.0
+    candidate_var_over_n = (candidate_stdev * candidate_stdev) / candidate_count if candidate_count else 0.0
+    se = math.sqrt(baseline_var_over_n + candidate_var_over_n)
+    if se == 0.0:
+        return {"mean": diff, "ci95_low": diff, "ci95_high": diff, "ci95_half_width": 0.0}
+    numerator = (baseline_var_over_n + candidate_var_over_n) ** 2
+    denominator = 0.0
+    if baseline_count > 1:
+        denominator += (baseline_var_over_n * baseline_var_over_n) / (baseline_count - 1)
+    if candidate_count > 1:
+        denominator += (candidate_var_over_n * candidate_var_over_n) / (candidate_count - 1)
+    df = numerator / denominator if denominator else min(baseline_count, candidate_count) - 1
+    half_width = t_critical_95_two_sided(df) * se
+    return {
+        "mean": diff,
+        "ci95_low": diff - half_width,
+        "ci95_high": diff + half_width,
+        "ci95_half_width": half_width,
+    }
+
+
+def primary_metric_verdict(diff_stats: dict[str, object]) -> str:
+    low = diff_stats["ci95_low"]
+    high = diff_stats["ci95_high"]
+    mean = diff_stats["mean"]
+    if low is None or high is None or mean is None:
+        return "inconclusive/noise-dominated"
+    if float(mean) < 0 and float(high) < 0:
+        return "faster"
+    if float(mean) > 0 and float(low) > 0:
+        return "slower"
+    return "inconclusive/noise-dominated"
+
+
+def benchmark_compare(args: argparse.Namespace) -> int:
+    verdict_metric = args.verdict_metric
+    metrics = (
+        "wall_clock_seconds",
+        "seconds_per_household_month",
+        "max_rss_kb",
+        "gc_pause_count",
+        "gc_pause_time_ms_total",
+        "user_cpu_seconds",
+        "system_cpu_seconds",
+        "output_bytes",
+    )
+    lines = [
+        "# Rental-Income Running-Total Benchmark",
+        "Author: Max Stoddard",
+        "",
+        "Candidate implementation audit: the current Java change is a lazy cached monthly gross rental income total. It invalidates the cache when rental contracts are added, removed, or expire, then recomputes on demand. It is not a pure incremental running-total update.",
+        "",
+        f"Verdict rule: `faster` requires the candidate-minus-baseline 95% CI for `{verdict_metric}` to be entirely below zero; `slower` requires it to be entirely above zero; otherwise the result is inconclusive/noise-dominated.",
+        "",
+    ]
+    enough_lines: list[str] = []
+    for comparison in args.comparison:
+        mode, baseline_summary_path, candidate_summary_path = comparison
+        baseline = load_json(Path(baseline_summary_path))
+        candidate = load_json(Path(candidate_summary_path))
+        primary_diff = difference_stats(
+            baseline["metric_summary"][verdict_metric],
+            candidate["metric_summary"][verdict_metric],
+        )
+        verdict = primary_metric_verdict(primary_diff)
+        repeat_count = candidate.get("run_count", candidate["metric_summary"][verdict_metric]["count"])
+        enough_lines.append(f"- `{mode}`: {'yes' if verdict != 'inconclusive/noise-dominated' else 'no'} after {repeat_count} measured repeats; verdict `{verdict}`.")
+        lines.extend(
+            [
+                f"## {mode}",
+                f"- Baseline summary: `{baseline_summary_path}`",
+                f"- Candidate summary: `{candidate_summary_path}`",
+                f"- Headline metric: `{verdict_metric}`",
+                f"- Execution-time verdict: `{verdict}`",
+                "",
+                "| Metric | Baseline mean ± 95% CI | Candidate mean ± 95% CI | Candidate - baseline mean ± 95% CI | Delta % | Baseline median | Candidate median |",
+                "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for metric in metrics:
+            baseline_stats = baseline["metric_summary"][metric]
+            candidate_stats = candidate["metric_summary"][metric]
+            diff = difference_stats(baseline_stats, candidate_stats)
+            baseline_mean = float(baseline_stats["mean"])
+            delta_pct = None if baseline_mean == 0 else (float(diff["mean"]) / baseline_mean) * 100.0
+            lines.append(
+                "| {metric} | {baseline_mean} +/- {baseline_ci} | {candidate_mean} +/- {candidate_ci} | {diff_mean} +/- {diff_ci} | {delta_pct} | {baseline_median} | {candidate_median} |".format(
+                    metric=metric,
+                    baseline_mean=format_number(baseline_stats["mean"]),
+                    baseline_ci=format_number(baseline_stats["mean_ci95_half_width"]),
+                    candidate_mean=format_number(candidate_stats["mean"]),
+                    candidate_ci=format_number(candidate_stats["mean_ci95_half_width"]),
+                    diff_mean=format_number(diff["mean"]),
+                    diff_ci=format_number(diff["ci95_half_width"]),
+                    delta_pct="n/a" if delta_pct is None else f"{delta_pct:.3f}%",
+                    baseline_median=format_number(baseline_stats["median"]),
+                    candidate_median=format_number(candidate_stats["median"]),
+                )
+            )
+        lines.append("")
+    lines.extend(["## Were The Contract Runs Enough?", *enough_lines, ""])
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines), encoding="utf-8")
     return 0
 
 
@@ -987,6 +1360,12 @@ def build_parser() -> argparse.ArgumentParser:
     exact.add_argument("--report-path", required=True)
     exact.set_defaults(func=exact_compare)
 
+    exact_repeat = subparsers.add_parser("exact-repeat-compare", help="Compare exact manifests across repeated runs.")
+    exact_repeat.add_argument("--baseline-manifest", required=True)
+    exact_repeat.add_argument("--candidate-manifest", action="append", required=True)
+    exact_repeat.add_argument("--report-path", required=True)
+    exact_repeat.set_defaults(func=exact_repeat_compare)
+
     tolerance = subparsers.add_parser("tolerance-compare", help="Compare outputs using a tolerance spec.")
     tolerance.add_argument("--spec", required=True)
     tolerance.add_argument("--candidate-dir", required=True)
@@ -1001,7 +1380,35 @@ def build_parser() -> argparse.ArgumentParser:
     summary = subparsers.add_parser("benchmark-summary", help="Summarise benchmark TSV rows.")
     summary.add_argument("--runs-tsv", required=True)
     summary.add_argument("--output", required=True)
+    summary.add_argument("--warmup-count", type=int, default=0)
+    summary.add_argument("--cooldown-count", type=int, default=0)
+    summary.add_argument("--jfr-captured", type=int, choices=(0, 1), default=0)
     summary.set_defaults(func=benchmark_summary)
+
+    snapshot = subparsers.add_parser("baseline-snapshot", help="Create a tracked benchmark baseline summary.")
+    snapshot.add_argument("--summary", required=True)
+    snapshot.add_argument("--environment", required=True)
+    snapshot.add_argument("--output", required=True)
+    snapshot.add_argument("--baseline-id", required=True)
+    snapshot.add_argument("--snapshot", required=True)
+    snapshot.add_argument("--validation-dataset", required=True)
+    snapshot.add_argument("--mode", required=True)
+    snapshot.add_argument("--purpose", required=True)
+    snapshot.add_argument("--contract", required=True)
+    snapshot.add_argument("--manifest-path")
+    snapshot.set_defaults(func=baseline_snapshot)
+
+    compare = subparsers.add_parser("benchmark-compare", help="Compare baseline and candidate benchmark summaries.")
+    compare.add_argument(
+        "--comparison",
+        action="append",
+        nargs=3,
+        metavar=("MODE", "BASELINE_SUMMARY", "CANDIDATE_SUMMARY"),
+        required=True,
+    )
+    compare.add_argument("--verdict-metric", default="wall_clock_seconds", choices=BENCHMARK_NUMERIC_KEYS)
+    compare.add_argument("--output", required=True)
+    compare.set_defaults(func=benchmark_compare)
 
     results = subparsers.add_parser(
         "results-summary",
