@@ -19,12 +19,15 @@ No speed change is accepted on anecdote alone.
 - Validation dataset target: `r8`
 - Benchmark host assumption: WSL2 Ubuntu
 - Runtime toolchain target: OpenJDK 25, Maven 3.8.7
+- Java 25 is the only supported Java compile target. The project no longer carries an active Java 8 compatibility path.
 - Primary optimisation goal: reduce single-run latency and improve scale-normalised throughput enough to make larger `TARGET_POPULATION` runs practical
+- Java 25 is the long-term platform default because it reduces compatibility burden and keeps future language, runtime, and tooling features available, even though benchmark evidence must still decide whether any toolchain change is a speed improvement.
 
 Important:
 - The speed harness is snapshot-local and does **not** mutate `src/main/resources`.
 - This is deliberate because the repository often has active uncommitted resource edits.
 - The legacy validation entrypoint `bash input-data-versions/validate.sh v0 r8 --no-graphs` still switches live resources and should therefore be run only from a clean or explicitly prepared worktree state.
+- Run model-speed harnesses one at a time per workspace. Maven compile/classpath steps share `target/classes`, and profile-switching experiments may clean/recompile that directory.
 
 ## Metrics
 Primary engineering metric for scale-normalised analysis:
@@ -39,7 +42,7 @@ Why this is primary:
 - It directly aligns with the programme goal of making larger `TARGET_POPULATION` runs practical.
 
 Headline speed-contract metric:
-- `wall_clock_seconds` for `core-minimal-10k-s1`, including JVM startup and output generation for the minimal-output mode
+- `wall_clock_seconds` for `core-minimal-20k-s1`, including JVM startup and output generation for the minimal-output mode
 
 Supporting metrics:
 - `model_computing_seconds` from the model's own stdout
@@ -60,9 +63,9 @@ At runtime the harness materialises a full snapshot-local config copy under `tmp
 
 The canonical baselines are:
 - `e2e-default-5k-s1`: `TARGET_POPULATION = 5000`, `N_STEPS = 2000`, `N_SIMS = 1`, default/full output contract. This is the exact correctness and output-contract regression gate.
-- `core-minimal-10k-s1`: `TARGET_POPULATION = 10000`, `N_STEPS = 2000`, `N_SIMS = 1`, minimal outputs. This is the primary single-run simulation speed and scaling gate.
+- `core-minimal-20k-s1`: `TARGET_POPULATION = 20000`, `N_STEPS = 2000`, `N_SIMS = 1`, minimal outputs. This is the primary single-run simulation speed and scaling gate.
 
-The `5k` e2e baseline is not a speed benchmark. Its purpose is to preserve exact model/output correctness and similarity while speed work is evaluated on the minimal-output 10k execution-time baseline.
+The `5k` e2e baseline is not a speed benchmark. Its purpose is to preserve exact model/output correctness and similarity while speed work is evaluated on the minimal-output 20k execution-time baseline.
 
 ## Workflow
 ### 1. Check Similarity First
@@ -83,12 +86,12 @@ bash scripts/model/run-speed-regression.sh \
 The 5k similarity check runs three full-output candidate executions. Every candidate output manifest must match the tracked baseline manifest, and the three candidate manifests must match each other. Do not use the 5k path for a speed verdict.
 
 ### 2. Benchmark Execution Time
-Run the canonical 10k execution-time benchmark:
+Run the canonical 20k execution-time benchmark:
 
 ```bash
 bash scripts/model/run-speed-benchmark.sh \
   --snapshot v0 \
-  --mode core-minimal-10k-s1 \
+  --mode core-minimal-20k-s1 \
   --repeat 10 \
   --warmup 0 \
   --cooldown 0 \
@@ -97,8 +100,9 @@ bash scripts/model/run-speed-benchmark.sh \
   --output-root tmp/model-speed/benchmarks
 ```
 
-What the 10k benchmark does:
+What the 20k benchmark does:
 - compiles the Java project
+- honours `MODEL_SPEED_MAVEN_PROFILES` for compile/classpath resolution when an optional Maven profile is needed
 - resolves a direct runtime classpath
 - materialises a snapshot-local benchmark config
 - runs the requested measured repeats with no warm-up or cool-down by default
@@ -109,7 +113,9 @@ What the 10k benchmark does:
 - emits a run TSV and aggregate summary JSON
 - reports uncertainty for every numeric metric, including SEM, coefficient of variation, and a 95% confidence interval for the mean
 
-The 10k speed verdict is based on `wall_clock_seconds`. A change is faster only when the candidate-minus-baseline 95% CI for mean wall clock is entirely below zero, slower only when it is entirely above zero, and otherwise inconclusive/noise-dominated. `seconds_per_household_month` remains supporting scale-normalised evidence.
+The 20k speed verdict is based on `wall_clock_seconds`. A change is faster only when the candidate-minus-baseline 95% CI for mean wall clock is entirely below zero, slower only when it is entirely above zero, and otherwise inconclusive/noise-dominated. `seconds_per_household_month` remains supporting scale-normalised evidence.
+
+The 20k gate replaces the earlier 10k gate because the measured 10-run 20k benchmark has `2.4077%` wall-clock CV and an estimated 10+10 run baseline-vs-candidate 95% delta half-width of `2.2622%`. This is sufficient to detect roughly `2.5%+` wall-clock improvements under matching variance. See [`20k-speed-detection-benchmark.md`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/docs/model-speed/20k-speed-detection-benchmark.md).
 
 For population-shape sanity checks, the existing ladder mode may be used on `core-minimal-10k-s1`:
 
@@ -130,7 +136,7 @@ Canonical JFR profile command:
 ```bash
 bash scripts/model/profile-model.sh \
   --snapshot v0 \
-  --mode core-minimal-10k-s1 \
+  --mode core-minimal-20k-s1 \
   --profiler jfr \
   --output-root tmp/model-speed/profiles
 ```
@@ -140,7 +146,7 @@ Canonical `perf` command:
 ```bash
 bash scripts/model/profile-model.sh \
   --snapshot v0 \
-  --mode core-minimal-10k-s1 \
+  --mode core-minimal-20k-s1 \
   --profiler perf \
   --output-root tmp/model-speed/profiles
 ```
@@ -191,14 +197,15 @@ bash scripts/model/run-speed-regression.sh \
 
 Current policy:
 - speed work must pass the three-run bitwise exact similarity check against `e2e-default-5k-s1`
-- speed claims are evaluated on the 10-run `core-minimal-10k-s1` wall-clock benchmark
+- speed claims are evaluated on the 10-run `core-minimal-20k-s1` wall-clock benchmark
 - tolerance-based regression is reserved for a later explicitly approved track
 
 ## Acceptance Criteria
 Every accepted speed change must pass:
 - `mvn -q -DskipTests compile`
+- `mvn -q test`
 - three-run exact deterministic similarity check on `v0 / e2e-default-5k-s1`
-- 10-repeat benchmark rerun on `v0 / core-minimal-10k-s1`
+- 10-repeat benchmark rerun on `v0 / core-minimal-20k-s1`
 - `bash input-data-versions/validate.sh v0 r8 --no-graphs` when a model-code change needs live validation and the worktree is prepared for resource mutation
 
 Exact means:
@@ -218,7 +225,8 @@ Tracked baseline manifests and summary snapshots live in [`docs/model-speed/base
 
 Rules:
 - exact hash manifests are tracked only for the e2e correctness gate
-- summary snapshots are tracked for the 10k speed baseline
+- summary snapshots are tracked only when a speed-baseline snapshot refresh is explicitly accepted
+- the existing `v0-core-minimal-10k-s1.summary.json` is historical and not the active speed verdict baseline
 - raw run outputs belong in `tmp/model-speed/`
 - generated configs belong in `tmp/model-speed/generated-configs/`
 - `Results/` is not the canonical home for speed-regression baselines

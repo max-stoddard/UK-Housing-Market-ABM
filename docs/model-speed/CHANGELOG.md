@@ -10,6 +10,44 @@ This changelog is dedicated only to the model-speed improvement programme.
 - Benchmark and regression impact
 - Required follow-up
 
+## 2026-05-06 - Java 25-Only Target Cleanup
+- Removed the active `java8-compat` Maven profile and made Java 25 the only supported Java compile target.
+- Kept generic `MODEL_SPEED_MAVEN_PROFILES` harness support for future Maven-profile experiments, but removed Java 8-specific active command examples.
+- Documented Java 25 as the long-term platform default because it reduces compatibility burden and keeps newer language, runtime, and tooling features available.
+
+Benchmark and regression impact:
+- No Java model source or runtime resources changed.
+- The existing 20k Java 25 migration benchmark remains historical evidence: Java 25 preserved exact output but was slower than the retired compatibility build on the current speed gate.
+
+Required follow-up:
+- Continue using Java 25 for active development; evaluate future model-speed work on the 20k gate rather than reintroducing Java 8 compatibility.
+
+## 2026-05-06 - 20k Speed Detection Strategy
+- Promoted `core-minimal-20k-s1` to the primary minimal-output execution-time benchmark while keeping `e2e-default-5k-s1` as a three-run exact model-output sanity gate only.
+- Added `docs/model-speed/20k-speed-detection-benchmark.md` to record the measured `20k x 10` evidence and detection calculation.
+- Added the pinned `v0-core-minimal-20k-s1` mode, matching the 10k minimal-output mode except for `TARGET_POPULATION = 20000`.
+
+Benchmark and regression impact:
+- The measured `20k x 10` run at `tmp/model-speed/benchmarks/v0/core-minimal-20k-s1/20260506T093735Z/summary.json` had wall-clock mean `43.469086s`, stdev `1.046623s`, and CV `2.4077%`.
+- The estimated 10-baseline-run plus 10-candidate-run 95% candidate-minus-baseline delta half-width is `0.983366s`, or `2.2622%` of the measured mean.
+- This is below the `2.5%` improvement-detection target and below the broader `5%` uncertainty ceiling, so no additional 20k repeats are required before using the 20k gate.
+
+Required follow-up:
+- For future speed candidates, run more 20k repeats only if the measured 10+10 delta uncertainty exceeds `2.5%` of the baseline mean.
+
+## 2026-05-06 - Java 25 Toolchain Experiment
+- Migrated Maven compiler configuration from Java 8 `source`/`target` to `--release`, with Java 25 as the default release and `-Pjava8-compat` preserving the Java 8 compatibility path.
+- Added `MODEL_SPEED_MAVEN_PROFILES` to the model-speed harness so benchmark, regression, and profile runs can compile and resolve classpaths through Maven profiles.
+- Kept the experiment scoped to build/harness/documentation changes only; no model Java source or runtime input resources were changed.
+
+Regression policy for this experiment:
+- exact output similarity uses three repeated `v0 / e2e-default-5k-s1` runs
+- the original speed comparison used 10 repeated `v0 / core-minimal-10k-s1` runs for pre-change Java 8-compatible output, post-change `java8-compat`, and post-change Java 25 default
+- the current strategy rerun uses 10 repeated `v0 / core-minimal-20k-s1` runs comparing post-change `java8-compat` against Java 25 default
+
+Required follow-up:
+- Do not treat the Java 25 default migration as a speed improvement. The 20k rerun preserved exact output, but Java 25 was slower than `java8-compat` on wall clock: `+3.921212s` mean, `+8.755%`, with the 95% CI entirely above zero.
+
 ## 2026-05-05 - v0 Contract Split And Uncertainty Reset
 - Replaced the active canonical model-speed populations with:
   - `e2e-default-5k-s1` for three-run exact output similarity only
