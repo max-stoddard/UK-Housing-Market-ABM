@@ -17,7 +17,7 @@ Usage: $(basename "$0") --snapshot <version> --mode <mode> --profiler <jfr|perf>
 
 Required arguments:
   --snapshot     Snapshot folder under input-data-versions
-  --mode         e2e-default-10k-s1 | core-minimal-20k-s1
+  --mode         e2e-default-5k-s1 | core-minimal-10k-s1
   --profiler     jfr | perf
   --output-root  Root directory for profile artifacts
 EOF

@@ -13,17 +13,26 @@ model_speed_log_init
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") --snapshot <version> --mode <mode> --repeat <n> --output-root <dir>
+Usage: $(basename "$0") --snapshot <version> --mode <mode> --repeat <n> --output-root <dir> [options]
 
 Required arguments:
   --snapshot     Snapshot folder under input-data-versions (canonical model-speed snapshot: v0)
-  --mode         e2e-default-10k-s1 | core-minimal-20k-s1
-  --repeat       Number of measured repeats (one warm-up is always added)
+  --mode         e2e-default-5k-s1 | core-minimal-10k-s1
+  --repeat       Number of measured repeats
   --output-root  Root directory for benchmark artifacts
 
+Options:
+  --warmup <n>                  Number of unmeasured warm-up runs (default: 0)
+  --cooldown <n>                Number of unmeasured cool-down runs (default: 0)
+  --capture-jfr                 Re-run the median measured scenario with JFR capture
+  --pin-cpu <cpu-list>          Run Java through taskset -c <cpu-list>
+  --active-processor-count <n>  Add -XX:ActiveProcessorCount=<n> to Java
+
 Environment:
-  MODEL_SPEED_JAVA_OPTS          JVM flags for direct Java execution (default: -Xms1g -Xmx4g)
-  MODEL_SPEED_POPULATION_LADDER  Set to 1 to record the 10k/20k population ladder for core-minimal-20k-s1
+  MODEL_SPEED_JAVA_OPTS                 JVM flags for direct Java execution (default: -Xms1g -Xmx4g)
+  MODEL_SPEED_CPU_AFFINITY              CPU list used by taskset when --pin-cpu is omitted
+  MODEL_SPEED_ACTIVE_PROCESSOR_COUNT    JVM active processor count when --active-processor-count is omitted
+  MODEL_SPEED_POPULATION_LADDER         Set to 1 to record the 5k/10k population ladder for core-minimal-10k-s1
 EOF
 }
 
@@ -31,6 +40,11 @@ snapshot=""
 mode=""
 repeat=""
 output_root=""
+warmup=0
+cooldown=0
+capture_jfr=0
+pin_cpu="${MODEL_SPEED_CPU_AFFINITY:-}"
+active_processor_count="${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -48,6 +62,26 @@ while [[ $# -gt 0 ]]; do
       ;;
     --output-root)
       output_root="$2"
+      shift 2
+      ;;
+    --warmup)
+      warmup="$2"
+      shift 2
+      ;;
+    --cooldown)
+      cooldown="$2"
+      shift 2
+      ;;
+    --capture-jfr)
+      capture_jfr=1
+      shift
+      ;;
+    --pin-cpu)
+      pin_cpu="$2"
+      shift 2
+      ;;
+    --active-processor-count)
+      active_processor_count="$2"
       shift 2
       ;;
     --help|-h)
@@ -71,6 +105,28 @@ if ! [[ "${repeat}" =~ ^[0-9]+$ ]] || (( repeat < 1 )); then
   log_err "--repeat must be a positive integer."
   exit 1
 fi
+if ! [[ "${warmup}" =~ ^[0-9]+$ ]]; then
+  log_err "--warmup must be a non-negative integer."
+  exit 1
+fi
+if ! [[ "${cooldown}" =~ ^[0-9]+$ ]]; then
+  log_err "--cooldown must be a non-negative integer."
+  exit 1
+fi
+if [[ -n "${active_processor_count}" ]] && ! [[ "${active_processor_count}" =~ ^[0-9]+$ ]]; then
+  log_err "--active-processor-count must be a positive integer."
+  exit 1
+fi
+if [[ -n "${active_processor_count}" ]] && (( active_processor_count < 1 )); then
+  log_err "--active-processor-count must be a positive integer."
+  exit 1
+fi
+if [[ -n "${pin_cpu}" && -z "${active_processor_count}" ]]; then
+  active_processor_count=1
+fi
+MODEL_SPEED_CPU_AFFINITY="${pin_cpu}"
+MODEL_SPEED_ACTIVE_PROCESSOR_COUNT="${active_processor_count}"
+export MODEL_SPEED_CPU_AFFINITY MODEL_SPEED_ACTIVE_PROCESSOR_COUNT
 
 mode_file="$(model_speed_mode_file "${snapshot}" "${mode}")"
 mkdir -p "${output_root}"
@@ -86,6 +142,10 @@ environment_txt="${run_root}/environment.txt"
 log "Benchmark session root: ${run_root}"
 log "Pinned mode definition: ${mode_file}"
 log "Materialised config path: ${config_path}"
+log "Measured repeats: ${repeat}; warm-up runs: ${warmup}; cool-down runs: ${cooldown}; median JFR: ${capture_jfr}"
+if [[ -n "${MODEL_SPEED_CPU_AFFINITY}" ]]; then
+  log "CPU affinity: taskset -c ${MODEL_SPEED_CPU_AFFINITY}; JVM ActiveProcessorCount=${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT}"
+fi
 
 mkdir -p "${run_root}"
 model_speed_capture_environment "${environment_txt}" "${snapshot}" "${mode}" "${output_root}"
@@ -99,8 +159,13 @@ log "Benchmark config pins TARGET_POPULATION=${target_population}, N_STEPS=${n_s
 model_speed_ensure_compiled
 model_speed_resolve_classpath >/dev/null
 
-log "Running warm-up pass."
-model_speed_run_model_once "${config_path}" "${run_root}/warmup"
+if (( warmup > 0 )); then
+  for run_index in $(seq 1 "${warmup}"); do
+    run_id="$(printf 'warmup-%03d' "${run_index}")"
+    log "Running warm-up benchmark ${run_id}/${warmup}."
+    model_speed_run_model_once "${config_path}" "${run_root}/warmup/${run_id}"
+  done
+fi
 
 model_speed_write_tsv_header "${runs_tsv}"
 for run_index in $(seq 1 "${repeat}"); do
@@ -138,7 +203,12 @@ for run_index in $(seq 1 "${repeat}"); do
     "${run_dir}/model-output.sha256"
 done
 
-python3 "$(model_speed_python_helper)" benchmark-summary --runs-tsv "${runs_tsv}" --output "${summary_json}"
+python3 "$(model_speed_python_helper)" benchmark-summary \
+  --runs-tsv "${runs_tsv}" \
+  --output "${summary_json}" \
+  --warmup-count "${warmup}" \
+  --cooldown-count "${cooldown}" \
+  --jfr-captured "${capture_jfr}"
 median_run_id="$(
   python3 - "${summary_json}" <<'PY'
 import json
@@ -150,21 +220,32 @@ PY
 log "Measured summary written to ${summary_json}"
 log "Median measured run: ${median_run_id}"
 
-median_jfr_dir="${run_root}/median-jfr"
-median_jfr_file="${median_jfr_dir}/profile.jfr"
-mkdir -p "${median_jfr_dir}"
-log "Re-running median scenario with JFR capture."
-model_speed_run_model_once \
-  "${config_path}" \
-  "${median_jfr_dir}" \
-  "-XX:StartFlightRecording=filename=${median_jfr_file},settings=profile,dumponexit=true"
+median_jfr_file=""
+if (( capture_jfr == 1 )); then
+  median_jfr_dir="${run_root}/median-jfr"
+  median_jfr_file="${median_jfr_dir}/profile.jfr"
+  mkdir -p "${median_jfr_dir}"
+  log "Re-running median scenario with JFR capture."
+  model_speed_run_model_once \
+    "${config_path}" \
+    "${median_jfr_dir}" \
+    "-XX:StartFlightRecording=filename=${median_jfr_file},settings=profile,dumponexit=true"
+fi
 
-if [[ "${mode}" == "core-minimal-20k-s1" && "${MODEL_SPEED_POPULATION_LADDER}" == "1" ]]; then
+if (( cooldown > 0 )); then
+  for run_index in $(seq 1 "${cooldown}"); do
+    run_id="$(printf 'cooldown-%03d' "${run_index}")"
+    log "Running cool-down benchmark ${run_id}/${cooldown}."
+    model_speed_run_model_once "${config_path}" "${run_root}/cooldown/${run_id}"
+  done
+fi
+
+if [[ "${mode}" == "core-minimal-10k-s1" && "${MODEL_SPEED_POPULATION_LADDER}" == "1" ]]; then
   ladder_tsv="${run_root}/population-ladder.tsv"
   printf '%s\n' \
     'population	wall_clock_seconds	seconds_per_household_month	output_bytes	max_rss_kb	gc_pause_count	gc_pause_time_ms_total	output_dir	manifest_path' \
     > "${ladder_tsv}"
-  for ladder_population in 10000 20000; do
+  for ladder_population in 5000 10000; do
     ladder_config="${generated_config_dir}/${snapshot}-${mode}-ladder-${ladder_population}.properties"
     ladder_run_dir="${run_root}/population-ladder/pop-${ladder_population}"
     log "Running population ladder point TARGET_POPULATION=${ladder_population}."
@@ -202,4 +283,6 @@ log "Artifacts:"
 log "  environment: ${environment_txt}"
 log "  runs:        ${runs_tsv}"
 log "  summary:     ${summary_json}"
-log "  median JFR:  ${median_jfr_file}"
+if (( capture_jfr == 1 )); then
+  log "  median JFR:  ${median_jfr_file}"
+fi

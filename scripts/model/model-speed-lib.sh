@@ -11,6 +11,8 @@ source "${model_speed_repo_root}/scripts/helpers/log.sh"
 
 MODEL_SPEED_JAVA_OPTS="${MODEL_SPEED_JAVA_OPTS:--Xms1g -Xmx4g}"
 MODEL_SPEED_POPULATION_LADDER="${MODEL_SPEED_POPULATION_LADDER:-0}"
+MODEL_SPEED_CPU_AFFINITY="${MODEL_SPEED_CPU_AFFINITY:-}"
+MODEL_SPEED_ACTIVE_PROCESSOR_COUNT="${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-}"
 
 model_speed_log_init() {
   LOG_TAG="${LOG_TAG:-MODEL-SPEED}"
@@ -158,10 +160,18 @@ model_speed_capture_environment() {
     printf 'snapshot=%s\n' "${snapshot}"
     printf 'mode=%s\n' "${mode}"
     printf 'java_opts=%s\n' "${MODEL_SPEED_JAVA_OPTS}"
+    printf 'cpu_affinity=%s\n' "${MODEL_SPEED_CPU_AFFINITY:-none}"
+    printf 'active_processor_count=%s\n' "${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-default}"
     printf 'output_root=%s\n' "${output_root}"
     printf 'tmp_root=%s\n' "$(model_speed_tmp_root)"
     printf '\n[uname -a]\n'
     uname -a
+    printf '\n[nproc]\n'
+    nproc
+    if command -v taskset >/dev/null 2>&1; then
+      printf '\n[taskset -pc $$]\n'
+      taskset -pc $$ || true
+    fi
     printf '\n[java -version]\n'
     java -version 2>&1
     printf '\n[mvn -version]\n'
@@ -196,6 +206,9 @@ model_speed_build_java_command() {
     read -r -a default_java_flags <<< "${MODEL_SPEED_JAVA_OPTS}"
     cmd+=( "${default_java_flags[@]}" )
   fi
+  if [[ -n "${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT}" ]]; then
+    cmd+=( "-XX:ActiveProcessorCount=${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT}" )
+  fi
   cmd+=( -Xlog:gc*:file="${output_dir%/*}/gc.log":time,level,tags )
   if (( ${#extra_java_flags[@]} > 0 )); then
     cmd+=( "${extra_java_flags[@]}" )
@@ -222,7 +235,15 @@ model_speed_run_model_once() {
 
   local -a java_cmd=()
   model_speed_build_java_command java_cmd "${config_path}" "${output_dir}" "${extra_java_flags[@]}"
-  printf '%q ' "${java_cmd[@]}" > "${command_file}"
+  local -a run_cmd=( "${java_cmd[@]}" )
+  if [[ -n "${MODEL_SPEED_CPU_AFFINITY}" ]]; then
+    if ! command -v taskset >/dev/null 2>&1; then
+      log_err "MODEL_SPEED_CPU_AFFINITY is set but taskset is not available."
+      return 1
+    fi
+    run_cmd=( taskset -c "${MODEL_SPEED_CPU_AFFINITY}" "${java_cmd[@]}" )
+  fi
+  printf '%q ' "${run_cmd[@]}" > "${command_file}"
   printf '\n' >> "${command_file}"
 
   local start_ns
@@ -231,7 +252,7 @@ model_speed_run_model_once() {
   start_ns="$(date +%s%N)"
   (
     cd "${model_speed_repo_root}"
-    LC_ALL=C /usr/bin/time -v -o "${time_file}" "${java_cmd[@]}" > "${stdout_log}" 2> "${stderr_log}"
+    LC_ALL=C /usr/bin/time -v -o "${time_file}" "${run_cmd[@]}" > "${stdout_log}" 2> "${stderr_log}"
   )
   end_ns="$(date +%s%N)"
   wall_clock_seconds="$(awk -v start="${start_ns}" -v end="${end_ns}" 'BEGIN { printf "%.6f", (end - start) / 1000000000 }')"
