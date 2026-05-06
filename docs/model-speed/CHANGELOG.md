@@ -10,6 +10,23 @@ This changelog is dedicated only to the model-speed improvement programme.
 - Benchmark and regression impact
 - Required follow-up
 
+## 2026-05-06 - Cached Rental Income 20k Contract Rerun
+- Re-ran the lazy cached `Household.getMonthlyGrossRentalIncome()` candidate under the current model-speed contract using isolated source copies.
+- The candidate source was run first, followed by default model source, both using the same current harness, CPU `0`, and JVM `-XX:ActiveProcessorCount=1`.
+- The candidate preserves exact `sum(RentalAgreement.nextPayment())` output by dirty-invalidating rental income on rental-contract lifecycle changes and recomputing in `TreeMap` value order on demand.
+
+Benchmark and regression impact:
+- Candidate exact gate passed: `tmp/model-speed/rental-income-rerun/after-first/regressions/v0/e2e-default-5k-s1/exact/20260506T104844Z/regression-report.md`.
+- Default exact gate passed: `tmp/model-speed/rental-income-rerun/default-second/regressions/v0/e2e-default-5k-s1/exact/20260506T104927Z/regression-report.md`.
+- 20k speed comparison report: `tmp/model-speed/rental-income-rerun/20k-speed-comparison.md`.
+- `core-minimal-20k-s1` default mean wall clock: `45.266753s +/- 1.163163s` 95% CI.
+- `core-minimal-20k-s1` cached candidate mean wall clock: `41.831341s +/- 1.172032s` 95% CI.
+- Candidate-minus-default wall-clock delta: `-3.435412s +/- 1.533559s`, `-7.589%`; verdict `faster`.
+- Output volume was unchanged at `989177` bytes.
+
+Required follow-up:
+- Promote the cached rental-income source patch from the isolated candidate copy only after reviewing the lifecycle tests and applying the code changes to the main worktree.
+
 ## 2026-05-06 - Java 25-Only Target Cleanup
 - Removed the active `java8-compat` Maven profile and made Java 25 the only supported Java compile target.
 - Kept generic `MODEL_SPEED_MAVEN_PROFILES` harness support for future Maven-profile experiments, but removed Java 8-specific active command examples.

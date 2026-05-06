@@ -3,6 +3,7 @@ package housing;
 import collectors.HouseholdStats;
 import collectors.HousingMarketStats;
 import collectors.MicroDataRecorder;
+import collectors.RentalMarketStats;
 import org.apache.commons.math3.random.MersenneTwister;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class HouseholdAccountingTest {
 
@@ -28,12 +30,21 @@ class HouseholdAccountingTest {
     Path tempDir;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         Model.config = new Config(CONFIG_PATH);
         Model.prng = new MersenneTwister(123);
         Model.government = new Government();
         Model.householdStats = new HouseholdStats();
         Model.householdStats.init();
+        Model.centralBank = new CentralBank();
+        Model.centralBank.init();
+        Model.bank = new Bank(Model.centralBank);
+        Model.bank.init();
+        Model.housingMarketStats = new FixedHousingMarketStats(250000.0);
+        Model.houseRentalMarket = new HouseRentalMarket(Model.prng);
+        Model.houseRentalMarket.init();
+        Model.rentalMarketStats = new FixedRentalMarketStats(Model.housingMarketStats, 0.05, 1.0);
+        resetHouseholdBehaviourStatics();
     }
 
     @Test
@@ -74,6 +85,103 @@ class HouseholdAccountingTest {
                 () -> assertEquals(900.0, getDoubleField(Model.householdStats, "rentalCashOutflowCounter"), 1.0e-9),
                 () -> assertEquals(600.0, getDoubleField(Model.householdStats, "mortgageInterestPaymentCounter"), 1.0e-9),
                 () -> assertEquals(600.0, getDoubleField(Model.householdStats, "mortgagePrincipalPaymentCounter"), 1.0e-9)
+        );
+    }
+
+    @Test
+    void completeHouseLetCachesActiveRentalIncome() {
+        Household landlord = new Household(Model.prng, 45.0);
+        House rentedHouse = addOwnedInvestmentHouse(landlord);
+        HouseOfferRecord offer = new HouseOfferRecord(rentedHouse, 950.0, false);
+        RentalAgreement rentalAgreement = rentalAgreement(950.0, 6);
+
+        landlord.completeHouseLet(offer, rentalAgreement);
+
+        assertEquals(950.0, landlord.getMonthlyGrossRentalIncome(), 1.0e-9);
+    }
+
+    @Test
+    void finalRentalPaymentUpdatesLandlordCachedRentalIncome() throws Exception {
+        Household landlord = new Household(Model.prng, 45.0);
+        Household tenant = new Household(Model.prng, 35.0);
+        House rentedHouse = addOwnedInvestmentHouse(landlord);
+        RentalAgreement rentalAgreement = rentalAgreement(875.0, 1);
+        setRentedHome(tenant, rentedHouse, rentalAgreement);
+        landlord.completeHouseLet(new HouseOfferRecord(rentedHouse, 875.0, false), rentalAgreement);
+
+        invokeMonthlyDisposableIncome(tenant);
+
+        assertAll(
+                () -> assertEquals(0, rentalAgreement.nPayments),
+                () -> assertEquals(0.0, landlord.getMonthlyGrossRentalIncome(), 1.0e-9)
+        );
+    }
+
+    @Test
+    void finalRentalPaymentOnlyRemovesExpiredContractFromMultipleRentals() throws Exception {
+        Household landlord = new Household(Model.prng, 45.0);
+        Household expiringTenant = new Household(Model.prng, 35.0);
+        Household ongoingTenant = new Household(Model.prng, 36.0);
+        House expiringHouse = addOwnedInvestmentHouse(landlord);
+        House ongoingHouse = addOwnedInvestmentHouse(landlord);
+        RentalAgreement expiringAgreement = rentalAgreement(875.0, 1);
+        RentalAgreement ongoingAgreement = rentalAgreement(1025.0, 6);
+        setRentedHome(expiringTenant, expiringHouse, expiringAgreement);
+        setRentedHome(ongoingTenant, ongoingHouse, ongoingAgreement);
+        landlord.completeHouseLet(new HouseOfferRecord(expiringHouse, 875.0, false), expiringAgreement);
+        landlord.completeHouseLet(new HouseOfferRecord(ongoingHouse, 1025.0, false), ongoingAgreement);
+
+        invokeMonthlyDisposableIncome(expiringTenant);
+
+        assertEquals(1025.0, landlord.getMonthlyGrossRentalIncome(), 1.0e-9);
+    }
+
+    @Test
+    void endOfLettingAgreementRemovesActiveRentalIncome() {
+        Household landlord = new Household(Model.prng, 45.0);
+        House rentedHouse = addOwnedInvestmentHouse(landlord);
+        RentalAgreement rentalAgreement = rentalAgreement(725.0, 6);
+        landlord.completeHouseLet(new HouseOfferRecord(rentedHouse, 725.0, false), rentalAgreement);
+
+        landlord.endOfLettingAgreement(rentedHouse, rentalAgreement);
+
+        assertEquals(0.0, landlord.getMonthlyGrossRentalIncome(), 1.0e-9);
+    }
+
+    @Test
+    void tenantDeathEndsLettingAgreementAndRemovesLandlordRentalIncome() throws Exception {
+        Household landlord = new Household(Model.prng, 45.0);
+        Household tenant = new Household(Model.prng, 35.0);
+        Household beneficiary = new Household(Model.prng, 40.0);
+        House rentedHouse = addOwnedInvestmentHouse(landlord);
+        RentalAgreement rentalAgreement = rentalAgreement(725.0, 6);
+        setRentedHome(tenant, rentedHouse, rentalAgreement);
+        landlord.completeHouseLet(new HouseOfferRecord(rentedHouse, 725.0, false), rentalAgreement);
+
+        tenant.transferAllWealthTo(beneficiary);
+
+        assertAll(
+                () -> assertEquals(0.0, landlord.getMonthlyGrossRentalIncome(), 1.0e-9),
+                () -> assertEquals(null, tenant.getHome()),
+                () -> assertEquals(null, rentedHouse.resident)
+        );
+    }
+
+    @Test
+    void completeHouseSaleEvictsTenantAndRemovesRentalIncome() throws Exception {
+        Household landlord = new Household(Model.prng, 45.0);
+        Household tenant = new Household(Model.prng, 35.0);
+        House rentedHouse = addOwnedInvestmentHouse(landlord);
+        RentalAgreement rentalAgreement = rentalAgreement(1030.0, 6);
+        setRentedHome(tenant, rentedHouse, rentalAgreement);
+        landlord.completeHouseLet(new HouseOfferRecord(rentedHouse, 1030.0, false), rentalAgreement);
+
+        landlord.completeHouseSale(new HouseOfferRecord(rentedHouse, 250000.0, true));
+
+        assertAll(
+                () -> assertEquals(0.0, landlord.getMonthlyGrossRentalIncome(), 1.0e-9),
+                () -> assertFalse(tenant.getHousePayments().containsKey(rentedHouse)),
+                () -> assertEquals(null, tenant.getHome())
         );
     }
 
@@ -135,6 +243,45 @@ class HouseholdAccountingTest {
         );
     }
 
+    private static RentalAgreement rentalAgreement(double monthlyPayment, int nPayments) {
+        RentalAgreement rentalAgreement = new RentalAgreement();
+        rentalAgreement.monthlyPayment = monthlyPayment;
+        rentalAgreement.nPayments = nPayments;
+        return rentalAgreement;
+    }
+
+    private static House addOwnedInvestmentHouse(Household owner) {
+        House house = new House(0);
+        house.owner = owner;
+        MortgageAgreement mortgageAgreement = new MortgageAgreement(owner, true);
+        mortgageAgreement.nPayments = 0;
+        mortgageAgreement.monthlyPayment = 0.0;
+        mortgageAgreement.principal = 0.0;
+        mortgageAgreement.monthlyInterestRate = 0.0;
+        mortgageAgreement.purchasePrice = 250000.0;
+        owner.getHousePayments().put(house, mortgageAgreement);
+        return house;
+    }
+
+    private static void setRentedHome(Household tenant, House house, RentalAgreement rentalAgreement) throws Exception {
+        tenant.getHousePayments().put(house, rentalAgreement);
+        house.resident = tenant;
+        setField(tenant, "home", house);
+    }
+
+    private static double invokeMonthlyDisposableIncome(Household household) throws Exception {
+        Method method = Household.class.getDeclaredMethod("getMonthlyDisposableIncome");
+        method.setAccessible(true);
+        return (double) method.invoke(household);
+    }
+
+    private static void resetHouseholdBehaviourStatics() throws Exception {
+        setStaticField(HouseholdBehaviour.class, "config", Model.config);
+        setStaticField(HouseholdBehaviour.class, "prng", Model.prng);
+        setStaticField(HouseholdBehaviour.class, "housingMarketStats", Model.housingMarketStats);
+        setStaticField(HouseholdBehaviour.class, "rentalMarketStats", Model.rentalMarketStats);
+    }
+
     private static void setBehaviourPropertyInvestor(Household household, boolean value) throws Exception {
         Field investorField = household.behaviour.getClass().getDeclaredField("BTLInvestor");
         investorField.setAccessible(true);
@@ -145,6 +292,12 @@ class HouseholdAccountingTest {
         Field field = target.getClass().getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private static void setStaticField(Class<?> targetClass, String fieldName, Object value) throws Exception {
+        Field field = targetClass.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(null, value);
     }
 
     private static double getDoubleField(Object target, String fieldName) throws Exception {
@@ -164,6 +317,32 @@ class HouseholdAccountingTest {
         @Override
         public double getExpAvSalePriceForQuality(int quality) {
             return houseValue;
+        }
+    }
+
+    private static final class FixedRentalMarketStats extends RentalMarketStats {
+        private final double flowYield;
+        private final double occupancy;
+
+        private FixedRentalMarketStats(HousingMarketStats housingMarketStats, double flowYield, double occupancy) {
+            super(housingMarketStats, null, 1);
+            this.flowYield = flowYield;
+            this.occupancy = occupancy;
+        }
+
+        @Override
+        public double getAvFlowYieldForQuality(int quality) {
+            return flowYield;
+        }
+
+        @Override
+        public double getAvOccupancyForQuality(int quality) {
+            return occupancy;
+        }
+
+        @Override
+        public double getExpAvSalePriceForQuality(int quality) {
+            return 1000.0;
         }
     }
 }

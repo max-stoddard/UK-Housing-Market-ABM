@@ -34,6 +34,8 @@ public class Household implements IHouseOwner {
     private House                           home;
     private Map<House, PaymentAgreement>    housePayments = new TreeMap<>(); // Houses owned and their payment agreements
     private Map<House, RentalAgreement>     rentalContracts = new TreeMap<>(); // Houses rented out by this landlord and their payment agreements
+    private double                          monthlyGrossRentalIncome = 0.0;
+    private boolean                         monthlyGrossRentalIncomeDirty = false;
     private Config                          config = Model.config; // Passes the Model's configuration parameters object to a private field
     private MersenneTwister                 prng;
     private double                          age; // Age of the household representative person
@@ -201,7 +203,11 @@ public class Household implements IHouseOwner {
         monthlyDisposableIncome -= getMonthlyEssentialConsumption();
         // Subtract housing consumption
         for(PaymentAgreement payment: housePayments.values()) {
+            boolean finalRentalPayment = payment instanceof RentalAgreement && payment.nPayments == 1;
             monthlyDisposableIncome -= payment.makeMonthlyPayment();
+            if (finalRentalPayment) {
+                ((RentalAgreement) payment).invalidateLandlordRentalIncome();
+            }
         }
         return monthlyDisposableIncome;
     }
@@ -268,9 +274,8 @@ public class Household implements IHouseOwner {
      * Adds up this month's rental income from all currently owned and rented properties
      */
     public double getMonthlyGrossRentalIncome() {
-        double monthlyGrossRentalIncome = 0.0;
-        for(RentalAgreement rentalAgreement: rentalContracts.values()) {
-            monthlyGrossRentalIncome += rentalAgreement.nextPayment();
+        if (monthlyGrossRentalIncomeDirty) {
+            recalculateMonthlyGrossRentalIncome();
         }
         return monthlyGrossRentalIncome;
     }
@@ -397,7 +402,7 @@ public class Household implements IHouseOwner {
         // ...otherwise, if the house has a resident, it must be a renter, who must get evicted, also the rental income
         // corresponding to this tenancy must be subtracted from the owner's monthly rental income
         } else if (sale.getHouse().resident != null) {
-            rentalContracts.remove(sale.getHouse());
+            removeRentalContract(sale.getHouse());
             sale.getHouse().resident.getEvicted();
         }
     }
@@ -416,7 +421,7 @@ public class Household implements IHouseOwner {
         // Check that the house is not currently being already offered in the rental market
         if(h.isOnRentalMarket()) System.out.println("Strange: got endOfLettingAgreement on house on rental market");
         // Remove the old rental contract from the landlord's list of rental contracts
-        rentalContracts.remove(h);
+        removeRentalContract(h);
         // Put house back on rental market
         Model.houseRentalMarket.offer(h, behaviour.getInitialRentPrice(h.getQuality()), false);
     }
@@ -518,7 +523,36 @@ public class Household implements IHouseOwner {
      */
     @Override
     public void completeHouseLet(HouseOfferRecord sale, RentalAgreement rentalAgreement) {
-        rentalContracts.put(sale.getHouse(), rentalAgreement);
+        putRentalContract(sale.getHouse(), rentalAgreement);
+    }
+
+    private void putRentalContract(House house, RentalAgreement rentalAgreement) {
+        RentalAgreement previousAgreement = rentalContracts.put(house, rentalAgreement);
+        if (previousAgreement != null) {
+            previousAgreement.landlord = null;
+        }
+        rentalAgreement.landlord = this;
+        monthlyGrossRentalIncomeDirty = true;
+    }
+
+    private void removeRentalContract(House house) {
+        RentalAgreement previousAgreement = rentalContracts.remove(house);
+        if (previousAgreement != null) {
+            previousAgreement.landlord = null;
+            monthlyGrossRentalIncomeDirty = true;
+        }
+    }
+
+    void invalidateMonthlyGrossRentalIncome() {
+        monthlyGrossRentalIncomeDirty = true;
+    }
+
+    private void recalculateMonthlyGrossRentalIncome() {
+        monthlyGrossRentalIncome = 0.0;
+        for (RentalAgreement rentalAgreement : rentalContracts.values()) {
+            monthlyGrossRentalIncome += rentalAgreement.nextPayment();
+        }
+        monthlyGrossRentalIncomeDirty = false;
     }
 
     /////////////////////////////////////////////////////////
