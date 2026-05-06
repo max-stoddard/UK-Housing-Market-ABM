@@ -5,7 +5,7 @@ This folder stores tracked baseline artifacts for the model-speed programme.
 
 Allowed here:
 - exact hash manifests for the canonical 5k e2e similarity gate
-- benchmark summary snapshots for the canonical 10k execution-time baseline
+- accepted benchmark summary snapshots when a speed-baseline snapshot is explicitly refreshed
 - tolerance-spec snapshots once a future parallel track is approved
 
 Not allowed here:
@@ -21,4 +21,7 @@ Tracked baseline artifacts should be small, reviewable, and stable enough to sup
 
 Current canonical baselines:
 - `v0-e2e-default-5k-s1`: exact hash similarity contract
-- `v0-core-minimal-10k-s1`: primary 10-run execution-time summary
+- `v0-core-minimal-20k-s1`: primary 10-run execution-time benchmark; current detection evidence is documented in `docs/model-speed/20k-speed-detection-benchmark.md`
+
+Historical tracked summaries:
+- `v0-core-minimal-10k-s1.summary.json`: historical 10k summary snapshot from the previous benchmark gate; do not use it as the active speed verdict baseline.
