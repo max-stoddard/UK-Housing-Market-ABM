@@ -27,7 +27,7 @@ Important:
 - The legacy validation entrypoint `bash input-data-versions/validate.sh v0 r8 --no-graphs` still switches live resources and should therefore be run only from a clean or explicitly prepared worktree state.
 
 ## Metrics
-Primary engineering metric:
+Primary engineering metric for scale-normalised analysis:
 
 ```text
 seconds_per_household_month = wall_clock_seconds / (TARGET_POPULATION * N_STEPS * N_SIMS)
@@ -38,8 +38,8 @@ Why this is primary:
 - It makes population-growth progress visible even when absolute runtime changes are noisy.
 - It directly aligns with the programme goal of making larger `TARGET_POPULATION` runs practical.
 
-Guardrail metric:
-- `end-to-end wall_clock_seconds` for the whole model run, including JVM startup and output generation for the chosen benchmark mode
+Headline speed-contract metric:
+- `wall_clock_seconds` for `core-minimal-10k-s1`, including JVM startup and output generation for the minimal-output mode
 
 Supporting metrics:
 - `model_computing_seconds` from the model's own stdout
@@ -59,60 +59,78 @@ At runtime the harness materialises a full snapshot-local config copy under `tmp
 - applying the pinned mode overrides
 
 The canonical baselines are:
-- `e2e-default-10k-s1`: `TARGET_POPULATION = 10000`, `N_STEPS = 2000`, `N_SIMS = 1`, default/full output contract. This is the exact correctness and output-contract regression gate.
-- `core-minimal-20k-s1`: `TARGET_POPULATION = 20000`, `N_STEPS = 2000`, `N_SIMS = 1`, minimal outputs. This is the primary single-run simulation speed and scaling gate.
+- `e2e-default-5k-s1`: `TARGET_POPULATION = 5000`, `N_STEPS = 2000`, `N_SIMS = 1`, default/full output contract. This is the exact correctness and output-contract regression gate.
+- `core-minimal-10k-s1`: `TARGET_POPULATION = 10000`, `N_STEPS = 2000`, `N_SIMS = 1`, minimal outputs. This is the primary single-run simulation speed and scaling gate.
 
-The `10k` e2e baseline is not the primary speed baseline. Its purpose is to preserve exact model/output correctness while speed work is evaluated on the minimal-output core baselines.
+The `5k` e2e baseline is not a speed benchmark. Its purpose is to preserve exact model/output correctness and similarity while speed work is evaluated on the minimal-output 10k execution-time baseline.
 
 ## Workflow
-### 1. Benchmark First
-Run the two canonical benchmark baselines:
+### 1. Check Similarity First
+Run the 5k exact/similarity check:
+
+```bash
+bash scripts/model/run-speed-regression.sh \
+  --snapshot v0 \
+  --mode e2e-default-5k-s1 \
+  --contract exact \
+  --baseline-manifest docs/model-speed/baselines/v0-e2e-default-5k-s1.exact.sha256 \
+  --repeat 3 \
+  --pin-cpu 0 \
+  --active-processor-count 1 \
+  --output-root tmp/model-speed/regressions
+```
+
+The 5k similarity check runs three full-output candidate executions. Every candidate output manifest must match the tracked baseline manifest, and the three candidate manifests must match each other. Do not use the 5k path for a speed verdict.
+
+### 2. Benchmark Execution Time
+Run the canonical 10k execution-time benchmark:
 
 ```bash
 bash scripts/model/run-speed-benchmark.sh \
   --snapshot v0 \
-  --mode e2e-default-10k-s1 \
-  --repeat 5 \
-  --output-root tmp/model-speed/benchmarks
-
-bash scripts/model/run-speed-benchmark.sh \
-  --snapshot v0 \
-  --mode core-minimal-20k-s1 \
-  --repeat 5 \
+  --mode core-minimal-10k-s1 \
+  --repeat 10 \
+  --warmup 0 \
+  --cooldown 0 \
+  --pin-cpu 0 \
+  --active-processor-count 1 \
   --output-root tmp/model-speed/benchmarks
 ```
 
-What each benchmark does:
+What the 10k benchmark does:
 - compiles the Java project
 - resolves a direct runtime classpath
 - materialises a snapshot-local benchmark config
-- runs one warm-up plus the requested measured repeats
+- runs the requested measured repeats with no warm-up or cool-down by default
+- can optionally run warm-up/cool-down passes and median JFR capture when explicitly requested
 - captures `/usr/bin/time -v`
 - captures GC logs and a parsed GC summary
 - hashes output files for every measured run
 - emits a run TSV and aggregate summary JSON
-- re-runs the median measured case with JFR enabled
+- reports uncertainty for every numeric metric, including SEM, coefficient of variation, and a 95% confidence interval for the mean
 
-For population-shape sanity checks, the existing ladder mode may be used on `core-minimal-20k-s1`:
+The 10k speed verdict is based on `wall_clock_seconds`. A change is faster only when the candidate-minus-baseline 95% CI for mean wall clock is entirely below zero, slower only when it is entirely above zero, and otherwise inconclusive/noise-dominated. `seconds_per_household_month` remains supporting scale-normalised evidence.
+
+For population-shape sanity checks, the existing ladder mode may be used on `core-minimal-10k-s1`:
 
 ```bash
 MODEL_SPEED_POPULATION_LADDER=1 \
 bash scripts/model/run-speed-benchmark.sh \
   --snapshot v0 \
-  --mode core-minimal-20k-s1 \
+  --mode core-minimal-10k-s1 \
   --repeat 3 \
   --output-root tmp/model-speed/benchmarks
 ```
 
-The population ladder records one measured pass each at `10k` and `20k`. These points are diagnostics, not baseline identities.
+The population ladder records one measured pass each at `5k` and `10k`. These points are diagnostics, not baseline identities.
 
-### 2. Profile Second
+### 3. Profile Second
 Canonical JFR profile command:
 
 ```bash
 bash scripts/model/profile-model.sh \
   --snapshot v0 \
-  --mode core-minimal-20k-s1 \
+  --mode core-minimal-10k-s1 \
   --profiler jfr \
   --output-root tmp/model-speed/profiles
 ```
@@ -122,7 +140,7 @@ Canonical `perf` command:
 ```bash
 bash scripts/model/profile-model.sh \
   --snapshot v0 \
-  --mode core-minimal-20k-s1 \
+  --mode core-minimal-10k-s1 \
   --profiler perf \
   --output-root tmp/model-speed/profiles
 ```
@@ -131,7 +149,7 @@ Use JFR first. Only reach for `perf` if JFR does not make CPU or allocation hots
 
 Current checked-in profiling artifacts from the earlier v4.1 smoke recordings live under [`docs/model-speed/profiles`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/docs/model-speed/profiles). These artifacts are historical hotspot evidence and are not current canonical baselines.
 
-### 3. Optimise In Narrow Slices
+### 4. Optimise In Narrow Slices
 Default hotspot order unless profiling disproves it:
 1. recorder and output overhead
 2. whole-population collectors and recounts
@@ -145,15 +163,18 @@ Rules:
 - one benchmark delta report per change
 - stop reworking a subsystem once measured gains flatten
 
-### 4. Regression Gate Every Change
+### 5. Regression Gate Every Change
 Exact regression command:
 
 ```bash
 bash scripts/model/run-speed-regression.sh \
   --snapshot v0 \
-  --mode e2e-default-10k-s1 \
+  --mode e2e-default-5k-s1 \
   --contract exact \
-  --baseline-manifest docs/model-speed/baselines/v0-e2e-default-10k-s1.exact.sha256 \
+  --baseline-manifest docs/model-speed/baselines/v0-e2e-default-5k-s1.exact.sha256 \
+  --repeat 3 \
+  --pin-cpu 0 \
+  --active-processor-count 1 \
   --output-root tmp/model-speed/regressions
 ```
 
@@ -162,21 +183,22 @@ Future tolerance contract command shape:
 ```bash
 bash scripts/model/run-speed-regression.sh \
   --snapshot v0 \
-  --mode e2e-default-10k-s1 \
+  --mode e2e-default-5k-s1 \
   --contract tolerance \
   --baseline-manifest path/to/tolerance-spec.json \
   --output-root tmp/model-speed/regressions
 ```
 
 Current policy:
-- single-run speed work must remain bitwise exact against `e2e-default-10k-s1`
+- speed work must pass the three-run bitwise exact similarity check against `e2e-default-5k-s1`
+- speed claims are evaluated on the 10-run `core-minimal-10k-s1` wall-clock benchmark
 - tolerance-based regression is reserved for a later explicitly approved track
 
 ## Acceptance Criteria
 Every accepted speed change must pass:
 - `mvn -q -DskipTests compile`
-- exact deterministic regression on `v0 / e2e-default-10k-s1`
-- full benchmark rerun on the two canonical baselines
+- three-run exact deterministic similarity check on `v0 / e2e-default-5k-s1`
+- 10-repeat benchmark rerun on `v0 / core-minimal-10k-s1`
 - `bash input-data-versions/validate.sh v0 r8 --no-graphs` when a model-code change needs live validation and the worktree is prepared for resource mutation
 
 Exact means:
@@ -185,8 +207,8 @@ Exact means:
 - same file hashes
 
 The benchmark delta report for each accepted speed change must show:
-- primary metric delta
-- wall-clock delta
+- wall-clock delta and verdict
+- scale-normalised metric delta as supporting evidence
 - RSS delta
 - GC delta
 - output-volume delta
@@ -196,7 +218,7 @@ Tracked baseline manifests and summary snapshots live in [`docs/model-speed/base
 
 Rules:
 - exact hash manifests are tracked only for the e2e correctness gate
-- summary snapshots are tracked for both canonical baselines
+- summary snapshots are tracked for the 10k speed baseline
 - raw run outputs belong in `tmp/model-speed/`
 - generated configs belong in `tmp/model-speed/generated-configs/`
 - `Results/` is not the canonical home for speed-regression baselines
@@ -210,4 +232,4 @@ Preferred order for parallel work:
 1. outer-loop parallelism (`N_SIMS`, seed batches, sweeps)
 2. only then consider intra-run parallelism
 
-The exact `e2e-default-10k-s1` path remains the canonical correctness reference after any parallel track begins.
+The exact `e2e-default-5k-s1` path remains the canonical correctness reference after any parallel track begins.
