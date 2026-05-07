@@ -3339,8 +3339,8 @@ assert.ok(
 
 const appSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/App.tsx'), 'utf-8');
 assert.ok(
-  appSource.includes('const experimentsVisible = isDevEnv && !isProdPreviewEnabled;'),
-  'App should gate experiments behind the dev-only visibility condition'
+  appSource.includes('const experimentsVisible = true;'),
+  'App should expose experiments in dev, production, and non-dev preview views'
 );
 assert.ok(
   appSource.includes("from './pages/ValidationPage'"),
@@ -3364,11 +3364,11 @@ assert.ok(
 );
 assert.ok(
   appSource.includes("{experimentsVisible && <NavLink to=\"/experiments\">Experiments</NavLink>}"),
-  'App should hide the experiments nav when experiments are not visible'
+  'App should render the experiments nav from the always-enabled experiments visibility flag'
 );
 assert.ok(
   appSource.includes("{experimentsVisible && (\n              <Route\n                path=\"/experiments\""),
-  'App should only register the experiments route when experiments are visible'
+  'App should register the experiments route from the always-enabled experiments visibility flag'
 );
 
 const validationPageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/ValidationPage.tsx'), 'utf-8');
@@ -3600,7 +3600,7 @@ assert.ok(
 );
 assert.ok(
   appSource.includes("{experimentsVisible && (\n              <Route\n                path=\"/login\""),
-  'App should only register the experiments login route when experiments are visible'
+  'App should register the experiments login route from the always-enabled experiments visibility flag'
 );
 
 const homePageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/HomePage.tsx'), 'utf-8');
@@ -3631,8 +3631,10 @@ assert.ok(
   'Server should register public routes through a dedicated module'
 );
 assert.ok(
-  serverIndexSource.includes("const { registerDevRoutes } = await import('./routes/devRoutes');"),
-  'Server should load dev-only routes lazily so production does not import them'
+  serverIndexSource.includes("const { registerDevRoutes } = await import('./routes/devRoutes');") &&
+    serverIndexSource.includes('registerDevRoutes(app, routeContext);') &&
+    !serverIndexSource.includes('if (isDevRuntime) {\n    const { registerDevRoutes } = await import'),
+  'Server should register experiment/model-run routes in every runtime'
 );
 assert.ok(
   serverIndexSource.includes("const memoryLoggingEnabled = (process.env.DASHBOARD_LOG_MEMORY?.trim().toLowerCase() ?? '') === 'true';"),
@@ -3663,7 +3665,7 @@ assert.ok(
 );
 assert.ok(
   devRoutesSource.includes("if (!context.requireExperimentsFeature(req, res)) {"),
-  'Dev routes should still guard experiments behind the experiments feature flag'
+  'Experiment routes should still use the centralized experiments feature guard'
 );
 
 assert.ok(

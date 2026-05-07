@@ -37,7 +37,7 @@ Dashboard API environment variables:
 - `PORT` (preferred in production): HTTP port.
 - `DASHBOARD_API_PORT` (local fallback): HTTP port when `PORT` is not set.
 - `DASHBOARD_CORS_ORIGIN` (optional): allowed browser origin for cross-origin requests (for split frontend/API deploys).
-- `DASHBOARD_ENABLE_MODEL_RUNS` (optional): set to `true` to enable dev-only model-run APIs/UI.
+- `DASHBOARD_ENABLE_MODEL_RUNS` (optional): set to `true` to enable model execution APIs in non-dev runtimes.
 - `DASHBOARD_WRITE_USERNAME` + `DASHBOARD_WRITE_PASSWORD` (optional pair): enables write-login mode when both are set.
 - `DASHBOARD_MAVEN_BIN` (optional): Maven executable used by model runs (defaults to `mvn`).
 - `DASHBOARD_RESULTS_CAP_MB` (optional): total `Results/` storage cap in MB for dashboard-managed runs (defaults to `400`). New run submissions are blocked when usage is at/above cap after managed-run pruning.
@@ -45,9 +45,9 @@ Dashboard API environment variables:
 
 Experiments availability:
 
-- Experiments are intentionally dev-only.
-- Production and `Preview non-dev` hide the `Experiments` navigation item and do not expose `/experiments` or `/login`.
-- In non-dev, experiment/model-run/results-management/auth-for-experiments API routes return `404` so the feature is absent rather than blocked.
+- The `Experiments` navigation item, `/experiments`, and `/login` are available in dev, production, and `Preview non-dev`.
+- Experiment, model-run, results-management, and auth-for-experiments API routes are registered in every runtime.
+- Actual model execution remains controlled separately by `DASHBOARD_ENABLE_MODEL_RUNS`, Java/Maven runtime availability, and write credentials.
 - The homepage no longer shows git-history stats; production avoids all git/GitHub diff work entirely.
 
 Write-access behavior:
@@ -91,7 +91,7 @@ Unified experiment monitoring endpoints:
 
 Experiments route:
 
-- Available only in local dev view; production and `Preview non-dev` redirect `/experiments` to `/`.
+- Available in local dev view, production, and `Preview non-dev`.
 - Unified page at `/experiments` with query-based selectors.
 - `type=manual|sensitivity` and `mode=run|view` drive setup/results combinations.
 - optional focus params: `jobRef` (run mode queue/log), `runId` (manual view), `experimentId` (sensitivity view).
@@ -128,7 +128,7 @@ Local development defaults:
 - when running in local dev (`NODE_ENV != production`), dashboard requests run in dev view mode by default.
 - dev view mode bypasses write-auth configuration lockouts so `Experiments` run mode is usable without setting credentials.
 - actual run execution still requires Java and Maven in the API runtime.
-- use the `Preview non-dev` toggle in the app header (shown in dev) to switch to the same hidden experiments state used by Render production.
+- use the `Preview non-dev` toggle in the app header (shown in dev) to switch to the same runtime/auth policy used by Render production.
 
 Optional local auth testing (login required):
 
@@ -172,7 +172,7 @@ The public Render API is intentionally lightweight:
 
 The Render static service builds only the client bundle with `npm run build:client`. Server compilation remains part of local/CI full builds and the API container validation job.
 
-Render production defaults to `DASHBOARD_ENABLE_MODEL_RUNS=false`, which removes experiments from the live website and disables the related API surface.
+Render production defaults to `DASHBOARD_ENABLE_MODEL_RUNS=false`, which keeps the Experiments workspace visible but disables model execution.
 
 If you intentionally want remote experiment execution again, treat it as a separate service concern. The public 512 MB instance is not intended to host model execution or results analytics.
 

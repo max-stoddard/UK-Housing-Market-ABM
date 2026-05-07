@@ -74,7 +74,7 @@ export function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatusPayload>(DEFAULT_AUTH_STATUS);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [authError, setAuthError] = useState('');
-  const experimentsVisible = isDevEnv && !isProdPreviewEnabled;
+  const experimentsVisible = true;
   const validationVisible = isDevEnv && !isProdPreviewEnabled;
 
   const loginPath = `/login?next=${encodeURIComponent(EXPERIMENTS_VIEW_PATH)}`;
@@ -107,11 +107,6 @@ export function App() {
     }
     persistProdPreviewEnabled(isDevEnv && isProdPreviewEnabled);
     setApiViewMode(isDevEnv && !isProdPreviewEnabled ? 'dev' : 'non_dev_preview');
-    if (!experimentsVisible) {
-      setAuthError('');
-      setAuthLoaded(true);
-      return;
-    }
     void refreshAuthStatus();
   }, [experimentsVisible, isDevEnv, isProdPreviewEnabled, refreshAuthStatus]);
 

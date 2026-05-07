@@ -74,7 +74,7 @@ export function ExperimentRunMode({
 
       {controller.executionDisabled && (
         <p className="info-banner">
-          Model execution is currently unavailable in this mode. Configure runtime/auth requirements or switch to dev view.
+          Model execution is currently unavailable because model runs are disabled or Java/Maven are missing in this API runtime.
         </p>
       )}
 
