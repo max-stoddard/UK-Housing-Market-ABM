@@ -1312,6 +1312,7 @@ code {
   gap: 0.28rem;
   font-size: 0.84rem;
   font-weight: 700;
+  min-width: 0;
 }
 
 .run-form-head label small {
@@ -1321,11 +1322,14 @@ code {
 }
 
 .run-form-head select,
-.run-form-head input,
+.run-form-head input:not([type='checkbox']),
 .run-param-item input[type='number'] {
   border: 1px solid rgba(17, 32, 24, 0.16);
   border-radius: 0.56rem;
+  box-sizing: border-box;
+  min-width: 0;
   padding: 0.4rem 0.5rem;
+  width: 100%;
   font: inherit;
   background: #fff;
 }
@@ -1385,7 +1389,7 @@ code {
   margin-top: 0.5rem;
   display: grid;
   gap: 0.55rem;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
 .run-param-item {
@@ -1396,14 +1400,17 @@ code {
   gap: 0.25rem;
   align-content: start;
   font-size: 0.82rem;
+  min-width: 0;
 }
 
 .run-param-item span {
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .run-param-item small {
   color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .run-param-item input[type='checkbox'] {
