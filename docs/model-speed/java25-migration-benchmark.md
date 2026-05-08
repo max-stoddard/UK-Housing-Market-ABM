@@ -1,7 +1,7 @@
 # Java 25 Migration Benchmark
 Author: Max Stoddard
 
-Decision: do not treat Java 25 as a model-speed improvement. The Java 25 default build preserved exact model output, but the current 10-run `core-minimal-20k-s1` strategy shows Java 25 is slower than `java8-compat` on wall clock. This 20k result supersedes the earlier 10k inconclusive/noise-dominated result.
+Decision: keep Java 25 as the only supported project target. The earlier `java8-compat` benchmark showed Java 25 was slower than Java 8 classfiles running on the JDK 25 runtime, but that was not a true JDK 8 runtime comparison. A later true JDK 25 vs JDK 8 runtime rerun found JDK 25 faster on wall clock, with the important caveat that JDK 8 failed exact model-output equivalence.
 
 Project target: Java 25 only. The previous Java 8 compatibility profile has been retired; the `java8-compat` runs below are retained as historical comparison evidence, not as an active workflow. Java 25 remains the long-term platform default because it reduces compatibility burden and keeps newer language, runtime, and tooling features available.
 
@@ -20,7 +20,23 @@ Scope:
 
 Note: model-speed harness invocations must be serialized in one workspace. The harness compiles once before running candidates and uses shared `target/classes`; concurrent Maven/model-speed jobs can invalidate the running classpath.
 
-## Exact 5k Regression
+## True JDK Runtime Rerun
+The 2026-05-07 rerun compared actual runtimes and toolchains: JDK 25 first, then JDK 8. JDK 8 used benchmark-only local harness changes for Java 8 bytecode and JDK 8 GC logging; no model source, runtime resources, or canonical baselines were changed.
+
+This is diagnostic runtime-speed evidence only. JDK 8 failed the exact `v0 / e2e-default-5k-s1` output gate against the tracked baseline, although its three candidate manifests matched each other. That means the timing comparison is not model-equivalent evidence.
+
+| Cohort | Exact gate | Classfile evidence | Summary |
+| --- | --- | --- | --- |
+| JDK 25 | PASS | `housing.Model` major version `69` | `tmp/model-speed/jdk-runtime-rerun/20260507T144346Z/java25-first/benchmarks/v0/core-minimal-20k-s1/20260507T144544Z/summary.json` |
+| JDK 8 | FAIL | `housing.Model` major version `52` | `tmp/model-speed/jdk-runtime-rerun/20260507T144346Z/java8-second/benchmarks/v0/core-minimal-20k-s1/20260507T145535Z/summary.json` |
+
+Diagnostic runtime verdict: JDK 25 was faster. JDK8-minus-JDK25 wall clock was `+8.542924s +/- 3.805914s`, with the 95% CI entirely above zero. JDK 25 mean wall clock was `50.033577s`; JDK 8 mean wall clock was `58.576502s`.
+
+Full diagnostic report: `tmp/model-speed/jdk-runtime-rerun/20260507T144346Z/jdk8-vs-jdk25-20k-comparison.md`.
+
+## Historical Exact 5k Regression
+The following exact gates refer to the older Java 8-compatible classfile comparison path, not the true JDK 8 runtime rerun above.
+
 All three candidate manifests matched the tracked `v0-e2e-default-5k-s1` baseline and each other exactly.
 
 | Cohort | Report |

@@ -10,6 +10,22 @@ This changelog is dedicated only to the model-speed improvement programme.
 - Benchmark and regression impact
 - Required follow-up
 
+## 2026-05-07 - True JDK 25 vs JDK 8 Runtime Diagnostic
+- Re-ran the Java toolchain comparison as actual runtimes, with JDK 25 first and JDK 8 second, using fresh disposable clones and the current `v0 / core-minimal-20k-s1` 20k x 10 policy.
+- Kept JDK 8 changes benchmark-only: Java 8 bytecode, JDK 8-compatible GC logging, and JDK 8 GC pause parsing in the disposable clone.
+- No Java model source, runtime resources, canonical baselines, or Java alternatives changed.
+
+Benchmark and regression impact:
+- JDK 25 exact gate passed: `tmp/model-speed/jdk-runtime-rerun/20260507T144346Z/java25-first/regressions/v0/e2e-default-5k-s1/exact/20260507T144455Z/regression-report.md`.
+- JDK 8 exact gate failed, but candidate repeats matched each other: `tmp/model-speed/jdk-runtime-rerun/20260507T144346Z/java8-second/regressions/v0/e2e-default-5k-s1/exact/20260507T145427Z/regression-report.md`.
+- Diagnostic 20k comparison report: `tmp/model-speed/jdk-runtime-rerun/20260507T144346Z/jdk8-vs-jdk25-20k-comparison.md`.
+- JDK 25 mean wall clock: `50.033577s +/- 3.485862s` 95% CI.
+- JDK 8 mean wall clock: `58.576502s +/- 2.010190s` 95% CI.
+- JDK8-minus-JDK25 wall-clock delta: `+8.542924s +/- 3.805914s`; verdict JDK 25 faster, diagnostic only because JDK 8 output differed.
+
+Required follow-up:
+- Keep Java 25 as the active project target. Do not treat the JDK 8 timing as model-equivalent speed evidence unless a future true JDK 8 runtime path passes the exact output gate.
+
 ## 2026-05-06 - Cached Rental Income 20k Contract Rerun
 - Re-ran the lazy cached `Household.getMonthlyGrossRentalIncome()` candidate under the current model-speed contract using isolated source copies.
 - The candidate source was run first, followed by default model source, both using the same current harness, CPU `0`, and JVM `-XX:ActiveProcessorCount=1`.
@@ -25,7 +41,7 @@ Benchmark and regression impact:
 - Output volume was unchanged at `989177` bytes.
 
 Required follow-up:
-- Promote the cached rental-income source patch from the isolated candidate copy only after reviewing the lifecycle tests and applying the code changes to the main worktree.
+- Reconcile future rental-income work against the current main-worktree `Household.getMonthlyGrossRentalIncome()` dirty cache before treating this isolated rerun as a new opportunity.
 
 ## 2026-05-06 - Java 25-Only Target Cleanup
 - Removed the active `java8-compat` Maven profile and made Java 25 the only supported Java compile target.
