@@ -1,2 +1,24 @@
 # Author: Max Stoddard
-Results/**
+
+# Keep public API images on an explicit allowlist. The Docker build context is
+# the repository root, so this prevents private, generated, and local-only
+# material from entering the context or image.
+*
+
+!dashboard/
+!dashboard/package.json
+!dashboard/package-lock.json
+!dashboard/tsconfig.server.json
+!dashboard/server/
+!dashboard/server/**
+!dashboard/shared/
+!dashboard/shared/**
+
+!input-data-versions/
+!input-data-versions/**
+input-data-versions/calibration-evidence/
+input-data-versions/calibration-evidence/**
+input-data-versions/validation-sources/
+input-data-versions/validation-sources/**
+input-data-versions/tmp/
+input-data-versions/tmp/**
