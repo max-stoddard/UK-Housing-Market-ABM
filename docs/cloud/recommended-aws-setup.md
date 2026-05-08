@@ -25,7 +25,7 @@ Every phase must optimize for security, minimum cost, and fail-safe recovery bef
 - stop or roll back if cost, security, or validation checks fail
 - update `docs/cloud/aws-execution-notes.md` with complete operational details before the next phase
 
-At every phase, use as many GPT-5.5 xhigh subagents as are practical for independent read-only inspection, verification, log review, and checklist auditing so the main agent context stays small. Give each subagent a narrow task, require concise findings, and keep every subagent within the Phase 1 AWS rollout worktree and this repository's privacy rules.
+When the executing user explicitly authorizes subagents, use GPT-5.5 xhigh subagents for independent read-only inspection, verification, log review, and checklist auditing so the main agent context stays small. Give each subagent a narrow task, require concise findings, and keep every subagent within the Phase 1 AWS rollout worktree and this repository's privacy rules. If subagents are not explicitly authorized or available, do the same checks locally and record that no subagents were used.
 
 Do not write secrets, passwords, AWS access keys, session tokens, or private dataset contents into docs.
 
@@ -133,7 +133,9 @@ Use these names unless a global AWS name conflict requires adding the account ID
 | EC2 high-core runner | `uk-housing-market-abm-runner-c7i8xlarge` | later runner only when high-core sharded sweeps need it |
 | IAM role for EC2 | `uk-housing-market-abm-runner-role` | Session Manager plus scoped S3 access |
 | IAM role for ECS task execution | `uk-housing-market-abm-ecs-task-execution-role` | pulls ECR image and writes task logs |
-| AWS Budget | `uk-housing-market-abm-monthly-credit-burn-guardrail` | alerts before starter-credit burn exceeds guardrails |
+| AWS Budget, actual cost | `uk-housing-market-abm-monthly-credit-guardrail` | actual spend alerts before starter-credit burn exceeds guardrails |
+| AWS Budget, forecasted cost | `uk-housing-market-abm-monthly-forecast-guardrail` | forecasted spend alerts before starter-credit burn exceeds guardrails |
+| AWS Budget, EC2 hours | `uk-housing-market-abm-ec2-hours-guardrail` | running-hour alerts before EC2 usage exceeds starter guardrails |
 
 Required tags for all taggable resources:
 
@@ -179,12 +181,19 @@ sed -n '1,220p' dashboard/Dockerfile.api
 sed -n '1,120p' dashboard/package.json
 sed -n '1,40p' dashboard/.nvmrc
 sed -n '1,120p' pom.xml
+node --version || true
+docker --version || true
 ```
 
 Run local checks when local dependencies are already installed:
 
 ```bash
 cd dashboard
+if command -v nvm >/dev/null 2>&1; then
+  nvm install
+  nvm use
+fi
+test "$(node --version | cut -d. -f1)" = "v22"
 npm run lint
 npm run build
 npm run test:smoke
@@ -192,7 +201,7 @@ cd ..
 docker build --platform linux/amd64 -f dashboard/Dockerfile.api -t uk-housing-model-dashboard-api:local-check .
 ```
 
-If dependencies are missing, record that Phase 9 will verify them on the runner. Do not install unnecessary local tooling only for this phase.
+If Node 22 or dashboard dependencies are missing, do not trust Node 20 or other non-target local check results; record the gap and verify with Node 22 before Phase 7 or on the runner in Phase 9. If Docker is missing, record a Phase 5 blocker and install/start Docker before the API image build phase, or deliberately change the plan to build the image in another validated Docker-capable environment.
 
 Worktree rule:
 
@@ -203,7 +212,7 @@ Worktree rule:
 
 Subagent rule:
 
-- At every phase, delegate independent context-heavy checks to GPT-5.5 xhigh subagents when available, including AWS documentation checks, command review, IAM/security review, budget/cost review, Docker hygiene review, CloudFront/API routing review, and notes consistency checks.
+- Delegate independent context-heavy checks to GPT-5.5 xhigh subagents only when the executing user has explicitly authorized subagents for the current phase, including AWS documentation checks, command review, IAM/security review, budget/cost review, Docker hygiene review, CloudFront/API routing review, and notes consistency checks.
 - Keep subagents bounded to read-only inspection or explicitly assigned implementation work inside `$AWS_ROLLOUT_WORKTREE`.
 - Require each subagent to return only findings, evidence, and recommended changes needed for the phase acceptance gate.
 - Do not pass secrets, AWS tokens, private dataset contents, or broad repository-reading assignments to subagents.
@@ -215,6 +224,7 @@ Acceptance gate:
 - `.dockerignore` excludes private, generated, local dependency, local env, git, and operational agent material.
 - `dashboard/Dockerfile.api` still builds only the lightweight API/runtime surface plus `input-data-versions/`.
 - Node 22 and Java 25 requirements are recorded.
+- Any local Node or Docker gaps are recorded as explicit blockers for the first phase that needs them.
 - No Java model, calibration, or input-data behavior changed.
 
 Cost check:
@@ -294,21 +304,47 @@ test -n "$BUDGET_EMAIL"
 Execute:
 
 - Verify current prices in AWS Pricing Calculator or current AWS pricing pages and record the verification date.
-- Create monthly actual credit-burn cost alerts at 25, 50, 80, and 95 USD.
-- Create monthly forecasted credit-burn cost alerts at 50 and 80 USD.
+- Create or reuse a monthly actual credit-burn cost budget with alerts at 25, 50, 80, and 95 USD.
+- Create or reuse a separate monthly forecasted credit-burn cost budget with alerts at 50 and 80 USD.
 - Create EC2 running-hour alerts at 5, 10, 15, and 20 hours/month.
 - If AWS Budgets CLI rejects the usage-budget filter shape, create the equivalent budget in the console and record the exact settings.
 - Optionally add a separate net-bill budget with credits included later, but keep the starter guardrail focused on pre-credit burn.
 
-CLI starter shape for the primary monthly credit-burn cost budget. This must be a `COST` budget with `IncludeCredit=false`; do not use a `USAGE` budget for this guardrail because usage budgets cannot use `CostTypes`:
+Keep actual and forecasted cost notifications in separate budgets so alert ownership, notes, and later cleanup stay explicit. Current AWS Budgets API documentation allows up to ten notifications per budget, so this split is an operational choice rather than a hard notification-limit requirement; verify the current limit again if a future phase consolidates budgets.
+
+CLI starter shape for the monthly credit-burn cost budgets. These must be `COST` budgets with `IncludeCredit=false`; do not use a `USAGE` budget for this guardrail because usage budgets cannot use `CostTypes`:
 
 ```bash
-export BURN_BUDGET_NAME=uk-housing-market-abm-monthly-credit-burn-guardrail
+export ACTUAL_BUDGET_NAME=uk-housing-market-abm-monthly-credit-guardrail
+export FORECAST_BUDGET_NAME=uk-housing-market-abm-monthly-forecast-guardrail
 export EC2_HOURS_BUDGET_NAME=uk-housing-market-abm-ec2-hours-guardrail
 
-cat >/tmp/uk-housing-monthly-budget.json <<EOF
+cat >/tmp/uk-housing-monthly-actual-budget.json <<EOF
 {
-  "BudgetName": "uk-housing-market-abm-monthly-credit-burn-guardrail",
+  "BudgetName": "$ACTUAL_BUDGET_NAME",
+  "BudgetLimit": { "Amount": "100", "Unit": "USD" },
+  "TimeUnit": "MONTHLY",
+  "BudgetType": "COST",
+  "CostFilters": {},
+  "CostTypes": {
+    "IncludeTax": true,
+    "IncludeSubscription": true,
+    "UseBlended": false,
+    "IncludeRefund": false,
+    "IncludeCredit": false,
+    "IncludeUpfront": true,
+    "IncludeRecurring": true,
+    "IncludeOtherSubscription": true,
+    "IncludeSupport": true,
+    "IncludeDiscount": true,
+    "UseAmortized": false
+  }
+}
+EOF
+
+cat >/tmp/uk-housing-monthly-forecast-budget.json <<EOF
+{
+  "BudgetName": "$FORECAST_BUDGET_NAME",
   "BudgetLimit": { "Amount": "100", "Unit": "USD" },
   "TimeUnit": "MONTHLY",
   "BudgetType": "COST",
@@ -414,26 +450,35 @@ create_notification_if_absent() {
   return "$status"
 }
 
-create_budget_if_absent "$BURN_BUDGET_NAME" /tmp/uk-housing-monthly-budget.json
+create_budget_if_absent "$ACTUAL_BUDGET_NAME" /tmp/uk-housing-monthly-actual-budget.json
+create_budget_if_absent "$FORECAST_BUDGET_NAME" /tmp/uk-housing-monthly-forecast-budget.json
 
 for threshold in 25 50 80 95; do
-  create_notification_if_absent "$BURN_BUDGET_NAME" ACTUAL "$threshold"
+  create_notification_if_absent "$ACTUAL_BUDGET_NAME" ACTUAL "$threshold"
 done
 
 for threshold in 50 80; do
-  create_notification_if_absent "$BURN_BUDGET_NAME" FORECASTED "$threshold"
+  create_notification_if_absent "$FORECAST_BUDGET_NAME" FORECASTED "$threshold"
 done
 
 aws budgets describe-budget \
   --account-id "$ACCOUNT_ID" \
-  --budget-name "$BURN_BUDGET_NAME"
+  --budget-name "$ACTUAL_BUDGET_NAME"
 
 aws budgets describe-notifications-for-budget \
   --account-id "$ACCOUNT_ID" \
-  --budget-name "$BURN_BUDGET_NAME"
+  --budget-name "$ACTUAL_BUDGET_NAME"
+
+aws budgets describe-budget \
+  --account-id "$ACCOUNT_ID" \
+  --budget-name "$FORECAST_BUDGET_NAME"
+
+aws budgets describe-notifications-for-budget \
+  --account-id "$ACCOUNT_ID" \
+  --budget-name "$FORECAST_BUDGET_NAME"
 ```
 
-CLI starter shape for the EC2 usage budget. Keep this as a separate `USAGE` budget and do not add `CostTypes`. If this filter is not accepted for the account, create an equivalent EC2 running-hours budget in the console and record the exact settings:
+CLI starter shape for the EC2 usage budget. Keep this as a separate `USAGE` budget and do not add `CostTypes`. Use the `UsageTypeGroup` filter for `EC2: Running Hours`; do not use a `Service` filter on this usage budget. AWS Budget filters document service filters for cost/Savings Plans/RI budgets, while EC2 instance-hour usage budgets should use the EC2 running-hours usage type group. If this filter is not accepted for the account, create an equivalent EC2 running-hours budget in the console and record the exact settings:
 
 ```bash
 cat >/tmp/uk-housing-ec2-hours-budget.json <<EOF
@@ -443,7 +488,7 @@ cat >/tmp/uk-housing-ec2-hours-budget.json <<EOF
   "TimeUnit": "MONTHLY",
   "BudgetType": "USAGE",
   "CostFilters": {
-    "Service": ["Amazon Elastic Compute Cloud - Compute"]
+    "UsageTypeGroup": ["EC2: Running Hours"]
   }
 }
 EOF
@@ -473,7 +518,7 @@ aws ec2 describe-addresses --region "$AWS_REGION" --query 'Addresses[].Allocatio
 
 Acceptance gate:
 
-- Actual, forecasted, and EC2 running-hour alerts exist.
+- Actual, forecasted, and EC2 running-hour alerts exist, with cost alerts intentionally split across budgets by notification type.
 - Notes record the alert destination, pricing check date, and forbidden-resource check result.
 - Notes state that v1 still has no NAT Gateway, RDS, Elastic IP, public S3 bucket, custom domain, Route 53 hosted zone, or always-on experiment compute.
 
@@ -525,6 +570,48 @@ aws s3api put-bucket-encryption \
 aws s3api put-bucket-versioning \
   --bucket "$ARTIFACTS_BUCKET" \
   --versioning-configuration Status=Enabled
+
+cat >/tmp/uk-housing-artifacts-lifecycle.json <<EOF
+{
+  "Rules": [
+    {
+      "ID": "manual-runs-transition-after-30-days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "experiments/manual/" },
+      "Transitions": [
+        { "Days": 30, "StorageClass": "STANDARD_IA" }
+      ],
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "archive-transition-after-90-days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "experiments/archive/" },
+      "Transitions": [
+        { "Days": 90, "StorageClass": "GLACIER" }
+      ],
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "tmp-expire-after-14-days",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "tmp/" },
+      "Expiration": { "Days": 14 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    },
+    {
+      "ID": "logs-incomplete-multipart-cleanup",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "logs/" },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 7 }
+    }
+  ]
+}
+EOF
+
+aws s3api put-bucket-lifecycle-configuration \
+  --bucket "$ARTIFACTS_BUCKET" \
+  --lifecycle-configuration file:///tmp/uk-housing-artifacts-lifecycle.json
 ```
 
 - Create the private artifacts bucket with S3 Block Public Access, SSE-S3 encryption, versioning, and lifecycle rules.
@@ -564,6 +651,7 @@ Prerequisites:
 
 - Phase 4 accepted.
 - Docker is running locally.
+- If local Docker is unavailable, stop here until a validated Docker-capable build environment is available. Do not push an API image that has not passed the Docker hygiene checks from Phase 1.
 
 Execute:
 
@@ -650,6 +738,17 @@ Standard ECS/Fargate starter settings:
 - health check path `/healthz`
 - task logs retention 7 days
 
+Check the Fargate On-Demand vCPU quota before task/service creation. The starter service needs at least `0.5` Fargate On-Demand vCPU available in `eu-west-2`; new accounts can have lower initial applied quotas than mature accounts.
+
+```bash
+aws service-quotas get-service-quota \
+  --service-code fargate \
+  --quota-code L-3032A538 \
+  --region "$AWS_REGION" \
+  --query Quota.Value \
+  --output text
+```
+
 Create the log group and cluster before task/service creation:
 
 ```bash
@@ -672,7 +771,7 @@ Networking rules:
 - Prefer existing default VPC public subnets for v1 to avoid NAT Gateway.
 - Do not create a NAT Gateway.
 - Restrict ECS task inbound to the ALB security group only.
-- Do not require public ALB response validation before CloudFront exists.
+- Do not leave the ALB open to `0.0.0.0/0`. Durable inbound HTTP should be limited to the AWS-managed CloudFront origin-facing prefix list once the CloudFront API behaviors are created. Before CloudFront exists, rely on ECS/ELB API health checks or the temporary executor-IP validation block below.
 - If ECS tasks need public IPs for ECR and CloudWatch without NAT or VPC endpoints, record the public IPv4 cost tradeoff. Do not open task inbound from the internet.
 
 Validation:
@@ -722,7 +821,7 @@ Acceptance gate:
 - ALB target health is healthy, with the target group health check path set to `/healthz`.
 - If optional direct ALB HTTP validation is performed, `/healthz` succeeds, `/api/runtime-deps` behaves as expected, and the temporary executor-IP ingress rule is revoked.
 - Public write/model-run actions fail closed.
-- Notes record task definition ARN, service ARN, target group ARN, ALB DNS name, security groups, any temporary ingress rule and its removal, logs, and costs.
+- Notes record Fargate On-Demand vCPU quota, task definition ARN, service ARN, target group ARN, ALB DNS name, security groups, any temporary ingress rule and its removal, logs, and costs.
 
 Cost check:
 
@@ -773,13 +872,66 @@ aws s3api put-bucket-encryption \
 - Create the private frontend bucket with Block Public Access and SSE-S3 encryption.
 - Create CloudFront with OAC, default root object `index.html`, HTTP-to-HTTPS redirect, and SPA error mapping from S3 `403` and `404` to `/index.html` with HTTP `200`.
 - If using ALB API origin, add CloudFront behaviors for `/api/*` and `/healthz`.
-- After the CloudFront API behaviors exist, restrict ALB inbound HTTP to the AWS-managed CloudFront origin-facing prefix list when available.
+- After the CloudFront API behaviors exist, restrict ALB inbound HTTP to the AWS-managed CloudFront origin-facing prefix list when available; this should be the only durable public-origin ingress rule for the ALB.
 - Disable CloudFront access logs by default to avoid extra storage cost unless debugging requires them.
+
+Bucket policy and ALB ingress must be updated after the CloudFront distribution exists:
+
+```bash
+export CLOUDFRONT_DISTRIBUTION_ID=<distribution-id>
+export CLOUDFRONT_DISTRIBUTION_ARN="arn:aws:cloudfront::$ACCOUNT_ID:distribution/$CLOUDFRONT_DISTRIBUTION_ID"
+
+cat >/tmp/uk-housing-frontend-oac-policy.json <<EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCloudFrontServicePrincipalReadOnly",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudfront.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::$FRONTEND_BUCKET/*",
+      "Condition": {
+        "StringEquals": {
+          "AWS:SourceArn": "$CLOUDFRONT_DISTRIBUTION_ARN"
+        }
+      }
+    }
+  ]
+}
+EOF
+
+aws s3api put-bucket-policy \
+  --bucket "$FRONTEND_BUCKET" \
+  --policy file:///tmp/uk-housing-frontend-oac-policy.json
+
+CLOUDFRONT_PREFIX_LIST_ID="$(
+  aws ec2 describe-managed-prefix-lists \
+    --region "$AWS_REGION" \
+    --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing \
+    --query 'PrefixLists[0].PrefixListId' \
+    --output text
+)"
+if [ -z "$CLOUDFRONT_PREFIX_LIST_ID" ] || [ "$CLOUDFRONT_PREFIX_LIST_ID" = "None" ]; then
+  printf 'CloudFront origin-facing prefix list was not found in %s\n' "$AWS_REGION" >&2
+  exit 1
+fi
+
+aws ec2 authorize-security-group-ingress \
+  --group-id <alb-security-group-id> \
+  --ip-permissions "IpProtocol=tcp,FromPort=80,ToPort=80,PrefixListIds=[{PrefixListId=$CLOUDFRONT_PREFIX_LIST_ID}]" \
+  --region "$AWS_REGION"
+```
 
 Build and upload:
 
 ```bash
 cd dashboard
+if command -v nvm >/dev/null 2>&1; then
+  nvm install
+  nvm use
+fi
+test "$(node --version | cut -d. -f1)" = "v22"
 npm ci --include=dev
 npm run build:client
 cd ..
@@ -797,7 +949,7 @@ Acceptance gate:
 - CloudFront routes `/healthz` and `/api/runtime-deps` to the API when using an ALB origin.
 - S3 direct object access is blocked.
 - SPA fallback is configured.
-- Notes record bucket name, distribution ID, CloudFront domain, OAC ID, API-origin behavior, and ALB CloudFront-prefix-list restriction.
+- Notes record bucket name, distribution ID, CloudFront domain, OAC ID, frontend bucket policy source ARN, API-origin behavior, and ALB CloudFront-prefix-list restriction.
 
 Cost check:
 
@@ -891,6 +1043,24 @@ Execute:
 - Create a security group with no inbound rules.
 - Allow outbound HTTPS. Temporarily allow outbound TCP 80 only if Ubuntu apt mirrors require it, then remove it if possible.
 - Configure EventBridge Scheduler or SSM Automation automatic stop for runner instances tagged `Project=uk-housing-market-abm` and `Role=experiment-runner`.
+- Check service quotas before selecting instance size:
+
+```bash
+aws service-quotas get-service-quota \
+  --service-code ec2 \
+  --quota-code L-1216C47A \
+  --region eu-west-2 \
+  --query Quota.Value \
+  --output text
+
+aws ec2 describe-instance-type-offerings \
+  --region eu-west-2 \
+  --location-type availability-zone \
+  --filters Name=instance-type,Values=c7i.xlarge,c7i.8xlarge \
+  --query 'InstanceTypeOfferings[].{az:Location,type:InstanceType}' \
+  --output table
+```
+
 - Install/verify AWS CLI v2, SSM, Node 22, Java 25, Maven 3.8.7, Python basics, git, jq, and build tools.
 - Clone the repo and run `mvn -q test`, dashboard `npm run build`, and `npm run test:smoke`.
 - Stop the instance after bootstrap.
@@ -900,12 +1070,14 @@ Acceptance gate:
 - Runner can be started, accessed through Session Manager, validated, and stopped.
 - No public inbound ports and no Elastic IP.
 - Auto-stop control exists.
+- EC2 On-Demand Standard-family vCPU quota supports the selected instance size: `c7i.xlarge` needs 4 vCPUs, while `c7i.8xlarge` needs 32 vCPUs and must not be selected until quota allows it.
 - Notes record instance ID, AMI ID, instance type, root volume size, role, security group, bootstrap results, and stopped state.
 
 Cost check:
 
 - Record instance hourly cost, EBS monthly cost, and bootstrap runtime.
 - Stop the instance immediately after validation.
+- If the high-core runner quota is below 32 vCPUs, record the quota gap and keep Phase 10 on the smaller smoke runner until a quota increase is approved.
 
 Security check:
 
@@ -1059,6 +1231,7 @@ Recommended settings:
 - CloudFront uses the S3 bucket as a normal S3 origin with Origin Access Control (OAC).
 - CloudFront viewer protocol policy redirects HTTP to HTTPS.
 - CloudFront custom error responses map S3 `403` and `404` to `/index.html` with HTTP `200`, because the React app uses client-side routes and the S3 bucket is private.
+- The frontend bucket policy grants `s3:GetObject` only to `cloudfront.amazonaws.com` for the exact distribution ARN through `AWS:SourceArn`; do not make the bucket public.
 - ACM certificate for CloudFront must be in `us-east-1` if using a custom domain.
 - Route 53 is optional. Use it only if a custom domain is worth the extra fixed cost.
 - If using standard ECS/Fargate + ALB without a custom API domain, add CloudFront behaviors for `/api/*` and `/healthz` that route to the ALB origin. This keeps browser requests same-origin over CloudFront HTTPS and avoids mixed-content failures from calling an HTTP-only ALB DNS name directly.
@@ -1067,6 +1240,11 @@ Build and deploy:
 
 ```bash
 cd dashboard
+if command -v nvm >/dev/null 2>&1; then
+  nvm install
+  nvm use
+fi
+test "$(node --version | cut -d. -f1)" = "v22"
 npm ci --include=dev
 
 # Choose exactly one build mode.
@@ -1542,9 +1720,12 @@ The setup is complete when:
 - Amazon ECS pricing: <https://aws.amazon.com/ecs/pricing/>
 - Amazon ECS Express Mode migration from App Runner: <https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html>
 - Elastic Load Balancing pricing: <https://aws.amazon.com/elasticloadbalancing/pricing/>
+- AWS Budgets notification API: <https://docs.aws.amazon.com/aws-cost-management/latest/APIReference/API_budgets_Notification.html>
+- AWS Budget filters: <https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-create-filters.html>
 - Amazon ECR private registry: <https://docs.aws.amazon.com/AmazonECR/latest/userguide/Registries.html>
 - Pushing images to Amazon ECR: <https://docs.aws.amazon.com/AmazonECR/latest/userguide/image-push.html>
 - CloudFront OAC for private S3 origins: <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-s3.html>
+- CloudFront origin-facing managed prefix list: <https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/LocationsOfEdgeServers.html>
 - S3 pricing: <https://aws.amazon.com/s3/pricing/>
 - S3 Lifecycle management: <https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html>
 - EC2 On-Demand pricing: <https://aws.amazon.com/ec2/pricing/on-demand/>

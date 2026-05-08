@@ -21,6 +21,9 @@ Every agent executing an AWS rollout phase must update this file before moving t
 - Runner instance IDs:
 - Current runner state:
 - Current always-on monthly cost estimate:
+- Budget guardrails:
+- EC2 On-Demand Standard vCPU quota:
+- Fargate On-Demand vCPU quota:
 - Last forbidden-resource check:
 
 ## Phase Entry Template
