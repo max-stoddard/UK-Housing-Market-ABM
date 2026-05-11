@@ -96,6 +96,12 @@ class AttemptResult:
     error_text: str = ""
 
 
+def default_maven_bin(repo_root: Path) -> str:
+    """Return the repo-local Maven wrapper executable for this platform."""
+
+    return str(repo_root / ("mvnw.cmd" if os.name == "nt" else "mvnw"))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Concurrent stale-input sensitivity runner.")
     parser.add_argument(
@@ -234,10 +240,11 @@ def parse_nproc() -> int:
 
 
 def probe_rss_gib(base_config: Path, probe_output_subdir: str) -> tuple[float, float]:
+    repo_root = Path.cwd()
     cmd = [
         "/usr/bin/time",
         "-v",
-        "mvn",
+        default_maven_bin(repo_root),
         "-q",
         "exec:java",
         f"-Dexec.args=-configFile {base_config} -outputFolder {probe_output_subdir} -dev",
@@ -421,7 +428,7 @@ def run_single_attempt(
     started = time.time()
     with model_log.open("w", encoding="utf-8") as handle:
         model_cmd = [
-            "mvn",
+            default_maven_bin(repo_root),
             "-q",
             "exec:java",
             f"-Dexec.args=-configFile {config_path} -outputFolder {output_subdir} -dev",
@@ -885,7 +892,7 @@ def ensure_baseline_output(base_config: Path, repo_root: Path, output_subdir: st
     if output_dir.exists() and (output_dir / "HousingWealth-run1.csv").exists():
         return
     cmd = [
-        "mvn",
+        default_maven_bin(repo_root),
         "-q",
         "exec:java",
         f"-Dexec.args=-configFile {base_config} -outputFolder {output_subdir} -dev",

@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from scripts.python.helpers.common.abm_policy_sweep import default_maven_bin
 from scripts.python.validation.model.validate_all_input_data_versions import (
     list_versions,
     parse_version_parts,
@@ -119,7 +120,7 @@ class TestValidationFrameworkBulk(unittest.TestCase):
                     output_root=output_root,
                 )
 
-            compile_mock.assert_called_once_with(repo_root, maven_bin="mvn")
+            compile_mock.assert_called_once_with(repo_root, maven_bin=default_maven_bin(repo_root))
             self.assertEqual(published_versions, ["v1.0"])
             self.assertEqual(
                 published_calls,

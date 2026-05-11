@@ -49,8 +49,15 @@ export interface RuntimeDependencyOptions {
   modelJar?: string | null;
 }
 
+function shouldUseShellForCommand(command: string): boolean {
+  return process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
+}
+
 function runVersionCheck(command: string, args: string[]): RuntimeDependencyResult {
-  const result = spawnSync(command, args, { encoding: 'utf-8' });
+  const result = spawnSync(command, args, {
+    encoding: 'utf-8',
+    shell: shouldUseShellForCommand(command)
+  });
   if (result.error) {
     return {
       available: false,
@@ -74,8 +81,13 @@ function runVersionCheck(command: string, args: string[]): RuntimeDependencyResu
   };
 }
 
-export function getConfiguredMavenBin(): string {
-  return process.env.DASHBOARD_MAVEN_BIN?.trim() || 'mvn';
+function defaultMavenWrapperBin(repoRoot?: string): string {
+  const wrapperName = process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw';
+  return repoRoot ? path.join(repoRoot, wrapperName) : `.${path.sep}${wrapperName}`;
+}
+
+export function getConfiguredMavenBin(repoRoot?: string): string {
+  return process.env.DASHBOARD_MAVEN_BIN?.trim() || defaultMavenWrapperBin(repoRoot);
 }
 
 export function getConfiguredJavaBin(): string {
@@ -224,7 +236,7 @@ function checkRuntimePaths(runtimePaths: RuntimePaths): RuntimeDependencyStatus[
 export function checkRuntimeDependencies(options: RuntimeDependencyOptions | string = {}): RuntimeDependencyStatus {
   const normalizedOptions = typeof options === 'string' ? { mavenBin: options } : options;
   const javaBin = normalizedOptions.javaBin ?? getConfiguredJavaBin();
-  const mavenBin = normalizedOptions.mavenBin ?? getConfiguredMavenBin();
+  const mavenBin = normalizedOptions.mavenBin ?? getConfiguredMavenBin(normalizedOptions.runtimePaths?.repoRoot);
   const modelJar = normalizedOptions.modelJar ?? getConfiguredModelJar();
   return {
     java: checkJavaRuntime(javaBin),

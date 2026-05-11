@@ -16,7 +16,11 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from scripts.python.helpers.common.abm_policy_sweep import build_snapshot_local_config_text, ensure_project_compiled
+from scripts.python.helpers.common.abm_policy_sweep import (
+    build_snapshot_local_config_text,
+    ensure_project_compiled,
+    resolve_maven_bin,
+)
 from scripts.python.validation.model.extractors import (
     extract_core_indicator_mean,
     extract_household_metric_from_results,
@@ -88,7 +92,7 @@ def run_validation_for_version(
     version: str,
     seeds: list[int],
     output_dir: Path,
-    maven_bin: str = "mvn",
+    maven_bin: str | None = None,
     was_data_root: Path | None = None,
     reuse_existing_output: bool = False,
     workers: int = 20,
@@ -112,12 +116,13 @@ def run_validation_for_version(
             validation_profile=validation_profile,
         )
     else:
+        resolved_maven_bin = resolve_maven_bin(repo_root, maven_bin)
         run_results = run_snapshot_local_validation(
             repo_root=repo_root,
             version=version,
             seeds=seeds,
             output_dir=output_dir,
-            maven_bin=maven_bin,
+            maven_bin=resolved_maven_bin,
             was_data_root=resolved_was_data_root,
             validation_profile=validation_profile,
             workers=workers,

@@ -18,7 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seeds", default="1,2,3,4,5,6,7,8", help="Comma-separated seed list")
     parser.add_argument("--output-dir", required=True, help="Transient validation output directory")
     parser.add_argument("--workers", type=int, default=20, help="Maximum parallel workers for per-seed validation runs")
-    parser.add_argument("--maven-bin", default="mvn", help="Maven executable")
+    parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw)")
     parser.add_argument("--was-data-root", default=None, help="Optional WAS data root override")
     parser.add_argument(
         "--reuse-existing-output",

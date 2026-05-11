@@ -31,6 +31,7 @@ from typing import Iterable, Mapping, Sequence
 from scripts.python.helpers.common.abm_policy_sweep import (
     build_snapshot_local_config_text,
     ensure_project_compiled,
+    resolve_maven_bin,
 )
 from scripts.python.helpers.common.cli import format_float
 from scripts.python.helpers.common.paths import repo_root as default_repo_root
@@ -143,7 +144,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Retained evidence directory. Defaults to input-data-versions/calibration-evidence/...<output-version>.",
     )
-    parser.add_argument("--maven-bin", default="mvn", help="Maven executable (default: mvn).")
+    parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw).")
     parser.add_argument(
         "--force-rerun",
         action="store_true",
@@ -807,7 +808,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
     ]
     if args.evidence_dir:
         command.append(f"--evidence-dir {args.evidence_dir}")
-    if args.maven_bin != "mvn":
+    if args.maven_bin:
         command.append(f"--maven-bin {args.maven_bin}")
     if args.force_rerun:
         command.append("--force-rerun")
@@ -818,6 +819,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
 
 def run_calibration(args: argparse.Namespace) -> dict[str, object]:
     repo_root = default_repo_root()
+    maven_bin = resolve_maven_bin(repo_root, args.maven_bin)
     version = validate_version_name(args.version)
     output_version = validate_version_name(args.output_version)
     seeds = parse_seed_list(args.seeds)
@@ -844,7 +846,7 @@ def run_calibration(args: argparse.Namespace) -> dict[str, object]:
     (output_root / "reproduce-command.sh").write_text(build_reproduce_command(args), encoding="utf-8")
     (evidence_dir / "reproduce-command.sh").write_text(build_reproduce_command(args), encoding="utf-8")
 
-    ensure_project_compiled(repo_root, maven_bin=args.maven_bin)
+    ensure_project_compiled(repo_root, maven_bin=maven_bin)
 
     coarse_candidates = build_candidate_grid(args.coarse_min, args.coarse_max, args.coarse_step)
     _, coarse_summaries = execute_stage(
@@ -856,7 +858,7 @@ def run_calibration(args: argparse.Namespace) -> dict[str, object]:
         seeds=seeds,
         target=args.target,
         workers=args.workers,
-        maven_bin=args.maven_bin,
+        maven_bin=maven_bin,
         force_rerun=args.force_rerun,
     )
     best_coarse = select_best_candidate(coarse_summaries)
@@ -876,7 +878,7 @@ def run_calibration(args: argparse.Namespace) -> dict[str, object]:
         seeds=seeds,
         target=args.target,
         workers=args.workers,
-        maven_bin=args.maven_bin,
+        maven_bin=maven_bin,
         force_rerun=args.force_rerun,
     )
     best_fine = select_best_candidate(fine_summaries)

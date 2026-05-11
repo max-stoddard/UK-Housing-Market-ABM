@@ -14,6 +14,7 @@ MODEL_SPEED_POPULATION_LADDER="${MODEL_SPEED_POPULATION_LADDER:-0}"
 MODEL_SPEED_CPU_AFFINITY="${MODEL_SPEED_CPU_AFFINITY:-}"
 MODEL_SPEED_ACTIVE_PROCESSOR_COUNT="${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-}"
 MODEL_SPEED_MAVEN_PROFILES="${MODEL_SPEED_MAVEN_PROFILES:-}"
+MODEL_SPEED_MAVEN_BIN="${MODEL_SPEED_MAVEN_BIN:-${model_speed_repo_root}/mvnw}"
 
 model_speed_log_init() {
   LOG_TAG="${LOG_TAG:-MODEL-SPEED}"
@@ -54,7 +55,7 @@ model_speed_ensure_compiled() {
   model_speed_maven_profile_args profile_args
   (
     cd "${model_speed_repo_root}"
-    mvn -q "${profile_args[@]}" -DskipTests clean compile
+    "${MODEL_SPEED_MAVEN_BIN}" -q "${profile_args[@]}" -DskipTests clean compile
   )
 }
 
@@ -68,7 +69,7 @@ model_speed_resolve_classpath() {
   model_speed_maven_profile_args profile_args
   classpath="$(
     cd "${model_speed_repo_root}"
-    mvn -q "${profile_args[@]}" -Dexec.classpathScope=runtime -Dexec.executable=echo -Dexec.args='%classpath' exec:exec | tail -n 1
+    "${MODEL_SPEED_MAVEN_BIN}" -q "${profile_args[@]}" -Dexec.classpathScope=runtime -Dexec.executable=echo -Dexec.args='%classpath' exec:exec | tail -n 1
   )"
   if [[ -z "${classpath}" ]]; then
     log_err "Failed to resolve runtime classpath."
@@ -173,6 +174,7 @@ model_speed_capture_environment() {
     printf 'snapshot=%s\n' "${snapshot}"
     printf 'mode=%s\n' "${mode}"
     printf 'java_opts=%s\n' "${MODEL_SPEED_JAVA_OPTS}"
+    printf 'maven_bin=%s\n' "${MODEL_SPEED_MAVEN_BIN}"
     printf 'maven_profiles=%s\n' "${MODEL_SPEED_MAVEN_PROFILES:-none}"
     printf 'cpu_affinity=%s\n' "${MODEL_SPEED_CPU_AFFINITY:-none}"
     printf 'active_processor_count=%s\n' "${MODEL_SPEED_ACTIVE_PROCESSOR_COUNT:-default}"
@@ -189,7 +191,7 @@ model_speed_capture_environment() {
     printf '\n[java -version]\n'
     java -version 2>&1
     printf '\n[mvn -version]\n'
-    mvn -version 2>&1
+    "${MODEL_SPEED_MAVEN_BIN}" -version 2>&1
     printf '\n[df -h]\n'
     df -h "${output_root}"
   } > "${output_path}"

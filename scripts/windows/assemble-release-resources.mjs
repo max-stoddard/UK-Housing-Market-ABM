@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..', '..');
 const dashboardRoot = path.join(repoRoot, 'dashboard');
 const inputDataRoot = path.join(repoRoot, 'input-data-versions');
+const mavenBin = process.env.MAVEN_BIN?.trim() || path.join(repoRoot, process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw');
 const defaultOutputRoot = path.join(dashboardRoot, 'release', 'windows', 'resources');
 const modelJarName = 'housing-model-1.0-SNAPSHOT-windows-release.jar';
 const releaseLayoutVersion = 1;
@@ -598,7 +599,7 @@ function buildArtifacts(skipBuilds) {
     log('skipping Maven/npm builds by request.');
     return;
   }
-  run('mvn', ['-q', '-DskipTests', '-Pwindows-release-fat-jar', 'package'], repoRoot);
+  run(mavenBin, ['-q', '-DskipTests', '-Pwindows-release-fat-jar', 'package'], repoRoot);
   run('npm', ['run', 'build'], dashboardRoot);
   run('npm', ['run', 'build:desktop'], dashboardRoot);
 }

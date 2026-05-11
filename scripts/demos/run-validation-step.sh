@@ -20,6 +20,7 @@ expected_file="$5"
 
 repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
+maven_bin="${MAVEN_BIN:-${repo_root}/mvnw}"
 
 show_config_summary() {
   python3 - <<'PY'
@@ -58,7 +59,7 @@ PY
 run_model() {
   local output_dir="$1"
   log "Running model simulation -> ${output_dir}"
-  mvn exec:java -Dexec.args="-outputFolder ${output_dir} -dev"
+  "${maven_bin}" exec:java -Dexec.args="-outputFolder ${output_dir} -dev"
 }
 
 log "Validation step: switch data -> run model -> validate outputs."

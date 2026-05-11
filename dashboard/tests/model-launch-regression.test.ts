@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createMavenModelLauncher,
   createPackagedModelLauncher,
+  getConfiguredMavenBin,
   type ModelLauncher,
   type ModelLaunchRequest
 } from '../server/lib/modelLauncher.js';
@@ -241,7 +242,7 @@ try {
   assert.ok(generatedConfig.includes('N_STEPS = 0'), 'Expected generated config to pin a short run');
   assertGeneratedDataPaths(generatedConfig, dataRoot);
 
-  await runCheckedCommand('mvn', ['-q', '-DskipTests', '-Pwindows-release-fat-jar', 'package'], repoRoot);
+  await runCheckedCommand(getConfiguredMavenBin(repoRoot), ['-q', '-DskipTests', '-Pwindows-release-fat-jar', 'package'], repoRoot);
   assert.ok(fs.existsSync(modelJar), `Expected Windows release fat jar to exist: ${modelJar}`);
 
   await runCheckedLauncher(createMavenModelLauncher(), {

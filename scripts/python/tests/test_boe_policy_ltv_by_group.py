@@ -44,7 +44,7 @@ class TestBoePolicyLtvByGroup(unittest.TestCase):
         self.assertEqual(args.workers, 20)
         self.assertEqual(args.output_dir, "tmp/boe_policy_story_ltv_by_group")
         self.assertFalse(args.force_rerun)
-        self.assertEqual(args.maven_bin, "mvn")
+        self.assertIsNone(args.maven_bin)
 
     def test_story_grids_are_centered_on_v41_defaults_and_aligned(self) -> None:
         stories = {story.story_id: story for story in build_ltv_sensitivity_stories()}

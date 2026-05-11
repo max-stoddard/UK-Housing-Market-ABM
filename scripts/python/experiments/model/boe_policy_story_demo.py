@@ -60,6 +60,7 @@ from scripts.python.experiments.model.policy_story_scoring import (
 from scripts.python.helpers.common.abm_policy_sweep import (
     AggregatedStoryResults,
     ensure_project_compiled,
+    resolve_maven_bin,
     run_story_sweep,
 )
 from scripts.python.helpers.common.cli import format_float
@@ -124,8 +125,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--maven-bin",
-        default="mvn",
-        help="Maven executable to use (default: mvn).",
+        default=None,
+        help="Maven executable override (default: repo-local ./mvnw).",
     )
     parser.add_argument(
         "--selection-policy",
@@ -503,7 +504,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
     command_parts.append(f"--workers {args.workers}")
     if args.force_rerun:
         command_parts.append("--force-rerun")
-    if args.maven_bin != "mvn":
+    if args.maven_bin:
         command_parts.append(f"--maven-bin {args.maven_bin}")
     if args.selection_policy != "ranking_only":
         command_parts.append(f"--selection-policy {args.selection_policy}")
@@ -519,6 +520,7 @@ def write_reproduce_command(path: Path, args: argparse.Namespace) -> None:
 def main() -> None:
     args = build_arg_parser().parse_args()
     repo_root = Path(__file__).resolve().parents[4]
+    maven_bin = resolve_maven_bin(repo_root, args.maven_bin)
     requested_output_dir = Path(args.output_dir)
     smoke_selection_path = Path(args.smoke_selection)
     reuse_output_dirs = [Path(raw_path) for raw_path in args.reuse_output_dir]
@@ -579,7 +581,7 @@ def main() -> None:
         selected_story_order = [
             catalog_lookup[story_id] for story_id in requested_story_ids
         ]
-        ensure_project_compiled(repo_root, maven_bin=args.maven_bin)
+        ensure_project_compiled(repo_root, maven_bin=maven_bin)
         if reuse_output_dirs and not args.force_rerun:
             reused = seed_final_run_caches_from_previous_output(
                 repo_root=repo_root,
@@ -602,7 +604,7 @@ def main() -> None:
             final_seeds=final_seeds,
             workers=args.workers,
             force_rerun=args.force_rerun,
-            maven_bin=args.maven_bin,
+            maven_bin=maven_bin,
         )
         screen_scores = [
             score_story_screening(story, final_aggregated[story.story_id])
@@ -611,7 +613,7 @@ def main() -> None:
         selection_results = {canonical_policy: screen_scores}
         selected_scores = selection_results[canonical_policy]
     else:
-        ensure_project_compiled(repo_root, maven_bin=args.maven_bin)
+        ensure_project_compiled(repo_root, maven_bin=maven_bin)
 
         _, screen_scores = run_screening_stage(
             repo_root=repo_root,
@@ -621,7 +623,7 @@ def main() -> None:
             screen_seeds=screen_seeds,
             workers=args.workers,
             force_rerun=args.force_rerun,
-            maven_bin=args.maven_bin,
+            maven_bin=maven_bin,
         )
         shortlist_score_lookup = {score.story_id: score for score in screen_scores}
         if requested_story_ids is not None:
@@ -748,7 +750,7 @@ def main() -> None:
             final_seeds=final_seeds,
             workers=args.workers,
             force_rerun=args.force_rerun,
-            maven_bin=args.maven_bin,
+            maven_bin=maven_bin,
         )
 
     recommendation = recommend_story(

@@ -28,6 +28,7 @@ import {
 } from './logs/logBuffer';
 import {
   createMavenModelLauncher,
+  getConfiguredMavenBin,
   type ModelLauncher,
   type ModelLauncherCommand
 } from './modelLauncher';
@@ -369,7 +370,7 @@ function formatLauncherProcessError(launcher: ModelLauncher, error: Error): stri
   }
 
   if (launcher.mode === 'maven') {
-    const mavenBin = launcher.metadata.mavenBin ?? 'mvn';
+    const mavenBin = launcher.metadata.mavenBin ?? getConfiguredMavenBin();
     return `Maven executable "${mavenBin}" was not found. Configure DASHBOARD_MAVEN_BIN or run the API in an environment with Java+Maven (e.g. Docker runtime).`;
   }
 

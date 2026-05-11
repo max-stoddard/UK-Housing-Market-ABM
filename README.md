@@ -13,3 +13,9 @@ Dashboard (local):
 ```bash
 ./run-dashboard.sh
 ```
+
+Java model builds should use the repo-local Maven wrapper:
+
+```bash
+./mvnw -q test
+```

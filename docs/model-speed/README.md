@@ -18,7 +18,7 @@ No speed change is accepted on anecdote alone.
 - Input snapshot: `input-data-versions/v0`
 - Validation dataset target: `r8`
 - Benchmark host assumption: WSL2 Ubuntu
-- Runtime toolchain target: OpenJDK 25, Maven 3.8.7
+- Runtime toolchain target: OpenJDK 25, repo-local Maven wrapper pinned to Maven 3.9.15
 - Java 25 is the only supported Java compile target. The project no longer carries an active Java 8 compatibility path.
 - Primary optimisation goal: reduce single-run latency and improve scale-normalised throughput enough to make larger `TARGET_POPULATION` runs practical
 - Java 25 is the long-term platform default because it reduces compatibility burden and keeps future language, runtime, and tooling features available, even though benchmark evidence must still decide whether any toolchain change is a speed improvement.
@@ -202,8 +202,8 @@ Current policy:
 
 ## Acceptance Criteria
 Every accepted speed change must pass:
-- `mvn -q -DskipTests compile`
-- `mvn -q test`
+- `./mvnw -q -DskipTests compile`
+- `./mvnw -q test`
 - three-run exact deterministic similarity check on `v0 / e2e-default-5k-s1`
 - 10-repeat benchmark rerun on `v0 / core-minimal-20k-s1`
 - `bash input-data-versions/validate.sh v0 r8 --no-graphs` when a model-code change needs live validation and the worktree is prepared for resource mutation

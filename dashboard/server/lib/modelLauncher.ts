@@ -1,5 +1,6 @@
 // Author: Max Stoddard
 import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from 'node:child_process';
+import path from 'node:path';
 
 export type ModelLauncherMode = 'maven' | 'packaged';
 
@@ -31,8 +32,17 @@ export interface ModelLauncher {
   launch: (request: ModelLaunchRequest) => ChildProcessWithoutNullStreams;
 }
 
-export function getConfiguredMavenBin(): string {
-  return process.env.DASHBOARD_MAVEN_BIN?.trim() || 'mvn';
+function defaultMavenWrapperBin(repoRoot?: string): string {
+  const wrapperName = process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw';
+  return repoRoot ? path.join(repoRoot, wrapperName) : `.${path.sep}${wrapperName}`;
+}
+
+function shouldUseShellForCommand(command: string): boolean {
+  return process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
+}
+
+export function getConfiguredMavenBin(repoRoot?: string): string {
+  return process.env.DASHBOARD_MAVEN_BIN?.trim() || defaultMavenWrapperBin(repoRoot);
 }
 
 function quoteForExecArgs(value: string): string {
@@ -55,7 +65,8 @@ export function buildMavenModelLaunchCommand(
     command: mavenBin,
     args: ['compile', 'exec:java', `-Dexec.args=${execArgs}`],
     options: {
-      cwd: request.repoRoot
+      cwd: request.repoRoot,
+      shell: shouldUseShellForCommand(mavenBin)
     },
     commandTemplate: `${mavenBin} compile exec:java -Dexec.args="-configFile <path> -outputFolder <path> -dev"`
   };

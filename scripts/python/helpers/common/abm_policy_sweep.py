@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -226,11 +227,24 @@ SLIM_RECORDING_OVERRIDES = {
 }
 
 
-def ensure_project_compiled(repo_root: Path, maven_bin: str = "mvn") -> None:
+def default_maven_bin(repo_root: Path) -> str:
+    """Return the repo-local Maven wrapper executable for this platform."""
+
+    return str(repo_root / ("mvnw.cmd" if os.name == "nt" else "mvnw"))
+
+
+def resolve_maven_bin(repo_root: Path, maven_bin: str | None = None) -> str:
+    """Use an explicit Maven override or fall back to the repo-local wrapper."""
+
+    return maven_bin if maven_bin else default_maven_bin(repo_root)
+
+
+def ensure_project_compiled(repo_root: Path, maven_bin: str | None = None) -> None:
     """Compile the Java project once before launching sweeps."""
 
+    resolved_maven_bin = resolve_maven_bin(repo_root, maven_bin)
     subprocess.run(
-        [maven_bin, "-q", "compile"],
+        [resolved_maven_bin, "-q", "compile"],
         cwd=repo_root,
         check=True,
         stdout=subprocess.PIPE,
@@ -528,10 +542,11 @@ def run_story_sweep(
     indicator_ids: Sequence[str],
     workers: int,
     force_rerun: bool,
-    maven_bin: str = "mvn",
+    maven_bin: str | None = None,
 ) -> tuple[list[RunResult], AggregatedStoryResults]:
     """Run all story/version/seed/point combinations and aggregate them."""
 
+    resolved_maven_bin = resolve_maven_bin(repo_root, maven_bin)
     requests = [
         RunRequest(stage_name=stage_name, story_id=story_id, version=version, seed=seed, point=point)
         for version in versions
@@ -556,7 +571,7 @@ def run_story_sweep(
                 request=request,
                 indicator_ids=indicator_ids,
                 force_rerun=force_rerun,
-                maven_bin=maven_bin,
+                maven_bin=resolved_maven_bin,
             )
             for request in requests
         ]

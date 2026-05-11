@@ -10,7 +10,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled
+from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled, resolve_maven_bin
 from scripts.python.validation.model.runner import (
     load_reused_validation_results,
     publish_validation_results,
@@ -38,7 +38,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-root", required=True, help="Transient output root directory"
     )
-    parser.add_argument("--maven-bin", default="mvn", help="Maven executable")
+    parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw)")
     parser.add_argument(
         "--was-data-root", default=None, help="Optional WAS data root override"
     )
@@ -104,7 +104,7 @@ def run_validation_campaign(
     seeds: list[int],
     workers: int,
     output_root: Path,
-    maven_bin: str = "mvn",
+    maven_bin: str | None = None,
     was_data_root: Path | None = None,
     reuse_existing_output: bool = False,
 ) -> tuple[list[str], list[str]]:
@@ -147,7 +147,8 @@ def run_validation_campaign(
                 print(f"Failed {version} from existing outputs: {error}")
         return published_versions, failures
 
-    ensure_project_compiled(repo_root, maven_bin=maven_bin)
+    resolved_maven_bin = resolve_maven_bin(repo_root, maven_bin)
+    ensure_project_compiled(repo_root, maven_bin=resolved_maven_bin)
 
     results_by_version: dict[str, list[dict[str, object]]] = {
         version: [] for version in versions
@@ -167,7 +168,7 @@ def run_validation_campaign(
                     version=version,
                     seed=seed,
                     output_dir=version_output_dir,
-                    maven_bin=maven_bin,
+                    maven_bin=resolved_maven_bin,
                     was_data_root=resolved_was_data_root,
                     validation_profile=profiles_by_version[version],
                 )

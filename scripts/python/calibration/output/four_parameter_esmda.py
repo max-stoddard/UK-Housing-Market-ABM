@@ -53,7 +53,7 @@ from scripts.python.calibration.output.validation_bridge import (
     resolve_calibration_validation_profile,
     summarize_validation_profile,
 )
-from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled
+from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled, resolve_maven_bin
 from scripts.python.helpers.common.cli import format_float
 from scripts.python.helpers.common.paths import repo_root as default_repo_root
 from scripts.python.validation.model.runner import resolve_was_data_root
@@ -122,7 +122,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Retained evidence directory. Defaults to input-data-versions/calibration-evidence/...<output-version>.",
     )
-    parser.add_argument("--maven-bin", default="mvn", help="Maven executable (default: mvn).")
+    parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw).")
     parser.add_argument("--force-rerun", action="store_true", help="Ignore cached per-seed metric JSON.")
     parser.add_argument("--overwrite-version", action="store_true", help="Replace an existing output version folder.")
     parser.add_argument(
@@ -137,6 +137,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
     """Run or dry-run the four-parameter ES-MDA workflow."""
 
     resolved_repo_root = repo_root or default_repo_root()
+    maven_bin = resolve_maven_bin(resolved_repo_root, args.maven_bin)
     version = validate_version_name(args.version)
     output_version = validate_version_name(args.output_version)
     seeds = parse_seed_list(args.seeds)
@@ -209,7 +210,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
 
     evidence_dir.mkdir(parents=True, exist_ok=True)
     (evidence_dir / "reproduce-command.sh").write_text(build_reproduce_command(args), encoding="utf-8")
-    ensure_project_compiled(resolved_repo_root, maven_bin=args.maven_bin)
+    ensure_project_compiled(resolved_repo_root, maven_bin=maven_bin)
     was_data_root = resolve_was_data_root(repo_root=resolved_repo_root, explicit_root=None)
 
     all_member_results: list[MemberValidationResult] = []
@@ -227,7 +228,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             member_parameters=current_parameters,
             seeds=seeds,
             output_root=output_root,
-            maven_bin=args.maven_bin,
+            maven_bin=maven_bin,
             force_rerun=args.force_rerun,
             validation_profile=validation_profile,
             was_data_root=was_data_root,
@@ -340,7 +341,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
     ]
     if args.evidence_dir:
         command.append(f"--evidence-dir {args.evidence_dir}")
-    if args.maven_bin != "mvn":
+    if args.maven_bin:
         command.append(f"--maven-bin {args.maven_bin}")
     if args.force_rerun:
         command.append("--force-rerun")

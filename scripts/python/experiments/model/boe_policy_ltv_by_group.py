@@ -29,6 +29,7 @@ from scripts.python.helpers.common.abm_policy_sweep import (
     AggregateStat,
     AggregatedStoryResults,
     ensure_project_compiled,
+    resolve_maven_bin,
     run_story_sweep,
 )
 from scripts.python.helpers.common.cli import format_float
@@ -85,8 +86,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--maven-bin",
-        default="mvn",
-        help="Maven executable to use (default: mvn).",
+        default=None,
+        help="Maven executable override (default: repo-local ./mvnw).",
     )
     return parser
 
@@ -186,7 +187,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
     ]
     if args.force_rerun:
         command_parts.append("--force-rerun")
-    if args.maven_bin != "mvn":
+    if args.maven_bin:
         command_parts.append(f"--maven-bin {args.maven_bin}")
     return " \\\n  ".join(command_parts) + "\n"
 
@@ -270,6 +271,7 @@ def _fmt_stat(stat: AggregateStat | None, field: str) -> str:
 def main() -> None:
     args = build_arg_parser().parse_args()
     repo_root = Path(__file__).resolve().parents[4]
+    maven_bin = resolve_maven_bin(repo_root, args.maven_bin)
     versions = validate_versions(parse_csv_list(args.versions))
     seeds = parse_seed_list(args.seeds)
     if args.workers <= 0:
@@ -279,7 +281,7 @@ def main() -> None:
     output_dir = ensure_output_dir(args.output_dir)
     model_runs_root = output_dir / MODEL_RUNS_DIRNAME
 
-    ensure_project_compiled(repo_root=repo_root, maven_bin=args.maven_bin)
+    ensure_project_compiled(repo_root=repo_root, maven_bin=maven_bin)
 
     aggregated_by_story_id: dict[str, AggregatedStoryResults] = {}
     for story in stories:
@@ -294,7 +296,7 @@ def main() -> None:
             indicator_ids=[PLOT_INDICATOR_ID],
             workers=args.workers,
             force_rerun=args.force_rerun,
-            maven_bin=args.maven_bin,
+            maven_bin=maven_bin,
         )
         aggregated_by_story_id[story.story_id] = aggregated
         plot_path = output_dir / PLOT_FILE_NAMES[story.story_id]
