@@ -558,9 +558,6 @@ function createJavaRuntime(outputRoot, configuredJavaHome) {
   const sourceJlink = jlinkExecutablePath(javaHome);
   const jmods = path.join(javaHome, 'jmods');
   assertFile(sourceJava, 'Java executable');
-  assertFile(sourceJlink, 'jlink executable');
-  assertDirectory(jmods, 'Java JDK jmods directory');
-
   const sourceMetadata = getJavaMetadata(sourceJava);
   if (sourceMetadata.majorVersion !== 25) {
     fail(`Phase 10 requires Java 25 for runtime assembly; found ${sourceMetadata.versionOutput}`);
@@ -568,17 +565,24 @@ function createJavaRuntime(outputRoot, configuredJavaHome) {
 
   const javaOutputRoot = path.join(outputRoot, 'java');
   fs.rmSync(javaOutputRoot, { recursive: true, force: true });
-  run(sourceJlink, [
-    '--module-path',
-    jmods,
-    '--add-modules',
-    'ALL-MODULE-PATH',
-    '--strip-debug',
-    '--no-header-files',
-    '--no-man-pages',
-    '--output',
-    javaOutputRoot
-  ], repoRoot);
+  if (fs.existsSync(jmods)) {
+    assertFile(sourceJlink, 'jlink executable');
+    assertDirectory(jmods, 'Java JDK jmods directory');
+    run(sourceJlink, [
+      '--module-path',
+      jmods,
+      '--add-modules',
+      'ALL-MODULE-PATH',
+      '--strip-debug',
+      '--no-header-files',
+      '--no-man-pages',
+      '--output',
+      javaOutputRoot
+    ], repoRoot);
+  } else {
+    log(`Java JDK jmods directory not found at ${jmods}; staging Java runtime without jlink trimming.`);
+    copyDirectory(javaHome, javaOutputRoot);
+  }
 
   const stagedJava = path.join(javaOutputRoot, 'bin', process.platform === 'win32' ? 'java.exe' : 'java');
   assertFile(stagedJava, 'staged Java executable');
