@@ -9,7 +9,7 @@ Parameters:
     Description: GitHub repository owner allowed to assume the role.
   GitHubRepository:
     Type: String
-    Default: UK-Housing-Market-ABM
+    Default: uk-housing-market-abm
     Description: GitHub repository name allowed to assume the role.
   GitHubBranch:
     Type: String
