@@ -58,7 +58,7 @@ jobs:
 
   build-windows-release:
     needs: prepare-release-source
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       RELEASE_GIT_COMMIT: ${{ needs.prepare-release-source.outputs.commit_sha }}
     defaults:
