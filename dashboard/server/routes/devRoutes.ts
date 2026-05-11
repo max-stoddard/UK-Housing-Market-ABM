@@ -70,7 +70,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      const runs = getResultsRuns(context.repoRoot);
+      const runs = getResultsRuns(context.runtimePaths);
       res.json({ runs });
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -82,7 +82,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      res.json(getResultsStorageSummary(context.repoRoot));
+      res.json(getResultsStorageSummary(context.runtimePaths));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -93,7 +93,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      const detail = getResultsRunDetail(context.repoRoot, String(req.params.runId ?? ''));
+      const detail = getResultsRunDetail(context.runtimePaths, String(req.params.runId ?? ''));
       res.json(detail);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -105,7 +105,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      const files = getResultsRunFiles(context.repoRoot, String(req.params.runId ?? ''));
+      const files = getResultsRunFiles(context.runtimePaths, String(req.params.runId ?? ''));
       res.json({ runId: String(req.params.runId ?? ''), files });
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -121,7 +121,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
-      const payload = deleteResultsRun(context.repoRoot, String(req.params.runId ?? ''));
+      const payload = deleteResultsRun(context.runtimePaths, String(req.params.runId ?? ''));
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -143,7 +143,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const smoothWindow = Number.isFinite(rawSmoothWindow) ? rawSmoothWindow : 0;
 
     try {
-      const payload = getResultsSeries(context.repoRoot, runId, indicator, smoothWindow);
+      const payload = getResultsSeries(context.runtimePaths, runId, indicator, smoothWindow);
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -167,7 +167,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const smoothWindow = Number.isFinite(rawSmoothWindow) ? rawSmoothWindow : 0;
 
     try {
-      const payload = getResultsCompare(context.repoRoot, runIds, indicatorIds, window, smoothWindow);
+      const payload = getResultsCompare(context.runtimePaths, runIds, indicatorIds, window, smoothWindow);
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -181,7 +181,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     try {
       const policy = context.resolveRuntimePolicy(req);
       const baseline = String(req.query.baseline ?? '').trim() || undefined;
-      const payload = getModelRunOptions(context.repoRoot, baseline, policy.modelRunsEnabled);
+      const payload = getModelRunOptions(context.runtimePaths, baseline, policy.modelRunsEnabled);
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -201,8 +201,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
 
-    if (hasActiveSensitivityExperiment(context.repoRoot)) {
-      const experimentId = getActiveSensitivityExperimentId(context.repoRoot);
+    if (hasActiveSensitivityExperiment(context.runtimePaths)) {
+      const experimentId = getActiveSensitivityExperimentId(context.runtimePaths);
       res.status(409).json({
         error: `Cannot queue manual runs while sensitivity experiment ${experimentId ?? ''} is active.`.trim()
       });
@@ -210,8 +210,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
-      const payload = submitModelRun(context.repoRoot, req.body, {
-        ignoreStorageCap: policy.devBypassActive
+      const payload = submitModelRun(context.runtimePaths, req.body, {
+        ignoreStorageCap: policy.devBypassActive,
+        launcher: context.launcher,
+        logSink: context.modelLogSink
       });
       res.json(payload);
     } catch (error) {
@@ -267,7 +269,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
-      res.json(cancelModelRunJob(context.repoRoot, String(req.params.jobId ?? '')));
+      res.json(cancelModelRunJob(context.runtimePaths, String(req.params.jobId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -323,7 +325,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      res.json(listSensitivityExperiments(context.repoRoot));
+      res.json(listSensitivityExperiments(context.runtimePaths));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -343,7 +345,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
-      const payload = submitSensitivityExperiment(context.repoRoot, req.body);
+      const payload = submitSensitivityExperiment(context.runtimePaths, req.body, {
+        launcher: context.launcher,
+        logSink: context.modelLogSink
+      });
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -355,7 +360,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      res.json(getSensitivityExperiment(context.repoRoot, String(req.params.experimentId ?? '')));
+      res.json(getSensitivityExperiment(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -366,7 +371,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      res.json(getSensitivityExperimentResults(context.repoRoot, String(req.params.experimentId ?? '')));
+      res.json(getSensitivityExperimentResults(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -377,7 +382,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      res.json(getSensitivityExperimentCharts(context.repoRoot, String(req.params.experimentId ?? '')));
+      res.json(getSensitivityExperimentCharts(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -392,7 +397,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
 
     try {
       const payload = getSensitivityExperimentLogs(
-        context.repoRoot,
+        context.runtimePaths,
         String(req.params.experimentId ?? ''),
         Number.isFinite(cursorRaw) ? cursorRaw : undefined,
         Number.isFinite(limitRaw) ? limitRaw : undefined
@@ -417,7 +422,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
-      res.json(cancelSensitivityExperiment(context.repoRoot, String(req.params.experimentId ?? '')));
+      res.json(cancelSensitivityExperiment(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -428,7 +433,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       return;
     }
     try {
-      res.json(listExperimentJobs(context.repoRoot));
+      res.json(listExperimentJobs(context.runtimePaths));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -443,7 +448,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
 
     try {
       const payload = getExperimentJobLogs(
-        context.repoRoot,
+        context.runtimePaths,
         String(req.params.jobRef ?? ''),
         Number.isFinite(cursorRaw) ? cursorRaw : undefined,
         Number.isFinite(limitRaw) ? limitRaw : undefined
@@ -468,7 +473,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
-      res.json(cancelExperimentJob(context.repoRoot, String(req.params.jobRef ?? '')));
+      res.json(cancelExperimentJob(context.runtimePaths, String(req.params.jobRef ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }

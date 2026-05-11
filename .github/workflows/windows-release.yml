@@ -1,0 +1,158 @@
+# Author: Max Stoddard
+name: Windows Release
+
+on:
+  push:
+    tags:
+      - v*
+  workflow_dispatch:
+
+concurrency:
+  group: windows-release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: release-metadata
+        name: Resolve release metadata
+        run: |
+          $package = Get-Content -Raw -Path dashboard/package.json | ConvertFrom-Json
+          $version = [string]$package.version
+          $expectedTag = "v$version"
+          $installerName = "UK-Housing-Model-$version-Setup.exe"
+
+          "app_version=$version" >> $env:GITHUB_OUTPUT
+          "expected_tag=$expectedTag" >> $env:GITHUB_OUTPUT
+          "installer_name=$installerName" >> $env:GITHUB_OUTPUT
+
+          if ("${{ github.ref_type }}" -eq "tag" -and "${{ github.ref_name }}" -ne $expectedTag) {
+            Write-Error "Release tag ${{ github.ref_name }} does not match dashboard package version $expectedTag."
+            exit 1
+          }
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: dashboard/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            dashboard/package-lock.json
+            dashboard/electron/package-lock.json
+
+      - name: Setup Java 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci --include=dev
+
+      - name: Install Electron dependencies
+        working-directory: dashboard
+        run: npm --prefix electron ci
+
+      - name: Dashboard lint
+        working-directory: dashboard
+        run: npm run lint
+
+      - name: Dashboard build
+        working-directory: dashboard
+        run: npm run build
+
+      - name: Dashboard smoke tests
+        working-directory: dashboard
+        run: npm run test:smoke
+
+      - name: Maven tests
+        run: mvn test
+
+      - name: Build Windows release fat jar
+        run: mvn -q -DskipTests -Pwindows-release-fat-jar package
+
+      - name: Maven vs packaged launcher regression
+        working-directory: dashboard
+        run: npm run test:release-launch
+
+      - name: Build unsigned Windows installer
+        working-directory: dashboard
+        run: npm run release:installer
+
+      - name: Validate installer release metadata
+        working-directory: dashboard
+        run: npm run release:installer:check
+
+      - name: Installed app smoke test
+        working-directory: dashboard
+        run: npm run test:windows-installed-installer
+
+      - id: installer-artifacts
+        name: Detect installer artifacts
+        if: always()
+        run: |
+          $artifactRoot = "dashboard/release/windows/installer"
+          $hasArtifacts = (Test-Path $artifactRoot) -and (Get-ChildItem -Path $artifactRoot -File -Recurse | Select-Object -First 1)
+          if ($hasArtifacts) {
+            "present=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "present=false" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Upload Windows release workflow artifact
+        if: always() && steps.installer-artifacts.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-assets-${{ github.run_id }}
+          path: dashboard/release/windows/installer/**
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish draft GitHub Release
+        if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: UK Housing Model ${{ github.ref_name }}
+          draft: true
+          prerelease: false
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          body: |
+            Draft unsigned Windows desktop release for UK Housing Model ${{ github.ref_name }}.
+
+            The v1 Windows installer is not code-signed. Windows SmartScreen may warn until the project has a signed release path and reputation. Verify downloads with PowerShell before installing:
+
+            ```powershell
+            Get-FileHash .\${{ steps.release-metadata.outputs.installer_name }} -Algorithm SHA256
+            ```
+
+            Compare the result with `SHA256SUMS.txt` and `${{ steps.release-metadata.outputs.installer_name }}.sha256`.
+
+            This Windows package improves accessibility and reproducibility for local dashboard-managed runs without changing Java model behavior. Model-validity gates include Maven tests and the Maven-vs-packaged-launcher regression before any release asset is published.
+
+            Included scope: local manual Java model runs, one-at-a-time sensitivity runs, bundled release data, persistent results/logs/manifests, and support bundle export.
+
+            Not included: Python calibration, full validation regeneration, private datasets, heavy sharded research sweeps, WSL/Linux-only workflows, AWS execution, Render deployment, or public API model execution.
+
+            This release is produced by the Windows release workflow only. It does not deploy AWS resources, Render services, or public API infrastructure.
+          files: |
+            dashboard/release/windows/installer/${{ steps.release-metadata.outputs.installer_name }}
+            dashboard/release/windows/installer/release-manifest.json
+            dashboard/release/windows/installer/SHA256SUMS.txt
+            dashboard/release/windows/installer/${{ steps.release-metadata.outputs.installer_name }}.sha256

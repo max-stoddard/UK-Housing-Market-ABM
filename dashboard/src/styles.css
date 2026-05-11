@@ -255,7 +255,31 @@ code {
 .header-nav-wrap {
   display: grid;
   justify-items: end;
-  gap: 0;
+  gap: 0.45rem;
+}
+
+.desktop-folder-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.desktop-folder-actions button {
+  border: 1px solid rgba(17, 32, 24, 0.14);
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--text);
+  border-radius: 0.5rem;
+  padding: 0.34rem 0.58rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.desktop-folder-actions button:hover {
+  border-color: rgba(11, 114, 133, 0.38);
+  background: #eef7f5;
 }
 
 .app-main {
@@ -2249,6 +2273,7 @@ code {
   color: var(--muted);
   background: #f1f3f5;
   border: 1px solid rgba(73, 80, 87, 0.16);
+  overflow-wrap: anywhere;
 }
 
 .compare-title-skeleton {
@@ -2756,6 +2781,10 @@ code {
   .header-nav-wrap {
     width: 100%;
     justify-items: start;
+  }
+
+  .desktop-folder-actions {
+    justify-content: flex-start;
   }
 
   .stats-grid {

@@ -625,7 +625,10 @@ export interface SensitivityExperimentMetadata extends SensitivityExperimentSumm
   sampledPoints: SensitivitySamplePoint[];
   collapsedSlots: Record<SensitivitySampleSlot, string>;
   runCommand: {
-    mavenBin: string;
+    mode?: 'maven' | 'packaged';
+    mavenBin?: string;
+    javaExe?: string;
+    modelJar?: string;
     commandTemplate: string;
   };
 }

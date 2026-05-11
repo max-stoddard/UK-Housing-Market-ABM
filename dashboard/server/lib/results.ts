@@ -17,6 +17,13 @@ import type {
   ResultsSeriesSource
 } from '../../shared/types';
 import { computeKpiFromValues } from './stats/kpi';
+import {
+  formatRuntimePath,
+  resolveRuntimePaths,
+  type RuntimePathInput,
+  type RuntimePaths
+} from './runtimePaths';
+import { isDashboardManagedRun } from './runOwnership';
 
 type CompareWindow = 'post200' | 'tail120' | 'full';
 type SmoothWindow = 0 | 3 | 12;
@@ -64,7 +71,6 @@ interface RunDiagnostics {
   manifest: ResultsFileManifestEntry[];
 }
 
-const RESULTS_FOLDER_NAME = 'Results';
 const OUTPUT_FILE_NAME = 'Output-run1.csv';
 const PROTECTED_RESULTS_RUN_IDS = new Set(['v0-output', 'v4.0-output']);
 
@@ -346,12 +352,9 @@ function setBoundedCacheValue<T>(cache: Map<string, CachedValue<T>>, key: string
   }
 }
 
-function resolveResultsRoot(repoRoot: string): string {
-  return path.join(repoRoot, RESULTS_FOLDER_NAME);
-}
-
-function asRelativePath(root: string, absolutePath: string): string {
-  return path.relative(root, absolutePath).replace(/\\/g, '/');
+function resolveResultsRoot(pathsInput: RuntimePathInput): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return paths.resultsRoot;
 }
 
 function toIsoTime(value: Date): string {
@@ -720,7 +723,7 @@ function getOutputParseStatus(runPath: string): ParsedOutputFile {
   return getCachedParsedOutput(filePath);
 }
 
-function buildManifest(repoRoot: string, runPath: string): ResultsFileManifestEntry[] {
+function buildManifest(paths: RuntimePaths, runPath: string): ResultsFileManifestEntry[] {
   const entries = fs.readdirSync(runPath, { withFileTypes: true });
   const files = entries
     .filter((entry) => entry.isFile())
@@ -731,7 +734,7 @@ function buildManifest(repoRoot: string, runPath: string): ResultsFileManifestEn
       const coverage = resolveFileCoverage(runPath, entry.name, fileType, stats.size);
       return {
         fileName: entry.name,
-        filePath: asRelativePath(repoRoot, filePath),
+        filePath: formatRuntimePath(paths, filePath),
         sizeBytes: stats.size,
         modifiedAt: toIsoTime(stats.mtime),
         fileType,
@@ -927,13 +930,14 @@ function alignSeriesByModelTime(seriesByRun: Array<{ runId: string; points: Resu
   });
 }
 
-function buildRunDiagnostics(repoRoot: string, runId: string): RunDiagnostics {
-  const resultsRoot = resolveResultsRoot(repoRoot);
+function buildRunDiagnostics(pathsInput: RuntimePathInput, runId: string): RunDiagnostics {
+  const paths = resolveRuntimePaths(pathsInput);
+  const resultsRoot = resolveResultsRoot(paths);
   const runPath = ensureRunExists(resultsRoot, runId);
   const runStats = fs.statSync(runPath);
   const { sizeBytes, fileCount } = computeFolderSizeAndFileCount(runPath);
   const { status, coverage } = computeRunStatusAndCoverage(runPath);
-  const manifest = buildManifest(repoRoot, runPath);
+  const manifest = buildManifest(paths, runPath);
   const configAvailable = fs.existsSync(path.join(runPath, 'config.properties'));
 
   const indicators: ResultsIndicatorAvailability[] = ALL_INDICATORS.map((indicator) => {
@@ -965,7 +969,7 @@ function buildRunDiagnostics(repoRoot: string, runId: string): RunDiagnostics {
 
   const summary: ResultsRunSummary = {
     runId,
-    path: asRelativePath(repoRoot, runPath),
+    path: formatRuntimePath(paths, runPath),
     modifiedAt: toIsoTime(runStats.mtime),
     createdAt: toIsoTime(runStats.birthtime),
     sizeBytes,
@@ -988,30 +992,37 @@ export function getResultsIndicatorCatalog(): ResultsIndicatorMeta[] {
   return ALL_INDICATORS.map(toIndicatorMeta);
 }
 
-export function getResultsRuns(repoRoot: string): ResultsRunSummary[] {
-  const resultsRoot = resolveResultsRoot(repoRoot);
+export function getResultsRuns(pathsInput: RuntimePathInput): ResultsRunSummary[] {
+  const paths = resolveRuntimePaths(pathsInput);
+  const resultsRoot = resolveResultsRoot(paths);
   const runIds = listRunDirectories(resultsRoot);
-  const summaries = runIds.map((runId) => buildRunDiagnostics(repoRoot, runId).summary);
+  const summaries = runIds.map((runId) => buildRunDiagnostics(paths, runId).summary);
   summaries.sort((left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt));
   return summaries;
 }
 
-export function getResultsRunDetail(repoRoot: string, runId: string): ResultsRunDetail {
-  return buildRunDiagnostics(repoRoot, runId).detail;
+export function getResultsRunDetail(pathsInput: RuntimePathInput, runId: string): ResultsRunDetail {
+  return buildRunDiagnostics(pathsInput, runId).detail;
 }
 
-export function getResultsRunFiles(repoRoot: string, runId: string): ResultsFileManifestEntry[] {
-  return buildRunDiagnostics(repoRoot, runId).manifest;
+export function getResultsRunFiles(pathsInput: RuntimePathInput, runId: string): ResultsFileManifestEntry[] {
+  return buildRunDiagnostics(pathsInput, runId).manifest;
 }
 
-export function deleteResultsRun(repoRoot: string, runId: string): { runId: string; deleted: boolean } {
-  const resultsRoot = resolveResultsRoot(repoRoot);
+export function deleteResultsRun(pathsInput: RuntimePathInput, runId: string): { runId: string; deleted: boolean } {
+  const resultsRoot = resolveResultsRoot(pathsInput);
   const normalizedRunId = runId.trim();
   if (PROTECTED_RESULTS_RUN_IDS.has(normalizedRunId)) {
     throw new Error(`Run "${normalizedRunId}" is protected and cannot be deleted from Model Results.`);
   }
 
   const runPath = ensureRunExists(resultsRoot, normalizedRunId);
+  if (!isDashboardManagedRun(runPath, normalizedRunId)) {
+    throw new Error(
+      `Run "${normalizedRunId}" is not marked as a dashboard-managed run and cannot be deleted from Model Results.`
+    );
+  }
+
   fs.rmSync(runPath, { recursive: true, force: true });
   clearRunFromParserCaches(runPath);
   return {
@@ -1021,12 +1032,12 @@ export function deleteResultsRun(repoRoot: string, runId: string): { runId: stri
 }
 
 export function getResultsSeries(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   runId: string,
   indicatorId: string,
   requestedSmoothWindow: number | undefined
 ): ResultsSeriesPayload {
-  const resultsRoot = resolveResultsRoot(repoRoot);
+  const resultsRoot = resolveResultsRoot(pathsInput);
   const runPath = ensureRunExists(resultsRoot, runId);
   const smoothWindow = normalizeSmoothWindow(requestedSmoothWindow);
   const rawSeries = getRawSeriesForIndicator(runPath, indicatorId);
@@ -1044,7 +1055,7 @@ export function getResultsSeries(
 }
 
 export function getResultsCompare(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   runIds: string[],
   indicatorIds: string[],
   requestedWindow: string | undefined,
@@ -1062,7 +1073,7 @@ export function getResultsCompare(
   const selectedIndicators =
     indicatorIds.length > 0 ? indicatorIds : ALL_INDICATORS.map((indicator) => indicator.id);
 
-  const resultsRoot = resolveResultsRoot(repoRoot);
+  const resultsRoot = resolveResultsRoot(pathsInput);
   const indicatorPayloads: ResultsCompareIndicator[] = selectedIndicators.map((indicatorId) => {
     const indicatorDefinition = INDICATOR_BY_ID.get(indicatorId);
     if (!indicatorDefinition) {

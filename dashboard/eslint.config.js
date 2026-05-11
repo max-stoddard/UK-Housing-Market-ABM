@@ -21,6 +21,14 @@ export default tseslint.config(
     }
   },
   {
-    ignores: ['dist/**', 'dist-server/**', '.smoke-dist/**', 'node_modules/**']
+    ignores: [
+      'dist/**',
+      'dist-server/**',
+      'electron/dist/**',
+      'release/**',
+      '.smoke-dist/**',
+      'node_modules/**',
+      '**/node_modules/**'
+    ]
   }
 );

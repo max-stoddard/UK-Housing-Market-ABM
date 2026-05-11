@@ -15,17 +15,31 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     res.json({ ok: true });
   });
 
-  app.get('/api/runtime-deps', context.withMemoryLogging('runtime-deps', (_req, res) => {
+  app.get('/api/runtime-deps', context.withMemoryLogging('runtime-deps', (req, res) => {
     const deps = context.getRuntimeDependencies();
+    const policy = context.resolveRuntimePolicy(req);
     res.json({
       java: deps.java.available,
       maven: deps.maven.available,
+      javaBin: deps.javaBin,
       mavenBin: deps.mavenBin,
-      modelRunsConfigured: context.modelRunsConfiguredFromEnv,
-      modelRunsEnabled: context.modelRunsConfiguredFromEnv && deps.java.available && deps.maven.available,
+      runtimePaths: {
+        mode: context.runtimePaths.mode,
+        dataRoot: context.runtimePaths.dataRoot,
+        resultsRoot: context.runtimePaths.resultsRoot,
+        tempRoot: context.runtimePaths.tempRoot,
+        logsRoot: context.runtimePaths.logsRoot,
+        diagnostics: deps.runtimePaths ?? null
+      },
+      modelArtifact: deps.modelArtifact,
+      modelRunsConfigured: policy.modelRunsConfigured,
+      modelRunsEnabled: policy.modelRunsEnabled,
+      modelRunsDisabledReason: policy.modelRunsDisabledReason,
       versionInfo: {
         java: deps.java.versionOutput || null,
         maven: deps.maven.versionOutput || null,
+        javaVendor: deps.java.vendor ?? null,
+        javaMajorVersion: deps.java.majorVersion ?? null,
         javaError: deps.java.error ?? null,
         mavenError: deps.maven.error ?? null
       }
@@ -52,8 +66,8 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
 
   app.get('/api/versions', context.withMemoryLogging('versions', (_req, res) => {
     try {
-      const versions = getVersions(context.repoRoot);
-      const inProgressVersions = getInProgressVersions(context.repoRoot);
+      const versions = getVersions(context.runtimePaths);
+      const inProgressVersions = getInProgressVersions(context.runtimePaths);
       res.json({ versions, inProgressVersions });
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
@@ -65,7 +79,7 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
       const version = String(req.query.version ?? '').trim();
       const viewParam = String(req.query.view ?? 'tracked').trim();
       const view = viewParam === 'reference_2011' ? 'reference_2011' : 'tracked';
-      res.json(getValidationOverview(context.repoRoot, version || undefined, view));
+      res.json(getValidationOverview(context.runtimePaths, version || undefined, view));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }
@@ -83,7 +97,7 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     }
 
     try {
-      res.json(getHomePreview(context.repoRoot, version, HOME_PREVIEW_PARAMETER_IDS));
+      res.json(getHomePreview(context.runtimePaths, version, HOME_PREVIEW_PARAMETER_IDS));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -108,7 +122,7 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     const provenanceScope = provenanceScopeParam === 'through_right' ? 'through_right' : 'range';
 
     try {
-      const payload = compareParameters(context.repoRoot, left, right, ids, provenanceScope);
+      const payload = compareParameters(context.runtimePaths, left, right, ids, provenanceScope);
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });

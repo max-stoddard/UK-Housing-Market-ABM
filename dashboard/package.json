@@ -14,9 +14,19 @@
     "build": "npm run typecheck && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc -p tsconfig.server.json && node -e \"require('node:fs').writeFileSync('dist-server/package.json', '{\\n  \\\"type\\\": \\\"commonjs\\\"\\n}\\n')\"",
+    "build:desktop": "npm run typecheck && npm run build:client && npm --prefix electron run build",
+    "typecheck:electron": "npm --prefix electron run typecheck",
+    "dev:desktop": "npm run build:client && npm --prefix electron run build && npm --prefix electron run dev",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test:smoke": "node --import tsx/esm tests/smoke.test.ts"
+    "test:smoke": "node --import tsx/esm tests/smoke.test.ts",
+    "test:release-launch": "node --import tsx/esm tests/model-launch-regression.test.ts",
+    "release:resources": "node ../scripts/windows/assemble-release-resources.mjs",
+    "release:resources:check": "node ../scripts/windows/assemble-release-resources.mjs --check",
+    "release:installer": "npm run release:resources && npm --prefix electron run release:installer && node ../scripts/windows/write-installer-release-manifest.mjs",
+    "release:installer:check": "npm run release:resources:check && node ../scripts/windows/write-installer-release-manifest.mjs --check",
+    "test:desktop-release-resources": "npm run release:resources:check && node ../scripts/windows/smoke-desktop-release-resources.mjs",
+    "test:windows-installed-installer": "node ../scripts/windows/smoke-installed-windows-installer.mjs"
   },
   "dependencies": {
     "echarts": "^5.6.0",

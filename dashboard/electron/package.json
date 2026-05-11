@@ -1,0 +1,19 @@
+{
+  "name": "uk-housing-model-dashboard-electron",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "main": "dist/electron/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "electron .",
+    "release:installer": "electron-builder --config electron-builder.yml --win nsis --x64 --publish never"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "electron": "^41.5.0",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.7.3"
+  }
+}

@@ -12,6 +12,7 @@ import {
   getSensitivityExperimentLogs,
   listSensitivityExperiments
 } from './sensitivityRuns';
+import type { RuntimePathInput } from './runtimePaths';
 
 function toManualSummary(job: ModelRunJob): ExperimentJobSummary {
   return {
@@ -61,9 +62,9 @@ function parseJobRef(jobRef: string): { type: 'manual' | 'sensitivity'; id: stri
   throw new Error(`Unknown experiment jobRef: ${jobRef}`);
 }
 
-export function listExperimentJobs(repoRoot: string): ExperimentJobsPayload {
+export function listExperimentJobs(pathsInput: RuntimePathInput): ExperimentJobsPayload {
   const manualJobs = listModelRunJobs().map(toManualSummary);
-  const sensitivityJobs = listSensitivityExperiments(repoRoot).experiments.map(toSensitivitySummary);
+  const sensitivityJobs = listSensitivityExperiments(pathsInput).experiments.map(toSensitivitySummary);
 
   const jobs = [...manualJobs, ...sensitivityJobs].sort(
     (left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)
@@ -84,7 +85,7 @@ export function listExperimentJobs(repoRoot: string): ExperimentJobsPayload {
 }
 
 export function getExperimentJobLogs(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   jobRef: string,
   cursor: number | undefined,
   limit: number | undefined
@@ -105,7 +106,7 @@ export function getExperimentJobLogs(
     };
   }
 
-  const payload = getSensitivityExperimentLogs(repoRoot, parsed.id, cursor, limit);
+  const payload = getSensitivityExperimentLogs(pathsInput, parsed.id, cursor, limit);
   return {
     jobRef,
     type: 'sensitivity',
@@ -118,17 +119,17 @@ export function getExperimentJobLogs(
   };
 }
 
-export function cancelExperimentJob(repoRoot: string, jobRef: string): ExperimentJobCancelResponse {
+export function cancelExperimentJob(pathsInput: RuntimePathInput, jobRef: string): ExperimentJobCancelResponse {
   const parsed = parseJobRef(jobRef);
 
   if (parsed.type === 'manual') {
-    const job = cancelModelRunJob(repoRoot, parsed.id);
+    const job = cancelModelRunJob(pathsInput, parsed.id);
     return {
       job: toManualSummary(job)
     };
   }
 
-  const detail = cancelSensitivityExperiment(repoRoot, parsed.id);
+  const detail = cancelSensitivityExperiment(pathsInput, parsed.id);
   return {
     job: toSensitivitySummary(detail.experiment)
   };

@@ -53,6 +53,9 @@ PROMPT.md
 dashboard/node_modules/
 dashboard/dist/
 dashboard/dist-server/
+dashboard/electron/node_modules/
+dashboard/electron/dist/
+dashboard/release/
 
 # dashboard smoke artifacts
 dashboard/.smoke-dist/

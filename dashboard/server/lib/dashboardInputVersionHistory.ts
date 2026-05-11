@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { compareVersions } from './versioning';
+import { formatRuntimePath, resolveRuntimePaths, type RuntimePathInput } from './runtimePaths';
 import type { ValidationStatus } from '../../shared/types';
 
 export interface DashboardInputVersionHistoryValidation {
@@ -253,14 +254,16 @@ function parseDocument(value: unknown): DashboardInputVersionHistoryDocument {
   return document;
 }
 
-export function getDashboardInputVersionHistoryPath(repoRoot: string): string {
-  return path.join(repoRoot, 'input-data-versions', 'dashboard-input-version-history.json');
+export function getDashboardInputVersionHistoryPath(pathsInput: RuntimePathInput): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return path.join(paths.dataRoot, 'dashboard-input-version-history.json');
 }
 
-export function loadDashboardInputVersionHistory(repoRoot: string): DashboardInputVersionHistoryEntry[] {
-  const historyPath = getDashboardInputVersionHistoryPath(repoRoot);
+export function loadDashboardInputVersionHistory(pathsInput: RuntimePathInput): DashboardInputVersionHistoryEntry[] {
+  const paths = resolveRuntimePaths(pathsInput);
+  const historyPath = getDashboardInputVersionHistoryPath(paths);
   if (!fs.existsSync(historyPath)) {
-    throw new Error(`Missing dashboard input version history file: ${path.relative(repoRoot, historyPath)}`);
+    throw new Error(`Missing dashboard input version history file: ${formatRuntimePath(paths, historyPath)}`);
   }
 
   let raw: unknown;

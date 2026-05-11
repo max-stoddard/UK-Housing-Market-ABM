@@ -1,5 +1,8 @@
 import type express from 'express';
+import type { LogLineSink } from '../lib/logs/logBuffer';
+import type { ModelLauncher } from '../lib/modelLauncher';
 import type { RuntimeDependencyStatus } from '../lib/runtimeDeps';
+import type { RuntimePaths } from '../lib/runtimePaths';
 import type { WriteAuthController } from '../lib/writeAuth';
 
 export interface RuntimePolicy {
@@ -12,8 +15,11 @@ export interface RuntimePolicy {
 
 export interface RouteContext {
   repoRoot: string;
+  runtimePaths: RuntimePaths;
   modelRunsConfiguredFromEnv: boolean;
   writeAuth: WriteAuthController;
+  launcher?: ModelLauncher;
+  modelLogSink?: LogLineSink;
   getRuntimeDependencies: () => RuntimeDependencyStatus;
   resolveRuntimePolicy: (req: express.Request) => RuntimePolicy;
   requireWriteAccess: (req: express.Request, res: express.Response) => boolean;
