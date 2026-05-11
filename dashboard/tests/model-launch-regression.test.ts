@@ -6,7 +6,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  createMavenModelLauncher,
   createPackagedModelLauncher,
   getConfiguredMavenBin,
   spawnCommand,
@@ -161,7 +160,7 @@ function assertManifestsEqual(left: Map<string, string>, right: Map<string, stri
   assert.deepEqual(
     [...left.keys()],
     expectedOutputFiles,
-    `Unexpected Maven output files:\n${formatManifest(left)}`
+    `Unexpected classpath baseline output files:\n${formatManifest(left)}`
   );
   assert.deepEqual(
     [...right.keys()],
@@ -171,7 +170,7 @@ function assertManifestsEqual(left: Map<string, string>, right: Map<string, stri
   assert.deepEqual(
     Object.fromEntries(right),
     Object.fromEntries(left),
-    `Maven and packaged outputs diverged.\n\nMaven:\n${formatManifest(left)}\n\nPackaged:\n${formatManifest(right)}`
+    `Classpath baseline and packaged outputs diverged.\n\nBaseline:\n${formatManifest(left)}\n\nPackaged:\n${formatManifest(right)}`
   );
 }
 
@@ -227,10 +226,26 @@ async function runCheckedLauncher(launcher: ModelLauncher, request: ModelLaunchR
   return result;
 }
 
+async function resolveRuntimeClasspath(): Promise<string> {
+  const result = await runCheckedCommand(
+    getConfiguredMavenBin(repoRoot),
+    ['-q', '-Dexec.classpathScope=runtime', '-Dexec.executable=echo', '-Dexec.args=%classpath', 'exec:exec'],
+    repoRoot
+  );
+  const classpath = result.stdout.trim().split(/\r?\n/).at(-1)?.trim();
+  assert.ok(classpath, `Expected Maven to resolve a runtime classpath.\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
+  return classpath;
+}
+
+function resolveJavaExe(): string {
+  const javaBin = process.platform === 'win32' ? 'java.exe' : 'java';
+  return process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', javaBin) : 'java';
+}
+
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'uk housing release modèle 用户-'));
 const dataRoot = path.join(tempRoot, 'release data', `${snapshot} données`);
 const configPath = path.join(tempRoot, 'config dir José', 'config.properties');
-const mavenOutput = path.join(tempRoot, 'maven output Résultats');
+const baselineOutput = path.join(tempRoot, 'classpath output Résultats');
 const packagedOutput = path.join(tempRoot, 'jar output 東京');
 
 try {
@@ -245,23 +260,24 @@ try {
   await runCheckedCommand(getConfiguredMavenBin(repoRoot), ['-q', '-DskipTests', '-Pwindows-release-fat-jar', 'package'], repoRoot);
   assert.ok(fs.existsSync(modelJar), `Expected Windows release fat jar to exist: ${modelJar}`);
 
-  await runCheckedLauncher(createMavenModelLauncher(), {
-    repoRoot,
-    configPath,
-    outputPath: mavenOutput
-  });
-  const javaExe = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, 'bin', 'java') : 'java';
+  const javaExe = resolveJavaExe();
+  const runtimeClasspath = await resolveRuntimeClasspath();
+  await runCheckedCommand(
+    javaExe,
+    ['-cp', runtimeClasspath, 'housing.Model', '-configFile', configPath, '-outputFolder', baselineOutput, '-dev'],
+    repoRoot
+  );
   await runCheckedLauncher(createPackagedModelLauncher(javaExe, modelJar), {
     repoRoot,
     configPath,
     outputPath: packagedOutput
   });
 
-  assertCopiedConfigMatches(configPath, mavenOutput);
+  assertCopiedConfigMatches(configPath, baselineOutput);
   assertCopiedConfigMatches(configPath, packagedOutput);
-  assertManifestsEqual(outputManifest(mavenOutput), outputManifest(packagedOutput));
+  assertManifestsEqual(outputManifest(baselineOutput), outputManifest(packagedOutput));
 
-  const outputRows = fs.readFileSync(path.join(mavenOutput, 'Output-run1.csv'), 'utf-8').trimEnd().split(/\r?\n/);
+  const outputRows = fs.readFileSync(path.join(baselineOutput, 'Output-run1.csv'), 'utf-8').trimEnd().split(/\r?\n/);
   assert.equal(outputRows.length, 2, 'Expected short deterministic run to write header plus one output row');
 } finally {
   if (process.env.KEEP_RELEASE_LAUNCH_TEST_ARTIFACTS !== '1') {
