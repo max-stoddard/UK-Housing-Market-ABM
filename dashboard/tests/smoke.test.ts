@@ -4910,10 +4910,18 @@ const packagedRuntimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-pac
 const previousMavenBin = process.env.DASHBOARD_MAVEN_BIN;
 let packagedPolicyServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
 try {
-  const fakeJavaBin = path.join(packagedRuntimeRoot, 'java');
+  const fakeJavaBin = path.join(packagedRuntimeRoot, process.platform === 'win32' ? 'java.cmd' : 'java');
   const fakeModelJar = path.join(packagedRuntimeRoot, 'housing-model-1.0-SNAPSHOT-windows-release.jar');
-  fs.writeFileSync(fakeJavaBin, '#!/usr/bin/env sh\necho "openjdk version \\"25.0.1\\"" >&2\n', 'utf-8');
-  fs.chmodSync(fakeJavaBin, 0o755);
+  fs.writeFileSync(
+    fakeJavaBin,
+    process.platform === 'win32'
+      ? '@echo off\r\necho openjdk version "25.0.1" 1>&2\r\n'
+      : '#!/usr/bin/env sh\necho "openjdk version \\"25.0.1\\"" >&2\n',
+    'utf-8'
+  );
+  if (process.platform !== 'win32') {
+    fs.chmodSync(fakeJavaBin, 0o755);
+  }
   fs.writeFileSync(fakeModelJar, 'fake packaged model jar for runtime policy smoke test', 'utf-8');
   process.env.DASHBOARD_MAVEN_BIN = path.join(packagedRuntimeRoot, 'missing-mvn');
 
