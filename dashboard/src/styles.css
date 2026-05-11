@@ -1331,6 +1331,29 @@ code {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.sensitivity-run-form-head {
+  align-items: start;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.sensitivity-policy-field {
+  grid-column: span 7;
+}
+
+.sensitivity-title-field {
+  grid-column: span 5;
+}
+
+.sensitivity-version-field {
+  grid-column: span 6;
+}
+
+.sensitivity-min-field,
+.sensitivity-max-field,
+.sensitivity-sample-field {
+  grid-column: span 2;
+}
+
 .run-form-head label {
   display: grid;
   gap: 0.28rem;
@@ -1343,6 +1366,80 @@ code {
   font-size: 0.75rem;
   font-weight: 500;
   color: var(--muted);
+}
+
+.sensitivity-field-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.sensitivity-info-trigger {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  color: var(--muted);
+  cursor: help;
+}
+
+.sensitivity-info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  border: 1px solid rgba(17, 32, 24, 0.2);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.sensitivity-info-tooltip {
+  position: absolute;
+  bottom: calc(100% + 0.4rem);
+  left: 50%;
+  z-index: 5;
+  width: min(250px, 70vw);
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.55rem;
+  background: #1f2933;
+  color: #f8f9fa;
+  box-shadow: 0 10px 24px rgba(17, 32, 24, 0.18);
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 0.15rem);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease,
+    visibility 140ms ease;
+  visibility: hidden;
+}
+
+.sensitivity-info-trigger:hover .sensitivity-info-tooltip,
+.sensitivity-info-trigger:focus .sensitivity-info-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.sensitivity-info-trigger:hover .sensitivity-info-icon,
+.sensitivity-info-trigger:focus .sensitivity-info-icon {
+  border-color: rgba(11, 114, 133, 0.35);
+  color: #0b7285;
+}
+
+.sensitivity-info-trigger:focus {
+  border-radius: 999px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .run-form-head select,
@@ -1389,6 +1486,41 @@ code {
   padding-left: 1.15rem;
   display: grid;
   gap: 0.25rem;
+}
+
+.sensitivity-run-summary {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+
+.sensitivity-experiment-summary dl {
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+}
+
+.sensitivity-experiment-summary div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.sensitivity-experiment-summary dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sensitivity-experiment-summary dd {
+  margin: 0;
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
 }
 
 .run-param-groups {
@@ -2806,5 +2938,22 @@ code {
   .overlay-card-head select {
     min-width: 0;
     width: 100%;
+  }
+
+  .sensitivity-run-form-head {
+    grid-template-columns: 1fr;
+  }
+
+  .sensitivity-policy-field,
+  .sensitivity-title-field,
+  .sensitivity-version-field,
+  .sensitivity-min-field,
+  .sensitivity-max-field,
+  .sensitivity-sample-field {
+    grid-column: 1 / -1;
+  }
+
+  .sensitivity-run-summary {
+    grid-template-columns: 1fr;
   }
 }

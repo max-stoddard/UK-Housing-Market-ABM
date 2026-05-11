@@ -16,7 +16,8 @@ export function ManualRunSetupPanel({ controller, runActionsDisabled }: ManualRu
       snapshots={controller.options?.snapshots ?? []}
       title={controller.title}
       onTitleChange={controller.setTitle}
-      groupedParameters={controller.groupedParameters}
+      parameters={controller.options?.parameters ?? []}
+      policyParameters={controller.policyParameters}
       formValues={controller.formValues}
       onFormValueChange={controller.onFormValueChange}
       warnings={controller.warnings}

@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type {
   KpiMetricValues,
@@ -19,6 +20,7 @@ import type {
   SensitivityExperimentSummary,
   SensitivityIndicatorPointMetric,
   SensitivityPointResult,
+  SensitivitySeedRunResult,
   SensitivitySamplePoint,
   SensitivitySampleSlot,
   SensitivityTornadoBar
@@ -38,11 +40,14 @@ import {
   type ModelLauncherCommand
 } from './modelLauncher';
 import {
-  formatRuntimePath,
   resolveRuntimePaths,
   type RuntimePathInput,
   type RuntimePaths
 } from './runtimePaths';
+import {
+  formatSensitivitySampleLabel,
+  normalizeSensitivitySampleValue
+} from '../../shared/sensitivitySampling';
 import {
   hashDirectory,
   hashFile,
@@ -60,6 +65,8 @@ const MAX_LOG_LINES = 10_000;
 const TERMINAL_STATUSES = new Set<SensitivityExperimentStatus>(['succeeded', 'failed', 'canceled']);
 const KPI_KEYS = ['mean', 'cv', 'annualisedTrend', 'range'] as const;
 const BASELINE_EPSILON = 1e-12;
+const FORCED_STARTING_SEED = 1;
+const DEFAULT_MAX_WORKERS_CAP = 20;
 
 interface PersistedSummary {
   results: SensitivityExperimentResultsPayload;
@@ -85,7 +92,8 @@ interface ExperimentRecord {
   logBuffer: LogBufferState;
   launcher: ModelLauncher;
   manifestPoints: SensitivityRunManifestPoint[];
-  process?: ChildProcessWithoutNullStreams;
+  normalizedGeneralOverrides: Map<string, string>;
+  activeProcesses: Set<ChildProcessWithoutNullStreams>;
   killTimer?: NodeJS.Timeout;
   cancelRequested: boolean;
 }
@@ -305,10 +313,6 @@ function isTerminal(status: SensitivityExperimentStatus): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
-function asRuntimePath(paths: RuntimePaths, absolutePath: string): string {
-  return formatRuntimePath(paths, absolutePath);
-}
-
 function formatRunTimestamp(date: Date): string {
   const yyyy = String(date.getUTCFullYear());
   const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -325,14 +329,6 @@ function sanitizeFragment(value: string): string {
     .map((character) => (character.charCodeAt(0) < 32 ? ' ' : character))
     .join('');
   return withoutControlChars.replace(/\s+/g, ' ').replace(/\.+$/g, '').trim();
-}
-
-function formatSampleLabel(value: number): string {
-  if (Number.isInteger(value)) {
-    return String(value);
-  }
-  const rounded = Number(value.toFixed(6));
-  return String(rounded);
 }
 
 function buildExperimentId(date: Date): string {
@@ -442,12 +438,23 @@ function normalizeResultsPayload(experimentId: string, raw: unknown): Sensitivit
 
   const candidate = raw as Partial<LegacySensitivityExperimentResultsPayload>;
   const points = Array.isArray(candidate.points)
-    ? candidate.points.map((point) => ({
-      ...point,
-      indicatorMetrics: Array.isArray(point.indicatorMetrics)
-        ? point.indicatorMetrics.map((metric) => normalizeIndicatorMetric(metric))
-        : []
-    }))
+    ? candidate.points.map((point) => {
+      const seedResults = (point as unknown as { seedResults?: SensitivitySeedRunResult[] }).seedResults;
+      return {
+        ...point,
+        indicatorMetrics: Array.isArray(point.indicatorMetrics)
+          ? point.indicatorMetrics.map((metric) => normalizeIndicatorMetric(metric))
+          : [],
+        seedResults: Array.isArray(seedResults)
+          ? seedResults.map((seedResult) => ({
+            ...seedResult,
+            indicatorMetrics: Array.isArray(seedResult.indicatorMetrics)
+              ? seedResult.indicatorMetrics.map((metric) => normalizeIndicatorMetric(metric))
+              : []
+          }))
+          : undefined
+      };
+    })
     : [];
 
   return {
@@ -606,7 +613,10 @@ function asSummary(metadata: SensitivityExperimentMetadata): SensitivityExperime
     createdAt: metadata.createdAt,
     startedAt: metadata.startedAt,
     endedAt: metadata.endedAt,
-    retainFullOutput: metadata.retainFullOutput,
+    seedsPerPoint: metadata.seedsPerPoint,
+    seeds: metadata.seeds,
+    maxWorkers: metadata.maxWorkers,
+    generalOverrides: metadata.generalOverrides,
     parameter: metadata.parameter
   };
 }
@@ -715,7 +725,7 @@ function createWarnings(valuesByKey: Map<string, number | boolean>): ModelRunWar
   if (nSims > 1) {
     warnings.push({
       code: 'multiple_simulations',
-      message: `N_SIMS=${nSims} runs multiple simulations and may take much longer.`,
+      message: `Seeds per sampled point=${nSims} runs multiple independent seed processes and may take much longer.`,
       severity: 'warning'
     });
   }
@@ -801,26 +811,35 @@ function buildSamplePoints(
   min: number,
   max: number,
   baseline: number,
-  parameterType: Extract<ModelRunParameterDefinition['type'], 'integer' | 'number'>
+  parameterType: Extract<ModelRunParameterDefinition['type'], 'integer' | 'number'>,
+  sampleCount: number
 ): {
   points: SensitivitySamplePoint[];
   collapsedSlots: Record<SensitivitySampleSlot, string>;
 } {
-  const rawSlots: Array<{ slot: SensitivitySampleSlot; value: number; isBaseline: boolean }> = [
-    { slot: 'min', value: min, isBaseline: false },
-    { slot: 'mid_lower', value: (min + baseline) / 2, isBaseline: false },
-    { slot: 'baseline', value: baseline, isBaseline: true },
-    { slot: 'mid_upper', value: (baseline + max) / 2, isBaseline: false },
-    { slot: 'max', value: max, isBaseline: false }
-  ];
+  const rawSlots: Array<{ slot: SensitivitySampleSlot; value: number; isBaseline: boolean }> = [];
+  const intervalCount = sampleCount - 1;
+  for (let index = 0; index < sampleCount; index += 1) {
+    const slot = `sample_${index + 1}`;
+    const value = index === sampleCount - 1 ? max : min + ((max - min) * index) / intervalCount;
+    rawSlots.push({ slot, value, isBaseline: false });
+    if (index === 0) {
+      rawSlots.push({ slot: 'min', value, isBaseline: false });
+    }
+    if (index === sampleCount - 1) {
+      rawSlots.push({ slot: 'max', value, isBaseline: false });
+    }
+  }
+  rawSlots.push({ slot: 'baseline', value: baseline, isBaseline: true });
 
-  const byValue = new Map<number, SensitivitySamplePoint>();
+  const byValue = new Map<string, SensitivitySamplePoint>();
+  const usedPointIds = new Set<string>();
   const collapsedSlots = {} as Record<SensitivitySampleSlot, string>;
 
   for (const entry of rawSlots) {
-    const roundedValue = parameterType === 'integer' ? Math.round(entry.value) : entry.value;
-    const normalized = Object.is(roundedValue, -0) ? 0 : roundedValue;
-    const existing = byValue.get(normalized);
+    const normalized = normalizeSensitivitySampleValue(entry.value, parameterType);
+    const label = formatSensitivitySampleLabel(normalized);
+    const existing = byValue.get(label);
     if (existing) {
       if (!existing.slotLabels.includes(entry.slot)) {
         existing.slotLabels.push(entry.slot);
@@ -830,16 +849,24 @@ function buildSamplePoints(
       continue;
     }
 
-    const label = formatSampleLabel(normalized);
     const safeLabel = label.replace(/[^A-Za-z0-9.-]/g, '_').replace(/^-+/, 'm');
+    const basePointId = `point-${safeLabel || '0'}`;
+    let pointId = basePointId;
+    let suffix = 2;
+    while (usedPointIds.has(pointId)) {
+      pointId = `${basePointId}-${suffix}`;
+      suffix += 1;
+    }
+    usedPointIds.add(pointId);
+
     const point: SensitivitySamplePoint = {
-      pointId: `point-${safeLabel || '0'}`,
+      pointId,
       value: normalized,
       label,
       slotLabels: [entry.slot],
       isBaseline: entry.isBaseline
     };
-    byValue.set(normalized, point);
+    byValue.set(label, point);
     collapsedSlots[entry.slot] = point.pointId;
   }
 
@@ -903,6 +930,8 @@ function ensureLoaded(pathsInput: RuntimePathInput): void {
         logBuffer: createLogBuffer(),
         launcher: defaultSensitivityLauncher,
         manifestPoints: [],
+        normalizedGeneralOverrides: new Map(),
+        activeProcesses: new Set(),
         cancelRequested: false
       };
 
@@ -945,9 +974,14 @@ function validatePayload(
   min: number;
   max: number;
   baselineValue: number;
+  sampleCount: number;
   samplePoints: SensitivitySamplePoint[];
   collapsedSlots: Record<SensitivitySampleSlot, string>;
   valuesByKey: Map<string, number | boolean>;
+  normalizedGeneralOverrides: Map<string, string>;
+  generalOverrides: Record<string, number | boolean>;
+  seeds: number[];
+  maxWorkers: number;
 } {
   const baseline = payload.baseline?.trim();
   if (!baseline) {
@@ -973,8 +1007,40 @@ function validatePayload(
   if (!parameter) {
     throw new Error(`Unsupported sensitivity parameter: ${parameterKey}`);
   }
+  if (parameter.group !== 'Central Bank policy') {
+    throw new Error(`Sensitivity parameter must be a Central Bank policy parameter: ${parameterKey}`);
+  }
   if (parameter.type === 'boolean') {
     throw new Error(`Sensitivity parameter must be numeric: ${parameterKey}`);
+  }
+
+  const valuesByKey = new Map(parameters.map((item) => [item.key, item.defaultValue]));
+  const parameterDefMap = new Map(parameters.map((item) => [item.key, item]));
+  const normalizedGeneralOverrides = new Map<string, string>();
+  const generalOverrides: Record<string, number | boolean> = {};
+
+  for (const [key, rawValue] of Object.entries(payload.overrides ?? {})) {
+    const definition = parameterDefMap.get(key);
+    if (!definition) {
+      throw new Error(`Unsupported sensitivity override key: ${key}`);
+    }
+    if (definition.key === 'SEED') {
+      throw new Error('SEED is fixed to 1 for sensitivity experiments and cannot be overridden.');
+    }
+    if (definition.group !== 'General model control') {
+      throw new Error(`Sensitivity overrides are limited to General model control parameters: ${key}`);
+    }
+
+    const parsedOverride = normalizeSensitivityOverrideValue(key, rawValue, definition.type);
+    normalizedGeneralOverrides.set(key, parsedOverride.serialized);
+    valuesByKey.set(key, parsedOverride.typed);
+    generalOverrides[key] = parsedOverride.typed;
+  }
+
+  if (!normalizedGeneralOverrides.has('N_SIMS')) {
+    normalizedGeneralOverrides.set('N_SIMS', '5');
+    valuesByKey.set('N_SIMS', 5);
+    generalOverrides.N_SIMS = 5;
   }
 
   const baselineValue = Number(parameter.defaultValue);
@@ -987,22 +1053,43 @@ function validatePayload(
     );
   }
 
-  const { points, collapsedSlots } = buildSamplePoints(min, max, baselineValue, parameter.type);
+  const sampleCount = parseSampleCount(payload.sampleCount);
+  const { points, collapsedSlots } = buildSamplePoints(min, max, baselineValue, parameter.type, sampleCount);
   if (points.length === 0) {
     throw new Error('No sampled points were produced for this sensitivity range.');
   }
 
-  const valuesByKey = new Map(parameters.map((item) => [item.key, item.defaultValue]));
+  const seedCount = parseSeedCount(valuesByKey);
+  const seeds = buildSeeds(seedCount);
+  const maxWorkers = parseMaxWorkers(payload.maxWorkers, points.length * seeds.length);
+
   return {
     baseline,
     parameter,
     min,
     max,
     baselineValue,
+    sampleCount,
     samplePoints: points,
     collapsedSlots,
-    valuesByKey
+    valuesByKey,
+    normalizedGeneralOverrides,
+    generalOverrides,
+    seeds,
+    maxWorkers
   };
+}
+
+function parseSampleCount(rawValue: unknown): number {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return 5;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 2) {
+    throw new Error('sampleCount must be an integer greater than or equal to 2.');
+  }
+  return parsed;
 }
 
 function buildWarnings(
@@ -1050,6 +1137,64 @@ function hasActiveManualModelRuns(): boolean {
   return listModelRunJobs().some((job) => job.status === 'queued' || job.status === 'running');
 }
 
+function normalizeSensitivityOverrideValue(
+  key: string,
+  rawValue: number | boolean,
+  type: ModelRunParameterDefinition['type']
+): { typed: number | boolean; serialized: string } {
+  if (type === 'boolean') {
+    if (typeof rawValue !== 'boolean') {
+      throw new Error(`Override ${key} must be boolean.`);
+    }
+    return { typed: rawValue, serialized: String(rawValue) };
+  }
+
+  if (typeof rawValue !== 'number' || !Number.isFinite(rawValue)) {
+    throw new Error(`Override ${key} must be numeric.`);
+  }
+
+  if (type === 'integer' && !Number.isInteger(rawValue)) {
+    throw new Error(`Override ${key} must be an integer.`);
+  }
+
+  return { typed: rawValue, serialized: String(rawValue) };
+}
+
+function parseSeedCount(valuesByKey: Map<string, number | boolean>): number {
+  const rawSeedCount = Number(valuesByKey.get('N_SIMS') ?? 1);
+  if (!Number.isFinite(rawSeedCount) || !Number.isInteger(rawSeedCount) || rawSeedCount < 1) {
+    throw new Error('Seeds per sampled point must be a positive integer.');
+  }
+  return rawSeedCount;
+}
+
+function buildSeeds(seedCount: number): number[] {
+  return Array.from({ length: seedCount }, (_, index) => FORCED_STARTING_SEED + index);
+}
+
+function defaultWorkerCount(totalRuns: number): number {
+  const availableWorkers =
+    typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
+  return Math.max(1, Math.min(totalRuns, Math.max(1, availableWorkers), DEFAULT_MAX_WORKERS_CAP));
+}
+
+function parseMaxWorkers(rawValue: unknown, totalRuns: number): number {
+  if (totalRuns < 1) {
+    return 1;
+  }
+
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return defaultWorkerCount(totalRuns);
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+    throw new Error('maxWorkers must be a positive integer.');
+  }
+
+  return Math.max(1, Math.min(parsed, totalRuns));
+}
+
 function computeKpiPercentDiffFromBaseline(current: KpiMetricValues, baseline: KpiMetricValues): KpiMetricValues {
   const percentDiff = buildEmptyKpiValues();
   for (const key of KPI_KEYS) {
@@ -1063,41 +1208,121 @@ function computeKpiPercentDiffFromBaseline(current: KpiMetricValues, baseline: K
   return percentDiff;
 }
 
-async function runPoint(
+function emptyIndicatorMetrics(): SensitivityIndicatorPointMetric[] {
+  return POLICY_CORE_INDICATORS.map((indicator) => ({
+    indicatorId: indicator.id,
+    title: indicator.title,
+    units: indicator.units,
+    kpi: buildEmptyKpiValues(),
+    deltaFromBaseline: buildEmptyKpiValues()
+  }));
+}
+
+function aggregateMetricValues(seedMetrics: SensitivityIndicatorPointMetric[], indicatorId: string): KpiMetricValues {
+  const aggregated = buildEmptyKpiValues();
+  for (const key of KPI_KEYS) {
+    const values = seedMetrics
+      .filter((metric) => metric.indicatorId === indicatorId)
+      .map((metric) => metric.kpi[key])
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    aggregated[key] = values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
+  }
+  return aggregated;
+}
+
+function aggregateSeedMetrics(seedResults: SensitivitySeedRunResult[]): SensitivityIndicatorPointMetric[] {
+  const successfulMetrics = seedResults
+    .filter((seedResult) => seedResult.status === 'succeeded')
+    .flatMap((seedResult) => seedResult.indicatorMetrics);
+
+  if (successfulMetrics.length === 0) {
+    return emptyIndicatorMetrics();
+  }
+
+  return POLICY_CORE_INDICATORS.map((indicator) => ({
+    indicatorId: indicator.id,
+    title: indicator.title,
+    units: indicator.units,
+    kpi: aggregateMetricValues(successfulMetrics, indicator.id),
+    deltaFromBaseline: buildEmptyKpiValues()
+  }));
+}
+
+function pointStatusFromSeeds(seedResults: SensitivitySeedRunResult[]): SensitivityPointResult['status'] {
+  if (seedResults.some((seedResult) => seedResult.status === 'canceled')) {
+    return 'canceled';
+  }
+  if (seedResults.some((seedResult) => seedResult.status === 'failed')) {
+    return 'failed';
+  }
+  return 'succeeded';
+}
+
+function buildPointResult(
+  record: ExperimentRecord,
+  point: SensitivitySamplePoint,
+  seedResults: SensitivitySeedRunResult[]
+): SensitivityPointResult {
+  const status = pointStatusFromSeeds(seedResults);
+  const failedSeedErrors = seedResults
+    .filter((seedResult) => seedResult.error)
+    .map((seedResult) => `seed ${seedResult.seed}: ${seedResult.error as string}`);
+
+  return {
+    pointId: point.pointId,
+    value: point.value,
+    label: point.label,
+    slotLabels: [...point.slotLabels],
+    isBaseline: point.isBaseline,
+    status,
+    runId: `${record.metadata.experimentId}-${point.pointId}`,
+    outputPath: null,
+    error: failedSeedErrors.length > 0 ? failedSeedErrors.join('; ').slice(-2_000) : undefined,
+    indicatorMetrics: aggregateSeedMetrics(seedResults),
+    seedResults
+  };
+}
+
+async function runSeed(
   pathsInput: RuntimePathInput,
   record: ExperimentRecord,
-  point: SensitivitySamplePoint
-): Promise<SensitivityPointResult> {
+  point: SensitivitySamplePoint,
+  seed: number
+): Promise<SensitivitySeedRunResult> {
   const paths = resolveRuntimePaths(pathsInput);
   const metadata = record.metadata;
   const baselineDirPath = path.join(paths.dataRoot, metadata.baseline);
   const baselineConfigPath = path.join(baselineDirPath, 'config.properties');
-  const pointTempRoot = path.join(paths.tempRoot, TMP_EXPERIMENT_RUNS_DIR, metadata.experimentId, point.pointId);
-  const configPath = path.join(pointTempRoot, 'config.properties');
+  const seedLabel = `seed-${seed}`;
+  const seedTempRoot = path.join(paths.tempRoot, TMP_EXPERIMENT_RUNS_DIR, metadata.experimentId, point.pointId, seedLabel);
+  const configPath = path.join(seedTempRoot, 'config.properties');
 
-  const outputPath = metadata.retainFullOutput
-    ? path.join(getExperimentOutputDir(paths, metadata.experimentId), 'points', point.pointId)
-    : path.join(pointTempRoot, 'output');
+  const outputPath = path.join(seedTempRoot, 'output');
 
-  fs.rmSync(pointTempRoot, { recursive: true, force: true });
-  if (metadata.retainFullOutput) {
-    fs.rmSync(outputPath, { recursive: true, force: true });
-  }
+  fs.rmSync(seedTempRoot, { recursive: true, force: true });
 
   const overrideValue = metadata.parameter.type === 'integer' ? String(Math.round(point.value)) : String(point.value);
+  const overrides = new Map(record.normalizedGeneralOverrides);
+  overrides.set(metadata.parameter.key, overrideValue);
+  overrides.set('SEED', String(seed));
+  overrides.set('N_SIMS', '1');
+
   rewriteConfigForRun(
     baselineConfigPath,
     baselineDirPath,
     configPath,
-    new Map([[metadata.parameter.key, overrideValue]])
+    overrides
   );
   const generatedConfigHash = hashFile(configPath);
-  const seed = readConfigSeed(configPath);
+  const configSeed = readConfigSeed(configPath);
 
   fs.mkdirSync(outputPath, { recursive: true });
 
-  const runId = `${metadata.experimentId}-${point.pointId}`;
-  appendLifecycle(record, `Point ${point.label} (${point.pointId}) started with ${metadata.parameter.key}=${point.value}`);
+  const runId = `${metadata.experimentId}-${point.pointId}-${seedLabel}`;
+  appendLifecycle(
+    record,
+    `Point ${point.label} (${point.pointId}) ${seedLabel} started with ${metadata.parameter.key}=${point.value}`
+  );
 
   const executionResult = await new Promise<{
     status: 'succeeded' | 'failed' | 'canceled';
@@ -1116,7 +1341,7 @@ async function runPoint(
       return;
     }
 
-    record.process = child;
+    record.activeProcesses.add(child);
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf-8');
@@ -1134,9 +1359,9 @@ async function runPoint(
     });
 
     child.on('close', (code) => {
-      record.process = undefined;
+      record.activeProcesses.delete(child);
       flushPartialLine(record.logBuffer, MAX_LOG_LINES);
-      if (record.killTimer) {
+      if (record.killTimer && record.activeProcesses.size === 0) {
         clearTimeout(record.killTimer);
         record.killTimer = undefined;
       }
@@ -1156,35 +1381,27 @@ async function runPoint(
     });
   });
 
-  let indicatorMetrics: SensitivityIndicatorPointMetric[] = POLICY_CORE_INDICATORS.map((indicator) => ({
-    indicatorId: indicator.id,
-    title: indicator.title,
-    units: indicator.units,
-    kpi: buildEmptyKpiValues(),
-    deltaFromBaseline: buildEmptyKpiValues()
-  }));
+  let indicatorMetrics: SensitivityIndicatorPointMetric[] = emptyIndicatorMetrics();
 
   if (executionResult.status === 'succeeded') {
     indicatorMetrics = getPointIndicatorKpis(outputPath);
   }
 
   const outputHash = hashDirectory(outputPath);
-  const result: SensitivityPointResult = {
-    pointId: point.pointId,
-    value: point.value,
-    label: point.label,
-    slotLabels: [...point.slotLabels],
-    isBaseline: point.isBaseline,
+  const result: SensitivitySeedRunResult = {
+    seed,
     status: executionResult.status,
     runId,
-    outputPath: metadata.retainFullOutput ? asRuntimePath(paths, outputPath) : null,
+    outputPath: null,
     error: executionResult.error,
     indicatorMetrics
   };
 
   appendLifecycle(
     record,
-    `Point ${point.label} (${point.pointId}) finished with status ${result.status}${result.error ? `: ${result.error}` : ''}`
+    `Point ${point.label} (${point.pointId}) ${seedLabel} finished with status ${result.status}${
+      result.error ? `: ${result.error}` : ''
+    }`
   );
 
   record.manifestPoints.push({
@@ -1196,17 +1413,18 @@ async function runPoint(
     runId,
     outputPath: result.outputPath,
     generatedConfigHash,
-    seed,
+    seed: configSeed,
     overriddenParameters: {
-      [metadata.parameter.key]: point.value
+      ...(metadata.generalOverrides ?? {}),
+      [metadata.parameter.key]: point.value,
+      SEED: seed,
+      N_SIMS: 1
     },
     outputHash
   });
 
-  if (!metadata.retainFullOutput) {
-    fs.rmSync(outputPath, { recursive: true, force: true });
-  }
-  fs.rmSync(pointTempRoot, { recursive: true, force: true });
+  fs.rmSync(outputPath, { recursive: true, force: true });
+  fs.rmSync(seedTempRoot, { recursive: true, force: true });
 
   return result;
 }
@@ -1311,6 +1529,11 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
   const state = getRepoState(paths);
   const { metadata } = record;
 
+  if (metadata.status === 'canceled' || record.cancelRequested) {
+    appendLifecycle(record, `Experiment ${metadata.experimentId} did not start because it was canceled while queued`);
+    return;
+  }
+
   metadata.status = 'running';
   metadata.startedAt = new Date().toISOString();
   writeMetadata(paths, metadata);
@@ -1318,48 +1541,75 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
   state.activeExperimentId = metadata.experimentId;
   appendLifecycle(record, `Experiment ${metadata.experimentId} running`);
 
-  const pointResults: SensitivityPointResult[] = [];
+  const seeds = metadata.seeds ?? buildSeeds(metadata.seedsPerPoint ?? 1);
+  const maxWorkers = Math.max(1, metadata.maxWorkers ?? defaultWorkerCount(metadata.sampledPoints.length * seeds.length));
+  const pointResultsById = new Map<string, SensitivityPointResult>();
+  const seedResultsByPointId = new Map<string, SensitivitySeedRunResult[]>();
+
+  const persistProgress = () => {
+    const pointResults = metadata.sampledPoints
+      .map((point) => pointResultsById.get(point.pointId))
+      .filter((point): point is SensitivityPointResult => Boolean(point));
+    record.results = {
+      experimentId: metadata.experimentId,
+      baselinePointId: null,
+      points: pointResults
+    };
+    addDeltaAgainstBaseline(record.results);
+    record.charts = buildChartsFromResults(metadata.experimentId, metadata.parameter, record.results);
+    writeSummary(paths, metadata.experimentId, record.results, record.charts);
+    writeManifest(paths, record);
+  };
+
+  const updatePointResult = (point: SensitivitySamplePoint, seedResult: SensitivitySeedRunResult) => {
+    const seedResults = seedResultsByPointId.get(point.pointId) ?? [];
+    seedResults.push(seedResult);
+    seedResults.sort((left, right) => left.seed - right.seed);
+    seedResultsByPointId.set(point.pointId, seedResults);
+    pointResultsById.set(point.pointId, buildPointResult(record, point, seedResults));
+    persistProgress();
+  };
+
   try {
-    for (const point of metadata.sampledPoints) {
-      if (record.cancelRequested) {
-        appendLifecycle(record, 'Cancel requested before next point execution.');
-        break;
-      }
+    const tasks = metadata.sampledPoints.flatMap((point) => seeds.map((seed) => ({ point, seed })));
+    let nextTaskIndex = 0;
+    let stopLaunching = false;
 
-      const pointResult = await runPoint(paths, record, point);
-      pointResults.push(pointResult);
-      record.results = {
-        experimentId: metadata.experimentId,
-        baselinePointId: null,
-        points: pointResults
-      };
-      addDeltaAgainstBaseline(record.results);
-      record.charts = buildChartsFromResults(metadata.experimentId, metadata.parameter, record.results);
-      writeSummary(paths, metadata.experimentId, record.results, record.charts);
-      writeManifest(paths, record);
+    const runWorker = async () => {
+      while (!stopLaunching && !record.cancelRequested) {
+        const task = tasks[nextTaskIndex];
+        nextTaskIndex += 1;
+        if (!task) {
+          return;
+        }
 
-      if (pointResult.status === 'failed') {
-        metadata.status = 'failed';
-        metadata.failureReason = pointResult.error ?? 'point_execution_failed';
-        appendLifecycle(record, `Experiment failed at point ${point.pointId}`);
-        break;
-      }
+        const seedResult = await runSeed(paths, record, task.point, task.seed);
+        updatePointResult(task.point, seedResult);
 
-      if (pointResult.status === 'canceled') {
-        metadata.status = 'canceled';
-        metadata.canceledByUser = true;
-        appendLifecycle(record, `Experiment canceled during point ${point.pointId}`);
-        break;
+        if (seedResult.status === 'failed' || seedResult.status === 'canceled') {
+          stopLaunching = true;
+        }
       }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(maxWorkers, tasks.length) }, () => runWorker()));
+
+    const pointResults = [...pointResultsById.values()];
+    const failedPoint = pointResults.find((pointResult) => pointResult.status === 'failed');
+    const canceledPoint = pointResults.find((pointResult) => pointResult.status === 'canceled');
+
+    if (failedPoint) {
+      metadata.status = 'failed';
+      metadata.failureReason = failedPoint.error ?? 'point_execution_failed';
+      appendLifecycle(record, `Experiment failed at point ${failedPoint.pointId}`);
+    } else if (record.cancelRequested || canceledPoint) {
+      metadata.status = 'canceled';
+      metadata.canceledByUser = true;
+      appendLifecycle(record, canceledPoint ? `Experiment canceled during point ${canceledPoint.pointId}` : 'Experiment canceled');
     }
 
     if (metadata.status === 'running') {
-      if (record.cancelRequested) {
-        metadata.status = 'canceled';
-        metadata.canceledByUser = true;
-      } else {
-        metadata.status = 'succeeded';
-      }
+      metadata.status = 'succeeded';
     }
   } catch (error) {
     metadata.status = 'failed';
@@ -1371,7 +1621,7 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
     writeSummary(paths, metadata.experimentId, record.results, record.charts);
     writeManifest(paths, record);
     state.activeExperimentId = null;
-    record.process = undefined;
+    record.activeProcesses.clear();
     if (record.killTimer) {
       clearTimeout(record.killTimer);
       record.killTimer = undefined;
@@ -1490,15 +1740,24 @@ export function submitSensitivityExperiment(
     throw new Error('Cannot start sensitivity experiment while manual model runs are queued or running.');
   }
 
+  if (Object.prototype.hasOwnProperty.call(payload as unknown as Record<string, unknown>, 'retainFullOutput')) {
+    throw new Error('retainFullOutput is no longer supported for sensitivity experiments; use record settings instead.');
+  }
+
   const {
     baseline,
     parameter,
     min,
     max,
     baselineValue,
+    sampleCount,
     samplePoints,
     collapsedSlots,
-    valuesByKey
+    valuesByKey,
+    normalizedGeneralOverrides,
+    generalOverrides,
+    seeds,
+    maxWorkers
   } = validatePayload(paths, payload);
   const { warnings, warningSummary } = buildWarnings(valuesByKey, parameter.key, samplePoints);
 
@@ -1514,7 +1773,6 @@ export function submitSensitivityExperiment(
   const experimentId = buildExperimentId(now);
   const trimmedTitle = payload.title?.trim();
   const title = trimmedTitle ? sanitizeFragment(trimmedTitle).slice(0, 120) : undefined;
-  const retainFullOutput = payload.retainFullOutput === true;
 
   const metadata: SensitivityExperimentMetadata = {
     experimentId,
@@ -1522,7 +1780,10 @@ export function submitSensitivityExperiment(
     baseline,
     status: 'queued',
     createdAt: now.toISOString(),
-    retainFullOutput,
+    seedsPerPoint: seeds.length,
+    seeds,
+    maxWorkers,
+    generalOverrides,
     parameter: {
       key: parameter.key,
       title: parameter.title,
@@ -1530,7 +1791,8 @@ export function submitSensitivityExperiment(
       type: parameter.type as Extract<ModelRunParameterDefinition['type'], 'integer' | 'number'>,
       baselineValue,
       min,
-      max
+      max,
+      sampleCount
     },
     warnings,
     warningSummary,
@@ -1547,6 +1809,8 @@ export function submitSensitivityExperiment(
     logBuffer: createLogBuffer(options.logSink ? (line) => options.logSink?.(`[sensitivity:${experimentId}] ${line}`) : undefined),
     launcher,
     manifestPoints: [],
+    normalizedGeneralOverrides,
+    activeProcesses: new Set(),
     cancelRequested: false
   };
 
@@ -1608,17 +1872,25 @@ export function cancelSensitivityExperiment(
     return { experiment: record.metadata };
   }
 
-  if (record.process) {
-    const sigtermSent = record.process.kill('SIGTERM');
-    if (sigtermSent) {
+  if (record.activeProcesses.size > 0) {
+    let deliveredCount = 0;
+    for (const process of record.activeProcesses) {
+      if (process.kill('SIGTERM')) {
+        deliveredCount += 1;
+      }
+    }
+    if (deliveredCount > 0) {
       record.killTimer = setTimeout(() => {
-        if (record.process && !isTerminal(record.metadata.status)) {
+        if (record.activeProcesses.size > 0 && !isTerminal(record.metadata.status)) {
           appendLifecycle(record, `SIGTERM timeout hit for ${record.metadata.experimentId}; sending SIGKILL`);
-          record.process.kill('SIGKILL');
+          for (const process of record.activeProcesses) {
+            process.kill('SIGKILL');
+          }
         }
       }, CANCEL_KILL_TIMEOUT_MS);
-    } else {
-      appendLifecycle(record, 'SIGTERM could not be delivered; waiting for process close');
+    }
+    if (deliveredCount < record.activeProcesses.size) {
+      appendLifecycle(record, 'SIGTERM could not be delivered to every active process; waiting for process close');
     }
   }
 
@@ -1637,12 +1909,15 @@ export function shutdownSensitivityRunProcesses(): void {
         clearTimeout(record.killTimer);
         record.killTimer = undefined;
       }
-      if (record.process && !isTerminal(record.metadata.status)) {
+      if (record.activeProcesses.size > 0 && !isTerminal(record.metadata.status)) {
         record.cancelRequested = true;
         record.metadata.status = 'canceled';
         record.metadata.canceledByUser = true;
         record.metadata.endedAt = now;
-        record.process.kill('SIGKILL');
+        for (const process of record.activeProcesses) {
+          process.kill('SIGKILL');
+        }
+        record.activeProcesses.clear();
       }
     }
   }

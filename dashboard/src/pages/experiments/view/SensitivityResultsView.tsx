@@ -405,6 +405,12 @@ export function SensitivityResultsView({
                 <p>
                   <strong>Range:</strong> {detail.parameter.min} to {detail.parameter.max}
                 </p>
+                <p>
+                  <strong>Seeds:</strong> {detail.seeds?.join(', ') || detail.seedsPerPoint || 1}
+                </p>
+                <p>
+                  <strong>Max workers:</strong> {detail.maxWorkers ?? 1}
+                </p>
                 {detail.failureReason && <p className="error-banner">Failure reason: {detail.failureReason}</p>}
               </div>
             )}

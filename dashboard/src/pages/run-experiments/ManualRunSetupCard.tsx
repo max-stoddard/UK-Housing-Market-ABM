@@ -1,5 +1,10 @@
 import { Link } from 'react-router-dom';
-import type { ModelRunParameterDefinition, ModelRunWarning } from '../../../shared/types';
+import type { ModelRunParameterDefinition, ModelRunSnapshotOption, ModelRunWarning } from '../../../shared/types';
+import {
+  formatExperimentModelOption,
+  orderExperimentModelOptions
+} from '../../lib/experimentVersionOptions';
+import { GeneralModelControl } from './GeneralModelControl';
 
 type FormValue = string | boolean;
 
@@ -8,10 +13,11 @@ interface ManualRunSetupCardProps {
   isLoadingOptions: boolean;
   selectedBaseline: string;
   onBaselineChange: (baseline: string) => void;
-  snapshots: Array<{ version: string; status: string }>;
+  snapshots: ModelRunSnapshotOption[];
   title: string;
   onTitleChange: (value: string) => void;
-  groupedParameters: Array<[string, ModelRunParameterDefinition[]]>;
+  parameters: ModelRunParameterDefinition[];
+  policyParameters: ModelRunParameterDefinition[];
   formValues: Record<string, FormValue>;
   onFormValueChange: (parameter: ModelRunParameterDefinition, value: FormValue) => void;
   warnings: ModelRunWarning[];
@@ -29,7 +35,8 @@ export function ManualRunSetupCard({
   snapshots,
   title,
   onTitleChange,
-  groupedParameters,
+  parameters,
+  policyParameters,
   formValues,
   onFormValueChange,
   warnings,
@@ -38,6 +45,8 @@ export function ManualRunSetupCard({
   lockMessage,
   onSubmit
 }: ManualRunSetupCardProps) {
+  const orderedSnapshots = orderExperimentModelOptions(snapshots);
+
   return (
     <article className="results-card">
       <h3>Manual Parameters</h3>
@@ -56,9 +65,9 @@ export function ManualRunSetupCard({
                 disabled={executionDisabled}
                 onChange={(event) => onBaselineChange(event.target.value)}
               >
-                {snapshots.map((snapshot) => (
+                {orderedSnapshots.map((snapshot) => (
                   <option key={snapshot.version} value={snapshot.version}>
-                    {snapshot.version} ({snapshot.status})
+                    {formatExperimentModelOption(snapshot, orderedSnapshots)}
                   </option>
                 ))}
               </select>
@@ -94,36 +103,35 @@ export function ManualRunSetupCard({
           )}
 
           <div className="run-param-groups">
-            {groupedParameters.map(([group, parameters]) => (
-              <section key={group} className="run-param-group">
-                <h4>{group}</h4>
+            <GeneralModelControl
+              mode="manual"
+              parameters={parameters}
+              formValues={formValues}
+              executionDisabled={executionDisabled}
+              onFormValueChange={onFormValueChange}
+            />
+
+            {policyParameters.length > 0 && (
+              <section className="run-param-group">
+                <h4>Central Bank policy</h4>
                 <div className="run-param-grid">
-                  {parameters.map((parameter) => (
+                  {policyParameters.map((parameter) => (
                     <label key={parameter.key} className="run-param-item">
                       <span>{parameter.title}</span>
                       <small>{parameter.key}</small>
-                      {parameter.type === 'boolean' ? (
-                        <input
-                          type="checkbox"
-                          checked={Boolean(formValues[parameter.key])}
-                          disabled={executionDisabled}
-                          onChange={(event) => onFormValueChange(parameter, event.target.checked)}
-                        />
-                      ) : (
-                        <input
-                          type="number"
-                          step={parameter.type === 'integer' ? 1 : 'any'}
-                          value={String(formValues[parameter.key] ?? '')}
-                          disabled={executionDisabled}
-                          onChange={(event) => onFormValueChange(parameter, event.target.value)}
-                        />
-                      )}
+                      <input
+                        type="number"
+                        step={parameter.type === 'integer' ? 1 : 'any'}
+                        value={String(formValues[parameter.key] ?? '')}
+                        disabled={executionDisabled}
+                        onChange={(event) => onFormValueChange(parameter, event.target.value)}
+                      />
                       <small>{parameter.description}</small>
                     </label>
                   ))}
                 </div>
               </section>
-            ))}
+            )}
           </div>
 
           <div className="run-form-actions">

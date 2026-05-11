@@ -14,8 +14,8 @@ export interface ExperimentRouteState {
 }
 
 export const DEFAULT_EXPERIMENT_ROUTE_STATE: ExperimentRouteState = {
-  type: 'manual',
-  mode: 'view',
+  type: 'sensitivity',
+  mode: 'run',
   baselineRunId: '',
   comparisonRunId: '',
   experimentId: '',

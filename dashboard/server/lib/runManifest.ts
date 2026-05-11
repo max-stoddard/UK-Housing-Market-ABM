@@ -119,13 +119,17 @@ export interface SensitivityRunManifest {
     createdAt: string;
     startedAt: string | null;
     endedAt: string | null;
-    retainFullOutput: boolean;
+    seedsPerPoint: number | null;
+    seeds: number[];
+    maxWorkers: number | null;
+    generalOverrides: Record<string, number | boolean>;
     parameter: {
       key: string;
       title: string;
       baselineValue: number;
       min: number;
       max: number;
+      sampleCount: number;
     };
     summaryHash: RunManifestFileHash | null;
     points: SensitivityRunManifestPoint[];
@@ -371,13 +375,17 @@ export function buildSensitivityRunManifest(input: {
     createdAt: string;
     startedAt?: string;
     endedAt?: string;
-    retainFullOutput: boolean;
+    seedsPerPoint?: number | null;
+    seeds?: number[];
+    maxWorkers?: number | null;
+    generalOverrides?: Record<string, number | boolean>;
     parameter: {
       key: string;
       title: string;
       baselineValue: number;
       min: number;
       max: number;
+      sampleCount: number;
     };
   };
   summaryPayload: unknown;
@@ -402,7 +410,10 @@ export function buildSensitivityRunManifest(input: {
       createdAt: input.experiment.createdAt,
       startedAt: input.experiment.startedAt ?? null,
       endedAt: input.experiment.endedAt ?? null,
-      retainFullOutput: input.experiment.retainFullOutput,
+      seedsPerPoint: input.experiment.seedsPerPoint ?? null,
+      seeds: input.experiment.seeds ?? [],
+      maxWorkers: input.experiment.maxWorkers ?? null,
+      generalOverrides: input.experiment.generalOverrides ?? {},
       parameter: input.experiment.parameter,
       summaryHash: hashJson(input.summaryPayload),
       points: input.points

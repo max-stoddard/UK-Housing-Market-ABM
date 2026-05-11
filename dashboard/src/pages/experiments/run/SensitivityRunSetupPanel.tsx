@@ -27,10 +27,15 @@ export function SensitivityRunSetupPanel({ controller, runActionsDisabled }: Sen
       onMaxValueChange={(value) => {
         controller.setSensitivityMax(value);
       }}
+      sampleCount={controller.sensitivitySampleCount}
+      onSampleCountChange={controller.setSensitivitySampleCount}
+      parameters={controller.options?.parameters ?? []}
+      formValues={controller.sensitivityFormValues}
+      onFormValueChange={controller.onSensitivityFormValueChange}
+      maxWorkers={controller.sensitivityMaxWorkers}
+      onMaxWorkersChange={controller.setSensitivityMaxWorkers}
       title={controller.sensitivityTitle}
       onTitleChange={controller.setSensitivityTitle}
-      retainFullOutput={controller.sensitivityRetainFullOutput}
-      onRetainFullOutputChange={controller.setSensitivityRetainFullOutput}
       selectedParameter={controller.selectedSensitivityParameter}
       warnings={controller.sensitivityWarnings}
       isSubmitting={controller.isSubmittingSensitivity}

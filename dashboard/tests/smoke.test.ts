@@ -123,6 +123,10 @@ import {
   formatVersionOptionLabel,
   getLatestStableVersion
 } from '../src/lib/versionLabels.js';
+import {
+  formatExperimentModelOption,
+  orderExperimentModelOptions
+} from '../src/lib/experimentVersionOptions.js';
 import { computeKpiFromValues } from '../server/lib/stats/kpi.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -691,14 +695,14 @@ const defaultExperimentRouteState = parseExperimentRouteState(new URLSearchParam
 assert.deepEqual(
   defaultExperimentRouteState,
   {
-    type: 'manual',
-    mode: 'view',
+    type: 'sensitivity',
+    mode: 'run',
     baselineRunId: '',
     comparisonRunId: '',
     experimentId: '',
     jobRef: ''
   },
-  'Expected empty experiment query params to default to manual results view.'
+  'Expected empty experiment query params to default to sensitivity run setup.'
 );
 
 const invalidExperimentRouteState = parseExperimentRouteState(
@@ -707,14 +711,14 @@ const invalidExperimentRouteState = parseExperimentRouteState(
 assert.deepEqual(
   invalidExperimentRouteState,
   {
-    type: 'manual',
-    mode: 'view',
-    baselineRunId: 'abc',
+    type: 'sensitivity',
+    mode: 'run',
+    baselineRunId: '',
     comparisonRunId: '',
     experimentId: '',
-    jobRef: ''
+    jobRef: 'manual:job-1'
   },
-  'Expected invalid route selectors to fall back to manual results view and clean incompatible params.'
+  'Expected invalid route selectors to fall back to sensitivity run setup while preserving run-mode job focus.'
 );
 
 const cleanedViewState = normaliseExperimentRouteState({
@@ -1335,7 +1339,7 @@ DATA_INCOME_GIVEN_AGE = "src/main/resources/Income.csv"
 
 function writeModelRunFixtureInputData(inputDataRoot: string): void {
   fs.mkdirSync(inputDataRoot, { recursive: true });
-  const baselines = ['v1.0', 'v1.1'];
+  const baselines = ['v0', 'v0oo', 'v1.0', 'v1.1'];
   baselines.forEach((baseline, index) => {
     const baselinePath = path.join(inputDataRoot, baseline);
     fs.mkdirSync(baselinePath, { recursive: true });
@@ -1510,7 +1514,7 @@ const desktopDataFixture = createDesktopRuntimeFixture('dashboard-data-runtime-s
 try {
   assert.deepEqual(
     getVersions(desktopDataFixture.paths),
-    ['v1.0', 'v1.1'],
+    ['v0', 'v0oo', 'v1.0', 'v1.1'],
     'Expected version discovery to read from the configured runtime data root'
   );
   assert.deepEqual(
@@ -1525,7 +1529,7 @@ try {
   );
   assert.equal(
     getModelRunOptions(desktopDataFixture.paths, undefined, true).defaultBaseline,
-    'v1.0',
+    'v0oo',
     'Expected model-run options to use runtime data root baselines without falling back to repo data'
   );
   assert.equal(
@@ -2872,11 +2876,27 @@ try {
     assert.equal(parameter?.type, 'boolean', `Expected ${key} to be exposed as a boolean run option`);
     assert.equal(parameter?.defaultValue, false, `Expected ${key} to default to false`);
   }
-  assert.equal(runOptions.defaultBaseline, 'v1.0', 'Expected latest stable baseline to exclude in-progress snapshots');
-  assert.equal(runOptions.requestedBaseline, 'v1.0', 'Expected requested baseline default to latest stable snapshot');
+  assert.equal(runOptions.defaultBaseline, 'v0oo', 'Expected optimised 2011 baseline to be the experiment default');
+  assert.equal(runOptions.requestedBaseline, 'v0oo', 'Expected requested baseline default to optimised 2011 snapshot');
   assert.ok(
     runOptions.snapshots.some((snapshot) => snapshot.version === 'v1.1' && snapshot.status === 'in_progress'),
     'Expected in-progress snapshot status in options payload'
+  );
+  const orderedExperimentSnapshots = orderExperimentModelOptions(runOptions.snapshots);
+  assert.deepEqual(
+    orderedExperimentSnapshots.slice(0, 3).map((snapshot) => snapshot.version),
+    ['v0oo', 'v0', 'v1.0'],
+    'Expected experiment model options to prioritise optimised 2011, 2011, then latest 2024 model'
+  );
+  assert.deepEqual(
+    orderedExperimentSnapshots.slice(0, 4).map((snapshot) => formatExperimentModelOption(snapshot, orderedExperimentSnapshots)),
+    [
+      'Optimised 2011 model (v0oo, Stable)',
+      '2011 model (v0, Stable)',
+      'Latest 2024 model (v1.0, Beta)',
+      'v1.1 model (Beta, In progress)'
+    ],
+    'Expected experiment model option labels to use user-facing model names and lifecycle badges'
   );
 
   const optionsForInProgress = getModelRunOptions(modelRunFixtureRoot, 'v1.1', true);
@@ -3461,7 +3481,7 @@ try {
     ).experiment;
     return detail.status === 'succeeded';
   });
-  assert.equal(generatedConfigTexts.length, 5, 'Expected path-safety sensitivity run to generate one config per point');
+  assert.equal(generatedConfigTexts.length, 25, 'Expected path-safety sensitivity run to generate one config per point/seed run');
   for (const configText of generatedConfigTexts) {
     assertGeneratedDataPathsAreWindowsSafe(
       configText,
@@ -3490,8 +3510,8 @@ try {
       'Expected desktop sensitivity config path to live under tempRoot'
     );
     assert.ok(
-      request.outputPath.startsWith(path.join(desktopSensitivityFixture.paths.resultsRoot, 'experiments', 'sensitivity')),
-      'Expected retained desktop sensitivity output path to live under resultsRoot'
+      request.outputPath.startsWith(desktopSensitivityFixture.paths.tempRoot),
+      'Expected summary-only desktop sensitivity output path to live under tempRoot'
     );
     const config = parseConfigFile(request.configPath);
     const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
@@ -3510,7 +3530,6 @@ try {
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.004,
       max: 0.006,
-      retainFullOutput: true,
       confirmWarnings: true
     },
     { launcher: desktopSensitivityLauncher }
@@ -3524,7 +3543,7 @@ try {
     ).experiment;
     return detail.status === 'succeeded';
   });
-  assert.equal(desktopSensitivityLaunches.length, 5, 'Expected desktop sensitivity run to launch one process per point');
+  assert.equal(desktopSensitivityLaunches.length, 25, 'Expected desktop sensitivity run to launch one process per point/seed run');
   for (const configText of desktopSensitivityConfigs) {
     assertGeneratedDataPathsAreWindowsSafe(
       configText,
@@ -3537,8 +3556,8 @@ try {
     desktopSensitivityExperimentId
   );
   assert.ok(
-    desktopSensitivityResults.points.every((point) => point.outputPath?.startsWith('Results/experiments/sensitivity/')),
-    'Expected retained desktop sensitivity output paths to be reported under Results'
+    desktopSensitivityResults.points.every((point) => point.outputPath === null),
+    'Expected desktop sensitivity runs to keep summary results only'
   );
   assert.equal(
     fs.existsSync(path.join(desktopSensitivityFixture.appResourcesRoot, 'Results')),
@@ -3578,9 +3597,10 @@ try {
 
   const warningSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
     baseline: 'v1.0',
-    parameterKey: 'TARGET_POPULATION',
-    min: 10_000,
-    max: 20_000,
+    parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+    min: 0.004,
+    max: 0.006,
+    overrides: { TARGET_POPULATION: 20_000 },
     confirmWarnings: false
   });
   assert.equal(warningSubmit.accepted, false, 'Expected sensitivity submit to require warning confirmation');
@@ -3612,6 +3632,9 @@ try {
   const successDetail = getSensitivityExperiment(sensitivityFixtureRoot, successExperimentId).experiment;
   assert.equal(successDetail.status, 'succeeded', 'Expected sensitivity experiment to finish as succeeded');
   assert.equal(successDetail.sampledPoints.length, 5, 'Expected five sampled points for non-integer sweep');
+  assert.equal(successDetail.parameter.sampleCount, 5, 'Expected default sensitivity sample count to be recorded');
+  assert.deepEqual(successDetail.seeds, [1, 2, 3, 4, 5], 'Expected default sensitivity experiment to expand five seeds from seed 1');
+  assert.equal(successDetail.seedsPerPoint, 5, 'Expected default sensitivity experiment to run five seeds per point');
   assert.equal(
     hasActiveSensitivityExperiment(sensitivityFixtureRoot),
     false,
@@ -3649,10 +3672,20 @@ try {
     'CENTRAL_BANK_INITIAL_BASE_RATE',
     'Expected sensitivity manifest to record the swept parameter'
   );
-  assert.equal(successManifest.experiment.points.length, 5, 'Expected sensitivity manifest to record every sampled point');
+  assert.equal(successManifest.experiment.parameter.sampleCount, 5, 'Expected sensitivity manifest to record sample count');
+  assert.equal(successManifest.experiment.points.length, 25, 'Expected sensitivity manifest to record every sampled point/seed run');
+  assert.deepEqual(successManifest.experiment.seeds, [1, 2, 3, 4, 5], 'Expected sensitivity manifest to record forced seeds');
   assert.ok(
     successManifest.experiment.points.every((point) => point.generatedConfigHash?.value),
     'Expected sensitivity manifest to preserve each temporary generated-config hash'
+  );
+  assert.ok(
+    successManifest.experiment.points.every((point) => point.overriddenParameters.SEED === point.seed),
+    'Expected sensitivity manifest to record each forced seed override'
+  );
+  assert.ok(
+    successManifest.experiment.points.every((point) => point.overriddenParameters.N_SIMS === 1),
+    'Expected sensitivity manifest to record one Java simulation per independent seed run'
   );
   assert.ok(
     successManifest.experiment.points.every((point) => point.outputHash?.value),
@@ -3747,6 +3780,114 @@ try {
     'Expected sensitivity stderr lines to be persisted under logsRoot/model.log'
   );
 
+  const midpointRaceLaunches: ModelLaunchRequest[] = [];
+  const midpointRaceConfigPaths = new Set<string>();
+  const midpointRaceOutputPaths = new Set<string>();
+  const midpointRaceLauncher = createFakeLauncher('packaged', (request) => {
+    assert.equal(
+      midpointRaceConfigPaths.has(request.configPath),
+      false,
+      `Expected sensitivity config path to be unique per point/seed run: ${request.configPath}`
+    );
+    assert.equal(
+      midpointRaceOutputPaths.has(request.outputPath),
+      false,
+      `Expected sensitivity output path to be unique per point/seed run: ${request.outputPath}`
+    );
+    midpointRaceLaunches.push(request);
+    midpointRaceConfigPaths.add(request.configPath);
+    midpointRaceOutputPaths.add(request.outputPath);
+    const config = parseConfigFile(request.configPath);
+    const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
+    writeSensitivityCoreOutputs(request.outputPath, baseRate);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const midpointRaceSubmit = submitSensitivityExperiment(
+    sensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'midpoint-dedup-race',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.0045,
+      max: 0.0055,
+      confirmWarnings: true
+    },
+    { launcher: midpointRaceLauncher }
+  );
+  assert.equal(midpointRaceSubmit.accepted, true, 'Expected midpoint dedupe sensitivity submit to be accepted');
+  const midpointRaceExperimentId = midpointRaceSubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, midpointRaceExperimentId).experiment;
+    return detail.status === 'succeeded';
+  });
+  const midpointRaceDetail = getSensitivityExperiment(sensitivityFixtureRoot, midpointRaceExperimentId).experiment;
+  assert.equal(
+    midpointRaceDetail.sampledPoints.length,
+    5,
+    'Expected float-normalized midpoint baseline to collapse into five sampled points'
+  );
+  assert.equal(
+    new Set(midpointRaceDetail.sampledPoints.map((point) => point.pointId)).size,
+    midpointRaceDetail.sampledPoints.length,
+    'Expected every sampled point id to be unique after float normalization'
+  );
+  assert.deepEqual(
+    midpointRaceDetail.sampledPoints.map((point) => point.label),
+    ['0.0045', '0.00475', '0.005', '0.00525', '0.0055'],
+    'Expected midpoint sweep labels to omit binary floating-point artifacts'
+  );
+  assert.equal(
+    midpointRaceDetail.collapsedSlots.sample_3,
+    'point-0.005',
+    'Expected normalized midpoint sample to use the canonical 0.005 point id'
+  );
+  assert.equal(
+    midpointRaceDetail.collapsedSlots.baseline,
+    midpointRaceDetail.collapsedSlots.sample_3,
+    'Expected baseline slot to collapse into the normalized midpoint sample'
+  );
+  assert.equal(midpointRaceLaunches.length, 25, 'Expected five sampled points times five default seeds');
+  assert.equal(
+    midpointRaceConfigPaths.size,
+    midpointRaceLaunches.length,
+    'Expected every launched midpoint config path to be unique'
+  );
+  assert.equal(
+    midpointRaceOutputPaths.size,
+    midpointRaceLaunches.length,
+    'Expected every launched midpoint output path to be unique'
+  );
+
+  const twoPointSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
+    baseline: 'v1.0',
+    title: 'two-point-grid-with-baseline',
+    parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+    min: 0.004,
+    max: 0.006,
+    sampleCount: 2,
+    confirmWarnings: true
+  });
+  assert.equal(twoPointSubmit.accepted, true, 'Expected two-point sensitivity submit to be accepted');
+  const twoPointExperimentId = twoPointSubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, twoPointExperimentId).experiment;
+    return detail.status === 'succeeded';
+  });
+  const twoPointDetail = getSensitivityExperiment(sensitivityFixtureRoot, twoPointExperimentId).experiment;
+  assert.equal(twoPointDetail.parameter.sampleCount, 2, 'Expected requested sample count to persist in metadata');
+  assert.deepEqual(
+    twoPointDetail.sampledPoints.map((point) => point.label),
+    ['0.004', '0.006', '0.005'],
+    'Expected two-point grid to run min, max, and the added off-grid baseline point'
+  );
+  assert.equal(twoPointDetail.collapsedSlots.min, 'point-0.004', 'Expected min slot to point at the minimum sample');
+  assert.equal(twoPointDetail.collapsedSlots.max, 'point-0.006', 'Expected max slot to point at the maximum sample');
+  assert.equal(twoPointDetail.collapsedSlots.baseline, 'point-0.005', 'Expected baseline slot to point at the added baseline sample');
+
   const injectedSensitivityLaunches: ModelLaunchRequest[] = [];
   const injectedSensitivityLauncher = createFakeLauncher('packaged', (request) => {
     injectedSensitivityLaunches.push(request);
@@ -3798,39 +3939,103 @@ try {
   );
   assert.equal(
     injectedSensitivityLaunches.length,
-    5,
-    'Expected injected sensitivity launcher to run once per sampled point'
+    25,
+    'Expected injected sensitivity launcher to run once per sampled point/seed run'
   );
   assert.ok(
     injectedSensitivityLaunches.every((request) => request.configPath.endsWith('config.properties') && request.outputPath),
     'Expected injected sensitivity launches to receive explicit config and output paths'
   );
 
-  const fullOutputSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
-    baseline: 'v1.0',
-    title: 'retain-outputs',
-    parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
-    min: 0.004,
-    max: 0.006,
-    retainFullOutput: true,
-    confirmWarnings: true
+  assert.throws(
+    () =>
+      submitSensitivityExperiment(sensitivityFixtureRoot, {
+        baseline: 'v1.0',
+        title: 'retain-outputs',
+        parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+        min: 0.004,
+        max: 0.006,
+        retainFullOutput: true,
+        confirmWarnings: true
+      } as never),
+    /retainFullOutput is no longer supported/,
+    'Expected removed full-output sensitivity API option to be rejected'
+  );
+
+  const multiSeedLaunches: Array<{ config: Map<string, string>; outputPath: string }> = [];
+  let multiSeedActive = 0;
+  let multiSeedPeakActive = 0;
+  const multiSeedLauncher = createFakeLauncher('packaged', (request) => {
+    const config = parseConfigFile(request.configPath);
+    multiSeedLaunches.push({ config, outputPath: request.outputPath });
+    multiSeedActive += 1;
+    multiSeedPeakActive = Math.max(multiSeedPeakActive, multiSeedActive);
+    const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
+    const seed = Number.parseInt(config.get('SEED') ?? '0', 10);
+    writeSensitivityCoreOutputs(request.outputPath, baseRate + seed * 0.00001);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      multiSeedActive -= 1;
+      process.succeed();
+    }, 0);
+    return process;
   });
-  assert.equal(fullOutputSubmit.accepted, true, 'Expected full-output sensitivity submit to be accepted');
-  const fullOutputExperimentId = fullOutputSubmit.experiment?.experimentId ?? '';
+  const multiSeedSubmit = submitSensitivityExperiment(
+    sensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'multi-seed-workers',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      overrides: { N_SIMS: 3, TARGET_POPULATION: 12_000 },
+      maxWorkers: 2,
+      confirmWarnings: true
+    },
+    { launcher: multiSeedLauncher }
+  );
+  assert.equal(multiSeedSubmit.accepted, true, 'Expected multi-seed sensitivity submit to be accepted');
+  const multiSeedExperimentId = multiSeedSubmit.experiment?.experimentId ?? '';
   await waitUntil(() => {
-    const detail = getSensitivityExperiment(sensitivityFixtureRoot, fullOutputExperimentId).experiment;
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, multiSeedExperimentId).experiment;
     return detail.status === 'succeeded';
   });
-  const fullOutputResults = getSensitivityExperimentResults(sensitivityFixtureRoot, fullOutputExperimentId);
-  assert.ok(
-    fullOutputResults.points.some((point) => Boolean(point.outputPath)),
-    'Expected full-output sensitivity run to retain output paths'
+  assert.equal(multiSeedLaunches.length, 15, 'Expected five sampled points times three seeds');
+  assert.ok(multiSeedPeakActive <= 2, 'Expected maxWorkers to cap concurrent sensitivity child runs');
+  assert.deepEqual(
+    [...new Set(multiSeedLaunches.map((launch) => Number.parseInt(launch.config.get('SEED') ?? '0', 10)))].sort(),
+    [1, 2, 3],
+    'Expected sensitivity seeds to expand from fixed starting seed 1'
   );
-  const retainedOutput = fullOutputResults.points.find((point) => point.outputPath)?.outputPath ?? '';
   assert.ok(
-    retainedOutput && fs.existsSync(path.join(sensitivityFixtureRoot, retainedOutput)),
-    'Expected retained sensitivity point output path to exist on disk'
+    multiSeedLaunches.every((launch) => launch.config.get('N_SIMS') === '1'),
+    'Expected each independent seed child config to force N_SIMS=1'
   );
+  const multiSeedDetail = getSensitivityExperiment(sensitivityFixtureRoot, multiSeedExperimentId).experiment;
+  assert.equal(multiSeedDetail.seedsPerPoint, 3, 'Expected metadata to record requested seeds per point');
+  assert.deepEqual(multiSeedDetail.seeds, [1, 2, 3], 'Expected metadata to record expanded seeds');
+  assert.equal(multiSeedDetail.maxWorkers, 2, 'Expected metadata to record effective max workers');
+  assert.equal(multiSeedDetail.generalOverrides?.N_SIMS, 3, 'Expected metadata to retain user seed-count override');
+  const multiSeedResults = getSensitivityExperimentResults(sensitivityFixtureRoot, multiSeedExperimentId);
+  assert.ok(
+    multiSeedResults.points.every((point) => point.seedResults?.length === 3),
+    'Expected per-point results to retain per-seed run metadata'
+  );
+  const multiSeedManifest = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        sensitivityFixtureRoot,
+        'Results',
+        'experiments',
+        'sensitivity',
+        multiSeedExperimentId,
+        RUN_MANIFEST_FILE_NAME
+      ),
+      'utf-8'
+    )
+  ) as SensitivityRunManifest;
+  assert.equal(multiSeedManifest.experiment.points.length, 15, 'Expected manifest to include every point/seed child run');
+  assert.deepEqual(multiSeedManifest.experiment.seeds, [1, 2, 3], 'Expected manifest to persist expanded seeds');
 
   const duplicateSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
     baseline: 'v1.0',
@@ -3857,13 +4062,27 @@ try {
     () =>
       submitSensitivityExperiment(sensitivityFixtureRoot, {
         baseline: 'v1.0',
-        parameterKey: 'recordTransactions',
+        parameterKey: 'TARGET_POPULATION',
         min: 0,
-        max: 1,
+        max: 20_000,
         confirmWarnings: true
       }),
-    /must be numeric/,
-    'Expected boolean sensitivity parameter to be rejected'
+    /Central Bank policy/,
+    'Expected non-policy sensitivity parameter to be rejected'
+  );
+
+  assert.throws(
+    () =>
+      submitSensitivityExperiment(sensitivityFixtureRoot, {
+        baseline: 'v1.0',
+        parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+        min: 0.004,
+        max: 0.006,
+        overrides: { SEED: 5 },
+        confirmWarnings: true
+      }),
+    /SEED is fixed/,
+    'Expected sensitivity override payload to reject user-provided seeds'
   );
 
   assert.throws(

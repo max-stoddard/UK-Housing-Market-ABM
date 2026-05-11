@@ -6,6 +6,7 @@ import type {
   ModelRunSubmitRequest,
   ModelRunWarning
 } from '../../../../shared/types';
+import { normalizeSensitivitySampleValue } from '../../../../shared/sensitivitySampling';
 import {
   API_RETRY_DELAY_MS,
   cancelExperimentJob,
@@ -35,15 +36,18 @@ export interface ExperimentRunController {
   setSensitivityMin: (value: string) => void;
   sensitivityMax: string;
   setSensitivityMax: (value: string) => void;
-  sensitivityRetainFullOutput: boolean;
-  setSensitivityRetainFullOutput: (value: boolean) => void;
+  sensitivitySampleCount: string;
+  setSensitivitySampleCount: (value: string) => void;
+  sensitivityMaxWorkers: string;
+  setSensitivityMaxWorkers: (value: string) => void;
+  sensitivityFormValues: Record<string, FormValue>;
   sensitivityWarnings: ModelRunWarning[];
   jobs: ExperimentJobSummary[];
   selectedJob: ExperimentJobSummary | null;
   selectedJobRef: string;
   logLines: string[];
   logError: string;
-  groupedParameters: Array<[string, ModelRunParameterDefinition[]]>;
+  policyParameters: ModelRunParameterDefinition[];
   numericSensitivityParameters: NumericParameter[];
   selectedSensitivityParameter: NumericParameter | null;
   isLoadingOptions: boolean;
@@ -62,6 +66,7 @@ export interface ExperimentRunController {
   hasActiveSensitivityJob: boolean;
   onBaselineChange: (baseline: string) => void;
   onFormValueChange: (parameter: ModelRunParameterDefinition, value: FormValue) => void;
+  onSensitivityFormValueChange: (parameter: ModelRunParameterDefinition, value: FormValue) => void;
   onSubmitRun: (confirmWarnings: boolean) => Promise<void>;
   onSubmitSensitivity: (confirmWarnings: boolean) => Promise<void>;
   onCancelActiveSensitivity: () => Promise<void>;
@@ -153,6 +158,61 @@ function buildDefaultSensitivityRange(parameter: NumericParameter): { min: strin
   };
 }
 
+function estimateSensitivityPointCount(
+  parameter: NumericParameter | null,
+  minRaw: string,
+  maxRaw: string,
+  sampleCountRaw: string
+): number {
+  if (!parameter) {
+    return 0;
+  }
+
+  const min = Number.parseFloat(minRaw);
+  const max = Number.parseFloat(maxRaw);
+  const baseline = Number(parameter.defaultValue);
+  const sampleCount = Number.parseFloat(sampleCountRaw);
+  if (
+    !Number.isFinite(min) ||
+    !Number.isFinite(max) ||
+    !Number.isFinite(baseline) ||
+    !Number.isFinite(sampleCount) ||
+    !Number.isInteger(sampleCount) ||
+    sampleCount < 2 ||
+    !(min < max)
+  ) {
+    return 0;
+  }
+
+  const values = Array.from({ length: sampleCount }, (_, index) =>
+    normalizeSensitivitySampleValue(
+      index === sampleCount - 1 ? max : min + ((max - min) * index) / (sampleCount - 1),
+      parameter.type
+    )
+  );
+  if (baseline >= min && baseline <= max) {
+    values.push(normalizeSensitivitySampleValue(baseline, parameter.type));
+  }
+  return new Set(values).size;
+}
+
+function parsePositiveInteger(rawValue: FormValue | undefined): number {
+  const raw = typeof rawValue === 'string' ? rawValue : String(rawValue ?? '');
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
+    return 1;
+  }
+  return parsed;
+}
+
+function defaultMaxWorkers(totalRuns: number): string {
+  if (totalRuns <= 0) {
+    return '1';
+  }
+  const cpuCount = Math.max(1, Math.trunc(window.navigator.hardwareConcurrency || 1));
+  return String(Math.max(1, Math.min(totalRuns, cpuCount, 20)));
+}
+
 export function useExperimentRunController({
   selectedJobRef,
   onSelectedJobRefChange,
@@ -170,7 +230,10 @@ export function useExperimentRunController({
   const [sensitivityParameterKey, setSensitivityParameterKey] = useState<string>('');
   const [sensitivityMin, setSensitivityMin] = useState<string>('');
   const [sensitivityMax, setSensitivityMax] = useState<string>('');
-  const [sensitivityRetainFullOutput, setSensitivityRetainFullOutput] = useState<boolean>(false);
+  const [sensitivitySampleCount, setSensitivitySampleCount] = useState<string>('5');
+  const [sensitivityMaxWorkers, setSensitivityMaxWorkers] = useState<string>('1');
+  const [sensitivityMaxWorkersTouched, setSensitivityMaxWorkersTouched] = useState<boolean>(false);
+  const [sensitivityFormValues, setSensitivityFormValues] = useState<Record<string, FormValue>>({});
   const [sensitivityWarnings, setSensitivityWarnings] = useState<ModelRunWarning[]>([]);
 
   const [jobs, setJobs] = useState<ExperimentJobSummary[]>([]);
@@ -196,20 +259,16 @@ export function useExperimentRunController({
     [jobs, selectedJobRef]
   );
 
-  const groupedParameters = useMemo(() => {
-    const grouped = new Map<string, ModelRunParameterDefinition[]>();
-    for (const parameter of options?.parameters ?? []) {
-      const current = grouped.get(parameter.group) ?? [];
-      current.push(parameter);
-      grouped.set(parameter.group, current);
-    }
-    return [...grouped.entries()];
-  }, [options]);
+  const policyParameters = useMemo(
+    () => (options?.parameters ?? []).filter((parameter) => parameter.group === 'Central Bank policy'),
+    [options]
+  );
 
   const numericSensitivityParameters = useMemo(
     () =>
       (options?.parameters ?? []).filter(
-        (parameter): parameter is NumericParameter => parameter.type === 'integer' || parameter.type === 'number'
+        (parameter): parameter is NumericParameter =>
+          parameter.group === 'Central Bank policy' && (parameter.type === 'integer' || parameter.type === 'number')
       ),
     [options]
   );
@@ -237,9 +296,12 @@ export function useExperimentRunController({
 
     try {
       const payload = await fetchModelRunOptions(requestedBaseline);
+      const initialValues = toInitialFormValues(payload.parameters);
+      const initialSensitivityValues = { ...initialValues, N_SIMS: '5' };
       setOptions(payload);
       setSelectedBaseline(payload.requestedBaseline);
-      setFormValues(toInitialFormValues(payload.parameters));
+      setFormValues(initialValues);
+      setSensitivityFormValues(initialSensitivityValues);
       setWarnings([]);
       return payload;
     } catch (error) {
@@ -361,6 +423,27 @@ export function useExperimentRunController({
   }, [selectedSensitivityParameter?.key, selectedBaseline]);
 
   useEffect(() => {
+    if (sensitivityMaxWorkersTouched) {
+      return;
+    }
+    const pointCount = estimateSensitivityPointCount(
+      selectedSensitivityParameter,
+      sensitivityMin,
+      sensitivityMax,
+      sensitivitySampleCount
+    );
+    const seedCount = parsePositiveInteger(sensitivityFormValues.N_SIMS);
+    setSensitivityMaxWorkers(defaultMaxWorkers(pointCount * seedCount));
+  }, [
+    selectedSensitivityParameter,
+    sensitivityFormValues.N_SIMS,
+    sensitivityMax,
+    sensitivityMaxWorkersTouched,
+    sensitivityMin,
+    sensitivitySampleCount
+  ]);
+
+  useEffect(() => {
     if (!pendingManualJobRef) {
       return;
     }
@@ -446,6 +529,14 @@ export function useExperimentRunController({
     }));
   };
 
+  const onSensitivityFormValueChange = (parameter: ModelRunParameterDefinition, value: FormValue) => {
+    setSensitivityFormValues((current) => ({
+      ...current,
+      [parameter.key]: value
+    }));
+    setSensitivityWarnings([]);
+  };
+
   const buildSubmitPayload = (confirmWarnings: boolean): ModelRunSubmitRequest => {
     if (!options) {
       throw new Error('Run options are not loaded yet.');
@@ -467,6 +558,28 @@ export function useExperimentRunController({
       overrides,
       confirmWarnings
     };
+  };
+
+  const buildSensitivityGeneralOverrides = (): Record<string, number | boolean> => {
+    if (!options) {
+      throw new Error('Run options are not loaded yet.');
+    }
+
+    const overrides: Record<string, number | boolean> = {};
+
+    for (const parameter of options.parameters) {
+      if (parameter.group !== 'General model control' || parameter.key === 'SEED') {
+        continue;
+      }
+
+      const rawValue = sensitivityFormValues[parameter.key];
+      const parsedValue = parseFormValue(parameter, rawValue);
+      if (!isSameValue(parsedValue, parameter.defaultValue)) {
+        overrides[parameter.key] = parsedValue;
+      }
+    }
+
+    return overrides;
   };
 
   const onSubmitRun = async (confirmWarnings: boolean) => {
@@ -508,13 +621,23 @@ export function useExperimentRunController({
     try {
       const min = Number.parseFloat(sensitivityMin);
       const max = Number.parseFloat(sensitivityMax);
+      const sampleCount = Number.parseFloat(sensitivitySampleCount);
+      const maxWorkers = Number.parseFloat(sensitivityMaxWorkers);
+      if (!Number.isFinite(sampleCount) || !Number.isInteger(sampleCount) || sampleCount < 2) {
+        throw new Error('Sample count must be an integer greater than or equal to 2.');
+      }
+      if (!Number.isFinite(maxWorkers) || !Number.isInteger(maxWorkers) || maxWorkers < 1) {
+        throw new Error('Max workers must be a positive integer.');
+      }
       const response = await submitSensitivityExperiment({
         baseline: selectedBaseline,
         title: sensitivityTitle,
         parameterKey: selectedSensitivityParameter.key,
         min,
         max,
-        retainFullOutput: sensitivityRetainFullOutput,
+        sampleCount,
+        overrides: buildSensitivityGeneralOverrides(),
+        maxWorkers,
         confirmWarnings
       });
 
@@ -581,6 +704,17 @@ export function useExperimentRunController({
     setSensitivityWarnings([]);
   };
 
+  const onSensitivitySampleCountChange = (value: string) => {
+    setSensitivitySampleCount(value);
+    setSensitivityWarnings([]);
+  };
+
+  const onSensitivityMaxWorkersChange = (value: string) => {
+    setSensitivityMaxWorkers(value);
+    setSensitivityMaxWorkersTouched(true);
+    setSensitivityWarnings([]);
+  };
+
   return {
     options,
     selectedBaseline,
@@ -596,15 +730,18 @@ export function useExperimentRunController({
     setSensitivityMin: onSensitivityMinChange,
     sensitivityMax,
     setSensitivityMax: onSensitivityMaxChange,
-    sensitivityRetainFullOutput,
-    setSensitivityRetainFullOutput,
+    sensitivitySampleCount,
+    setSensitivitySampleCount: onSensitivitySampleCountChange,
+    sensitivityMaxWorkers,
+    setSensitivityMaxWorkers: onSensitivityMaxWorkersChange,
+    sensitivityFormValues,
     sensitivityWarnings,
     jobs,
     selectedJob,
     selectedJobRef,
     logLines,
     logError,
-    groupedParameters,
+    policyParameters,
     numericSensitivityParameters,
     selectedSensitivityParameter,
     isLoadingOptions,
@@ -623,6 +760,7 @@ export function useExperimentRunController({
     hasActiveSensitivityJob: Boolean(activeSensitivityJob),
     onBaselineChange,
     onFormValueChange,
+    onSensitivityFormValueChange,
     onSubmitRun,
     onSubmitSensitivity,
     onCancelActiveSensitivity,

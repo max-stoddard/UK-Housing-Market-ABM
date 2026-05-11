@@ -571,7 +571,7 @@ export interface ResultsRunDeleteResponse {
 }
 
 export type SensitivityExperimentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
-export type SensitivitySampleSlot = 'min' | 'mid_lower' | 'baseline' | 'mid_upper' | 'max';
+export type SensitivitySampleSlot = string;
 
 export interface SensitivitySamplePoint {
   pointId: string;
@@ -589,6 +589,7 @@ export interface SensitivityExperimentParameterSelection {
   baselineValue: number;
   min: number;
   max: number;
+  sampleCount: number;
 }
 
 export interface SensitivityExperimentCreateRequest {
@@ -597,7 +598,9 @@ export interface SensitivityExperimentCreateRequest {
   parameterKey: string;
   min: number;
   max: number;
-  retainFullOutput?: boolean;
+  sampleCount?: number;
+  overrides?: Record<string, number | boolean>;
+  maxWorkers?: number;
   confirmWarnings?: boolean;
 }
 
@@ -609,7 +612,10 @@ export interface SensitivityExperimentSummary {
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
-  retainFullOutput: boolean;
+  seedsPerPoint?: number;
+  seeds?: number[];
+  maxWorkers?: number;
+  generalOverrides?: Record<string, number | boolean>;
   parameter: SensitivityExperimentParameterSelection;
 }
 
@@ -641,12 +647,22 @@ export interface SensitivityIndicatorPointMetric {
   deltaFromBaseline: KpiMetricValues;
 }
 
+export interface SensitivitySeedRunResult {
+  seed: number;
+  status: 'succeeded' | 'failed' | 'canceled';
+  runId: string;
+  outputPath: string | null;
+  error?: string;
+  indicatorMetrics: SensitivityIndicatorPointMetric[];
+}
+
 export interface SensitivityPointResult extends SensitivitySamplePoint {
   status: 'succeeded' | 'failed' | 'canceled';
   runId: string;
   outputPath: string | null;
   error?: string;
   indicatorMetrics: SensitivityIndicatorPointMetric[];
+  seedResults?: SensitivitySeedRunResult[];
 }
 
 export interface SensitivityTornadoBar {
