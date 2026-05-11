@@ -15,9 +15,10 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     res.json({ ok: true });
   });
 
-  app.get('/api/runtime-deps', context.withMemoryLogging('runtime-deps', (req, res) => {
+  app.get('/api/runtime-deps', context.withMemoryLogging('runtime-deps', async (req, res) => {
     const deps = context.getRuntimeDependencies();
     const policy = context.resolveRuntimePolicy(req);
+    const remoteExecution = context.remoteExecution ? await context.remoteExecution.getStatus() : undefined;
     res.json({
       java: deps.java.available,
       maven: deps.maven.available,
@@ -35,6 +36,7 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
       modelRunsConfigured: policy.modelRunsConfigured,
       modelRunsEnabled: policy.modelRunsEnabled,
       modelRunsDisabledReason: policy.modelRunsDisabledReason,
+      ...(remoteExecution ? { remoteExecution } : {}),
       versionInfo: {
         java: deps.java.versionOutput || null,
         maven: deps.maven.versionOutput || null,
@@ -46,7 +48,7 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     });
   }));
 
-  app.get('/api/auth/status', context.withMemoryLogging('auth-status', (req, res) => {
+  app.get('/api/auth/status', context.withMemoryLogging('auth-status', async (req, res) => {
     const policy = context.resolveRuntimePolicy(req);
     const access = resolveDashboardWriteAccess(
       context.writeAuth,
@@ -54,13 +56,15 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
       policy.modelRunsEnabled,
       policy.devBypassActive
     );
+    const remoteExecution = context.remoteExecution ? await context.remoteExecution.getStatus() : undefined;
     res.json({
       authEnabled: access.authEnabled,
       canWrite: access.canWrite,
       authMisconfigured: access.authMisconfigured,
       modelRunsEnabled: policy.modelRunsEnabled,
       modelRunsConfigured: policy.modelRunsConfigured,
-      modelRunsDisabledReason: policy.modelRunsDisabledReason
+      modelRunsDisabledReason: policy.modelRunsDisabledReason,
+      ...(remoteExecution ? { remoteExecution } : {})
     });
   }));
 

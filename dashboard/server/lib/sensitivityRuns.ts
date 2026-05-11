@@ -82,6 +82,7 @@ type SpawnModelRunFn = (
 interface SubmitSensitivityExperimentOptions {
   launcher?: ModelLauncher;
   logSink?: LogLineSink;
+  now?: Date;
 }
 
 interface ExperimentRecord {
@@ -1133,6 +1134,84 @@ function buildWarnings(
   return { warnings, warningSummary };
 }
 
+export interface PreparedSensitivityExperimentSubmission {
+  experimentId: string;
+  title?: string;
+  baseline: string;
+  parameter: ModelRunParameterDefinition;
+  min: number;
+  max: number;
+  baselineValue: number;
+  sampleCount: number;
+  samplePoints: SensitivitySamplePoint[];
+  collapsedSlots: Record<SensitivitySampleSlot, string>;
+  normalizedGeneralOverrides: Map<string, string>;
+  generalOverrides: Record<string, number | boolean>;
+  seeds: number[];
+  maxWorkers: number;
+  warnings: ModelRunWarning[];
+  warningSummary: SensitivityExperimentMetadata['warningSummary'];
+}
+
+export function prepareSensitivityExperimentSubmission(
+  pathsInput: RuntimePathInput,
+  payload: SensitivityExperimentCreateRequest,
+  options: { now?: Date } = {}
+):
+  | { accepted: false; warnings: ModelRunWarning[]; warningSummary: SensitivityExperimentMetadata['warningSummary'] }
+  | { accepted: true; prepared: PreparedSensitivityExperimentSubmission } {
+  const {
+    baseline,
+    parameter,
+    min,
+    max,
+    baselineValue,
+    sampleCount,
+    samplePoints,
+    collapsedSlots,
+    valuesByKey,
+    normalizedGeneralOverrides,
+    generalOverrides,
+    seeds,
+    maxWorkers
+  } = validatePayload(pathsInput, payload);
+  const { warnings, warningSummary } = buildWarnings(valuesByKey, parameter.key, samplePoints);
+
+  if (warnings.length > 0 && payload.confirmWarnings !== true) {
+    return {
+      accepted: false,
+      warnings,
+      warningSummary
+    };
+  }
+
+  const now = options.now ?? new Date();
+  const trimmedTitle = payload.title?.trim();
+  const title = trimmedTitle ? sanitizeFragment(trimmedTitle).slice(0, 120) : undefined;
+
+  return {
+    accepted: true,
+    prepared: {
+      experimentId: buildExperimentId(now),
+      title,
+      baseline,
+      parameter,
+      min,
+      max,
+      baselineValue,
+      sampleCount,
+      samplePoints,
+      collapsedSlots,
+      normalizedGeneralOverrides,
+      generalOverrides,
+      seeds,
+      maxWorkers,
+      warnings,
+      warningSummary
+    }
+  };
+}
+
 function hasActiveManualModelRuns(): boolean {
   return listModelRunJobs().some((job) => job.status === 'queued' || job.status === 'running');
 }
@@ -1744,7 +1823,14 @@ export function submitSensitivityExperiment(
     throw new Error('retainFullOutput is no longer supported for sensitivity experiments; use record settings instead.');
   }
 
+  const now = options.now ?? new Date();
+  const preparedResult = prepareSensitivityExperimentSubmission(paths, payload, { now });
+  if (!preparedResult.accepted) {
+    return preparedResult;
+  }
   const {
+    experimentId,
+    title,
     baseline,
     parameter,
     min,
@@ -1753,26 +1839,13 @@ export function submitSensitivityExperiment(
     sampleCount,
     samplePoints,
     collapsedSlots,
-    valuesByKey,
     normalizedGeneralOverrides,
     generalOverrides,
     seeds,
-    maxWorkers
-  } = validatePayload(paths, payload);
-  const { warnings, warningSummary } = buildWarnings(valuesByKey, parameter.key, samplePoints);
-
-  if (warnings.length > 0 && payload.confirmWarnings !== true) {
-    return {
-      accepted: false,
-      warnings,
-      warningSummary
-    };
-  }
-
-  const now = new Date();
-  const experimentId = buildExperimentId(now);
-  const trimmedTitle = payload.title?.trim();
-  const title = trimmedTitle ? sanitizeFragment(trimmedTitle).slice(0, 120) : undefined;
+    maxWorkers,
+    warnings,
+    warningSummary
+  } = preparedResult.prepared;
 
   const metadata: SensitivityExperimentMetadata = {
     experimentId,

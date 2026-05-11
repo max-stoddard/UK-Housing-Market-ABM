@@ -59,6 +59,7 @@ export interface ExperimentRunController {
   pendingRunId: string;
   pendingSensitivityExperimentId: string;
   executionDisabled: boolean;
+  executionDisabledReason: string;
   manualSubmissionLockedBySensitivity: boolean;
   sensitivitySubmissionLockedByManual: boolean;
   lockSensitivityId: string;
@@ -284,6 +285,7 @@ export function useExperimentRunController({
   );
 
   const executionDisabled = Boolean(options && !options.executionEnabled);
+  const executionDisabledReason = options?.executionDisabledReason ?? options?.remoteExecution?.reason ?? '';
 
   const { lines: logLines, error: logError } = useExperimentLogs(
     selectedJobRef,
@@ -753,6 +755,7 @@ export function useExperimentRunController({
     pendingRunId,
     pendingSensitivityExperimentId,
     executionDisabled,
+    executionDisabledReason,
     manualSubmissionLockedBySensitivity,
     sensitivitySubmissionLockedByManual,
     lockSensitivityId: parseJobRefId(activeSensitivityJobRef),

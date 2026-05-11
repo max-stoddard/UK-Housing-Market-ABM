@@ -7,6 +7,11 @@ import path from 'node:path';
 import { checkRuntimeDependencies, type RuntimeDependencyStatus } from './lib/runtimeDeps';
 import { createRuntimePathsFromEnv, type RuntimePaths } from './lib/runtimePaths';
 import type { ModelLauncher } from './lib/modelLauncher';
+import {
+  createRemoteExecutionConfigFromEnv,
+  getExecutionBackendFromEnv,
+  RemoteExecutionManager
+} from './lib/remoteExecution';
 import { shutdownModelRunProcesses } from './lib/modelRuns';
 import { createPersistentLoggers, type RotatingLogOptions, type RotatingLogWriter } from './lib/logs/persistentLogs';
 import { shutdownSensitivityRunProcesses } from './lib/sensitivityRuns';
@@ -43,6 +48,7 @@ export interface StartDashboardServerOptions {
   writeAuth?: WriteAuthController;
   desktopAuthToken?: string;
   launcher?: ModelLauncher;
+  remoteExecution?: RemoteExecutionManager;
   corsOrigin?: string;
   modelRunsConfigured?: boolean;
   isDevRuntime?: boolean;
@@ -99,8 +105,13 @@ function experimentsFeatureEnabled(): boolean {
 
 function isModelLauncherRuntimeAvailable(
   runtimeDependencies: RuntimeDependencyStatus,
-  launcher: ModelLauncher | undefined
+  launcher: ModelLauncher | undefined,
+  remoteExecution: RemoteExecutionManager | undefined,
+  executionBackend: 'local_maven' | 'aws_ssm'
 ): boolean {
+  if (executionBackend === 'aws_ssm') {
+    return Boolean(remoteExecution);
+  }
   if (launcher?.mode === 'packaged') {
     return runtimeDependencies.java.available && runtimeDependencies.modelArtifact.exists;
   }
@@ -109,8 +120,13 @@ function isModelLauncherRuntimeAvailable(
 
 function getModelRunsRuntimeUnavailableReason(
   runtimeDependencies: RuntimeDependencyStatus,
-  launcher: ModelLauncher | undefined
+  launcher: ModelLauncher | undefined,
+  remoteExecution: RemoteExecutionManager | undefined,
+  executionBackend: 'local_maven' | 'aws_ssm'
 ): string {
+  if (executionBackend === 'aws_ssm' && !remoteExecution) {
+    return 'Remote experiment execution is unavailable because AWS_RUNNER_INSTANCE_ID and AWS_ARTIFACTS_BUCKET are not configured.';
+  }
   if (launcher?.mode !== 'packaged') {
     return MODEL_RUNS_DISABLED_REASON_RUNTIME;
   }
@@ -183,6 +199,8 @@ function createRouteContext(input: {
   memoryLoggingEnabled: boolean;
   startupRuntimeDependencies: RuntimeDependencyStatus;
   launcher: ModelLauncher | undefined;
+  remoteExecution: RemoteExecutionManager | undefined;
+  executionBackend: 'local_maven' | 'aws_ssm';
   serverLog?: RotatingLogWriter;
   modelLog?: RotatingLogWriter;
 }): RouteContext {
@@ -196,12 +214,22 @@ function createRouteContext(input: {
   const resolveRuntimePolicy = (req: express.Request): RuntimePolicy => {
     const devBypassActive = input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && !isPreviewStrictRequest(req);
     const modelRunsConfigured = devBypassActive ? true : input.modelRunsConfigured;
-    const launchRuntimeAvailable = isModelLauncherRuntimeAvailable(input.startupRuntimeDependencies, input.launcher);
+    const launchRuntimeAvailable = isModelLauncherRuntimeAvailable(
+      input.startupRuntimeDependencies,
+      input.launcher,
+      input.remoteExecution,
+      input.executionBackend
+    );
     const modelRunsEnabled = modelRunsConfigured && launchRuntimeAvailable;
     const modelRunsDisabledReason = modelRunsEnabled
       ? null
       : modelRunsConfigured
-        ? getModelRunsRuntimeUnavailableReason(input.startupRuntimeDependencies, input.launcher)
+        ? getModelRunsRuntimeUnavailableReason(
+            input.startupRuntimeDependencies,
+            input.launcher,
+            input.remoteExecution,
+            input.executionBackend
+          )
         : MODEL_RUNS_DISABLED_REASON_CONFIG;
     const writeAuthConfigurationError = getWriteAuthConfigurationError(input.writeAuth, modelRunsEnabled, devBypassActive);
 
@@ -248,6 +276,7 @@ function createRouteContext(input: {
     modelRunsConfiguredFromEnv: input.modelRunsConfigured,
     writeAuth: input.writeAuth,
     launcher: input.launcher,
+    remoteExecution: input.remoteExecution,
     modelLogSink: input.modelLog ? (line) => input.modelLog?.writeLine(line) : undefined,
     getRuntimeDependencies,
     resolveRuntimePolicy,
@@ -294,6 +323,8 @@ function logRuntimeDependencies(
   startupRuntimeDependencies: RuntimeDependencyStatus,
   modelRunsConfigured: boolean,
   launcher: ModelLauncher | undefined,
+  remoteExecution: RemoteExecutionManager | undefined,
+  executionBackend: 'local_maven' | 'aws_ssm',
   serverLog?: RotatingLogWriter
 ): void {
   logInfo(`[runtime-paths] mode=${runtimePaths.mode}`, serverLog);
@@ -335,8 +366,20 @@ function logRuntimeDependencies(
     logError(`[runtime-deps] maven error: ${startupRuntimeDependencies.maven.error}`, serverLog);
   }
 
-  if (modelRunsConfigured && !isModelLauncherRuntimeAvailable(startupRuntimeDependencies, launcher)) {
-    logError(`[dashboard-api] ${getModelRunsRuntimeUnavailableReason(startupRuntimeDependencies, launcher)}`, serverLog);
+  if (executionBackend === 'aws_ssm') {
+    logInfo(`[runtime-deps] experiment backend=aws_ssm configured=${remoteExecution ? 'true' : 'false'}`, serverLog);
+  }
+
+  if (modelRunsConfigured && !isModelLauncherRuntimeAvailable(startupRuntimeDependencies, launcher, remoteExecution, executionBackend)) {
+    logError(
+      `[dashboard-api] ${getModelRunsRuntimeUnavailableReason(
+        startupRuntimeDependencies,
+        launcher,
+        remoteExecution,
+        executionBackend
+      )}`,
+      serverLog
+    );
   }
 }
 
@@ -386,8 +429,11 @@ export async function startDashboardServer(options: StartDashboardServerOptions 
   const host = options.host ?? (runtimePaths.mode === 'desktop' ? '127.0.0.1' : DEFAULT_HOST);
   const port = options.port ?? (runtimePaths.mode === 'desktop' ? 0 : DEFAULT_PORT);
   const corsOrigin = options.corsOrigin ?? envValue('DASHBOARD_CORS_ORIGIN');
+  const remoteExecutionConfig = createRemoteExecutionConfigFromEnv();
+  const remoteExecution = options.remoteExecution ?? (remoteExecutionConfig ? new RemoteExecutionManager(remoteExecutionConfig) : undefined);
+  const executionBackend = remoteExecution ? 'aws_ssm' : getExecutionBackendFromEnv();
   const modelRunsConfigured =
-    options.modelRunsConfigured ?? (envValue('DASHBOARD_ENABLE_MODEL_RUNS').toLowerCase() === 'true');
+    options.modelRunsConfigured ?? (envValue('DASHBOARD_ENABLE_MODEL_RUNS').toLowerCase() === 'true' || executionBackend === 'aws_ssm');
   const writeAuth =
     runtimePaths.mode === 'desktop'
       ? (() => {
@@ -410,7 +456,15 @@ export async function startDashboardServer(options: StartDashboardServerOptions 
   const staticRoot = resolveStaticRoot(dashboardRoot, options, runtimePaths);
 
   if (options.logStartup ?? true) {
-    logRuntimeDependencies(runtimePaths, startupRuntimeDependencies, modelRunsConfigured, options.launcher, loggers.server);
+    logRuntimeDependencies(
+      runtimePaths,
+      startupRuntimeDependencies,
+      modelRunsConfigured,
+      options.launcher,
+      remoteExecution,
+      executionBackend,
+      loggers.server
+    );
   }
 
   const app = express();
@@ -426,6 +480,8 @@ export async function startDashboardServer(options: StartDashboardServerOptions 
     memoryLoggingEnabled,
     startupRuntimeDependencies,
     launcher: options.launcher,
+    remoteExecution,
+    executionBackend,
     serverLog: loggers.server,
     modelLog: loggers.model
   });

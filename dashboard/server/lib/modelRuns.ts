@@ -327,6 +327,29 @@ interface SubmitModelRunOptions {
   logSink?: LogLineSink;
 }
 
+interface PrepareModelRunSubmissionOptions {
+  ignoreStorageCap?: boolean;
+  now?: Date;
+}
+
+interface PreparedModelRunSubmission {
+  baseline: string;
+  title?: string;
+  runId: string;
+  jobId: string;
+  createdAt: string;
+  warnings: ModelRunWarning[];
+  tempDirPath: string;
+  configAbsolutePath: string;
+  runAbsolutePath: string;
+  baselineConfigPath: string;
+  baselineDirPath: string;
+  normalizedOverrides: Map<string, string>;
+  valuesByKey: Map<string, number | boolean>;
+  overriddenParameters: Record<string, number | boolean>;
+  ignoreStorageCap: boolean;
+}
+
 type SpawnModelRunFn = (
   repoRoot: string,
   configPath: string,
@@ -1090,14 +1113,13 @@ export function clearModelRunJob(jobId: string): ModelRunJobClearResponse {
   };
 }
 
-export function submitModelRun(
+export function prepareModelRunSubmission(
   pathsInput: RuntimePathInput,
   payload: ModelRunSubmitRequest,
-  options: SubmitModelRunOptions = {}
-): ModelRunSubmitResponse {
+  options: PrepareModelRunSubmissionOptions = {}
+): { accepted: false; warnings: ModelRunWarning[] } | { accepted: true; prepared: PreparedModelRunSubmission } {
   const paths = resolveRuntimePaths(pathsInput);
   const ignoreStorageCap = options.ignoreStorageCap === true;
-  const launcher = resolveModelLauncher(options.launcher);
   const baselineRaw = payload.baseline?.trim();
   if (!baselineRaw) {
     throw new Error('baseline is required.');
@@ -1126,7 +1148,7 @@ export function submitModelRun(
     overriddenParameters[key] = parsedOverride.typed;
   }
 
-  const now = new Date();
+  const now = options.now ?? new Date();
   const trimmedTitle = payload.title?.trim();
   const title = trimmedTitle ? trimmedTitle.slice(0, 120) : undefined;
   const runId = buildRunId(now, title, baseline);
@@ -1173,6 +1195,59 @@ export function submitModelRun(
   const baselineDirPath = path.join(paths.dataRoot, baseline);
   const baselineConfigPath = path.join(baselineDirPath, 'config.properties');
 
+  return {
+    accepted: true,
+    prepared: {
+      baseline,
+      title,
+      runId,
+      jobId,
+      createdAt: now.toISOString(),
+      warnings,
+      tempDirPath,
+      configAbsolutePath,
+      runAbsolutePath,
+      baselineConfigPath,
+      baselineDirPath,
+      normalizedOverrides,
+      valuesByKey,
+      overriddenParameters,
+      ignoreStorageCap
+    }
+  };
+}
+
+export function submitModelRun(
+  pathsInput: RuntimePathInput,
+  payload: ModelRunSubmitRequest,
+  options: SubmitModelRunOptions = {}
+): ModelRunSubmitResponse {
+  const paths = resolveRuntimePaths(pathsInput);
+  const launcher = resolveModelLauncher(options.launcher);
+  const preparedResult = prepareModelRunSubmission(paths, payload, {
+    ignoreStorageCap: options.ignoreStorageCap
+  });
+  if (!preparedResult.accepted) {
+    return preparedResult;
+  }
+  const {
+    baseline,
+    title,
+    runId,
+    jobId,
+    createdAt,
+    warnings,
+    tempDirPath,
+    configAbsolutePath,
+    runAbsolutePath,
+    baselineConfigPath,
+    baselineDirPath,
+    normalizedOverrides,
+    valuesByKey,
+    overriddenParameters,
+    ignoreStorageCap
+  } = preparedResult.prepared;
+
   rewriteConfigForJob(baselineConfigPath, baselineDirPath, configAbsolutePath, normalizedOverrides);
 
   const job: ModelRunJob = {
@@ -1181,7 +1256,7 @@ export function submitModelRun(
     title,
     baseline,
     status: 'queued',
-    createdAt: now.toISOString(),
+    createdAt,
     outputPath: toRuntimePath(paths, runAbsolutePath),
     configPath: toRuntimePath(paths, configAbsolutePath)
   };

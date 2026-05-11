@@ -468,6 +468,20 @@ export interface AuthStatusPayload {
   modelRunsEnabled: boolean;
   modelRunsConfigured: boolean;
   modelRunsDisabledReason: string | null;
+  remoteExecution?: RemoteExecutionStatus;
+}
+
+export type ExperimentExecutionBackend = 'local_maven' | 'aws_ssm';
+
+export interface RemoteExecutionStatus {
+  backend: ExperimentExecutionBackend;
+  configured: boolean;
+  available: boolean;
+  runnerInstanceId: string | null;
+  runnerState: string | null;
+  ssmPingStatus: string | null;
+  reason: string | null;
+  checkedAt: string;
 }
 
 export interface AuthLoginRequest {
@@ -516,6 +530,7 @@ export interface ModelRunJob {
   title?: string;
   baseline: string;
   status: ModelRunJobStatus;
+  backend?: ExperimentExecutionBackend;
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
@@ -527,6 +542,9 @@ export interface ModelRunJob {
 
 export interface ModelRunOptionsPayload {
   executionEnabled: boolean;
+  executionDisabledReason?: string | null;
+  executionBackend?: ExperimentExecutionBackend;
+  remoteExecution?: RemoteExecutionStatus;
   snapshots: ModelRunSnapshotOption[];
   defaultBaseline: string;
   requestedBaseline: string;
@@ -732,6 +750,7 @@ export interface ExperimentJobSummary {
   id: string;
   title: string;
   status: ExperimentJobStatus;
+  backend?: ExperimentExecutionBackend;
   createdAt: string;
   startedAt?: string;
   endedAt?: string;

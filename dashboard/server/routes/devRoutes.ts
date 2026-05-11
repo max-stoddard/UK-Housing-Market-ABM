@@ -65,11 +65,15 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     res.json({ ok: true });
   });
 
-  app.get('/api/results/runs', (req, res) => {
+  app.get('/api/results/runs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.listRemoteManualResultRuns());
+        return;
+      }
       const runs = getResultsRuns(context.runtimePaths);
       res.json({ runs });
     } catch (error) {
@@ -88,11 +92,15 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/results/runs/:runId', (req, res) => {
+  app.get('/api/results/runs/:runId', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getRemoteManualResultDetail(String(req.params.runId ?? '')));
+        return;
+      }
       const detail = getResultsRunDetail(context.runtimePaths, String(req.params.runId ?? ''));
       res.json(detail);
     } catch (error) {
@@ -100,11 +108,15 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/results/runs/:runId/files', (req, res) => {
+  app.get('/api/results/runs/:runId/files', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getRemoteManualResultFiles(String(req.params.runId ?? '')));
+        return;
+      }
       const files = getResultsRunFiles(context.runtimePaths, String(req.params.runId ?? ''));
       res.json({ runId: String(req.params.runId ?? ''), files });
     } catch (error) {
@@ -121,6 +133,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.status(400).json({ error: 'Remote manual result artifacts are immutable from the dashboard API.' });
+        return;
+      }
       const payload = deleteResultsRun(context.runtimePaths, String(req.params.runId ?? ''));
       res.json(payload);
     } catch (error) {
@@ -143,6 +159,12 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const smoothWindow = Number.isFinite(rawSmoothWindow) ? rawSmoothWindow : 0;
 
     try {
+      if (context.remoteExecution) {
+        res.status(400).json({
+          error: 'Remote manual result series parsing is not available in the lightweight AWS API; use the S3 run artifact for local analysis.'
+        });
+        return;
+      }
       const payload = getResultsSeries(context.runtimePaths, runId, indicator, smoothWindow);
       res.json(payload);
     } catch (error) {
@@ -167,6 +189,12 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const smoothWindow = Number.isFinite(rawSmoothWindow) ? rawSmoothWindow : 0;
 
     try {
+      if (context.remoteExecution) {
+        res.status(400).json({
+          error: 'Remote manual result comparison is not available in the lightweight AWS API; use the S3 run artifacts for local analysis.'
+        });
+        return;
+      }
       const payload = getResultsCompare(context.runtimePaths, runIds, indicatorIds, window, smoothWindow);
       res.json(payload);
     } catch (error) {
@@ -174,7 +202,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/model-runs/options', (req, res) => {
+  app.get('/api/model-runs/options', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -182,13 +210,13 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       const policy = context.resolveRuntimePolicy(req);
       const baseline = String(req.query.baseline ?? '').trim() || undefined;
       const payload = getModelRunOptions(context.runtimePaths, baseline, policy.modelRunsEnabled);
-      res.json(payload);
+      res.json(context.remoteExecution ? await context.remoteExecution.decorateModelRunOptions(payload) : payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.post('/api/model-runs', (req, res) => {
+  app.post('/api/model-runs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -210,6 +238,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.submitModelRun(context.runtimePaths, req.body));
+        return;
+      }
       const payload = submitModelRun(context.runtimePaths, req.body, {
         ignoreStorageCap: policy.devBypassActive,
         launcher: context.launcher,
@@ -221,7 +253,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/model-runs/jobs', (req, res) => {
+  app.get('/api/model-runs/jobs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -232,13 +264,17 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.listModelRunJobs());
+        return;
+      }
       res.json({ jobs: listModelRunJobs() });
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/model-runs/jobs/:jobId', (req, res) => {
+  app.get('/api/model-runs/jobs/:jobId', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -249,13 +285,17 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getModelRunJob(String(req.params.jobId ?? '')));
+        return;
+      }
       res.json(getModelRunJob(String(req.params.jobId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.post('/api/model-runs/jobs/:jobId/cancel', (req, res) => {
+  app.post('/api/model-runs/jobs/:jobId/cancel', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -269,13 +309,19 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        const jobId = String(req.params.jobId ?? '');
+        await context.remoteExecution.cancelExperimentJob(`manual:${jobId}`);
+        res.json(await context.remoteExecution.getModelRunJob(jobId));
+        return;
+      }
       res.json(cancelModelRunJob(context.runtimePaths, String(req.params.jobId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.delete('/api/model-runs/jobs/:jobId', (req, res) => {
+  app.delete('/api/model-runs/jobs/:jobId', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -289,13 +335,17 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.clearModelRunJob(String(req.params.jobId ?? '')));
+        return;
+      }
       res.json(clearModelRunJob(String(req.params.jobId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/model-runs/jobs/:jobId/logs', (req, res) => {
+  app.get('/api/model-runs/jobs/:jobId/logs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -309,6 +359,14 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const limitRaw = Number.parseInt(String(req.query.limit ?? '200'), 10);
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getModelRunJobLogs(
+          String(req.params.jobId ?? ''),
+          Number.isFinite(cursorRaw) ? cursorRaw : undefined,
+          Number.isFinite(limitRaw) ? limitRaw : undefined
+        ));
+        return;
+      }
       const payload = getModelRunJobLogs(
         String(req.params.jobId ?? ''),
         Number.isFinite(cursorRaw) ? cursorRaw : undefined,
@@ -320,18 +378,22 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/experiments/sensitivity', (req, res) => {
+  app.get('/api/experiments/sensitivity', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.listSensitivityExperiments());
+        return;
+      }
       res.json(listSensitivityExperiments(context.runtimePaths));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.post('/api/experiments/sensitivity', (req, res) => {
+  app.post('/api/experiments/sensitivity', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -345,6 +407,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.submitSensitivityExperiment(context.runtimePaths, req.body));
+        return;
+      }
       const payload = submitSensitivityExperiment(context.runtimePaths, req.body, {
         launcher: context.launcher,
         logSink: context.modelLogSink
@@ -355,40 +421,52 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/experiments/sensitivity/:experimentId', (req, res) => {
+  app.get('/api/experiments/sensitivity/:experimentId', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getSensitivityExperiment(String(req.params.experimentId ?? '')));
+        return;
+      }
       res.json(getSensitivityExperiment(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/experiments/sensitivity/:experimentId/results', (req, res) => {
+  app.get('/api/experiments/sensitivity/:experimentId/results', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getSensitivityExperimentResults(String(req.params.experimentId ?? '')));
+        return;
+      }
       res.json(getSensitivityExperimentResults(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/experiments/sensitivity/:experimentId/charts', (req, res) => {
+  app.get('/api/experiments/sensitivity/:experimentId/charts', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getSensitivityExperimentCharts(String(req.params.experimentId ?? '')));
+        return;
+      }
       res.json(getSensitivityExperimentCharts(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/experiments/sensitivity/:experimentId/logs', (req, res) => {
+  app.get('/api/experiments/sensitivity/:experimentId/logs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -396,6 +474,14 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const limitRaw = Number.parseInt(String(req.query.limit ?? '200'), 10);
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getSensitivityExperimentLogs(
+          String(req.params.experimentId ?? ''),
+          Number.isFinite(cursorRaw) ? cursorRaw : undefined,
+          Number.isFinite(limitRaw) ? limitRaw : undefined
+        ));
+        return;
+      }
       const payload = getSensitivityExperimentLogs(
         context.runtimePaths,
         String(req.params.experimentId ?? ''),
@@ -408,7 +494,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.post('/api/experiments/sensitivity/:experimentId/cancel', (req, res) => {
+  app.post('/api/experiments/sensitivity/:experimentId/cancel', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -422,24 +508,34 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        const experimentId = String(req.params.experimentId ?? '');
+        await context.remoteExecution.cancelExperimentJob(`sensitivity:${experimentId}`);
+        res.json(await context.remoteExecution.getSensitivityExperiment(experimentId));
+        return;
+      }
       res.json(cancelSensitivityExperiment(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/experiments/jobs', (req, res) => {
+  app.get('/api/experiments/jobs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.listExperimentJobs());
+        return;
+      }
       res.json(listExperimentJobs(context.runtimePaths));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
   });
 
-  app.get('/api/experiments/jobs/:jobRef/logs', (req, res) => {
+  app.get('/api/experiments/jobs/:jobRef/logs', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -447,6 +543,14 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     const limitRaw = Number.parseInt(String(req.query.limit ?? '200'), 10);
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.getExperimentJobLogs(
+          String(req.params.jobRef ?? ''),
+          Number.isFinite(cursorRaw) ? cursorRaw : undefined,
+          Number.isFinite(limitRaw) ? limitRaw : undefined
+        ));
+        return;
+      }
       const payload = getExperimentJobLogs(
         context.runtimePaths,
         String(req.params.jobRef ?? ''),
@@ -459,7 +563,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.post('/api/experiments/jobs/:jobRef/cancel', (req, res) => {
+  app.post('/api/experiments/jobs/:jobRef/cancel', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -473,6 +577,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
 
     try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.cancelExperimentJob(String(req.params.jobRef ?? '')));
+        return;
+      }
       res.json(cancelExperimentJob(context.runtimePaths, String(req.params.jobRef ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });

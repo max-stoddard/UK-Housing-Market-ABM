@@ -1,0 +1,1127 @@
+// Author: Max Stoddard
+import {
+  DescribeInstancesCommand,
+  EC2Client,
+  type InstanceStateName
+} from '@aws-sdk/client-ec2';
+import {
+  GetObjectCommand,
+  ListObjectsV2Command,
+  NoSuchKey,
+  PutObjectCommand,
+  S3Client
+} from '@aws-sdk/client-s3';
+import {
+  CancelCommandCommand,
+  DescribeInstanceInformationCommand,
+  GetCommandInvocationCommand,
+  SendCommandCommand,
+  SSMClient,
+  type CommandInvocationStatus,
+  type PingStatus
+} from '@aws-sdk/client-ssm';
+import type {
+  ExperimentJobLogsPayload,
+  ExperimentJobsPayload,
+  ExperimentJobSummary,
+  ModelRunJob,
+  ModelRunJobClearResponse,
+  ModelRunJobLogsPayload,
+  ModelRunJobsPayload,
+  ModelRunOptionsPayload,
+  ModelRunSubmitRequest,
+  ModelRunSubmitResponse,
+  ModelRunWarning,
+  RemoteExecutionStatus,
+  ResultsFileManifestEntry,
+  ResultsFileType,
+  ResultsRunDetail,
+  ResultsRunStatus,
+  ResultsRunSummary,
+  SensitivityExperimentChartsPayload,
+  SensitivityExperimentCreateRequest,
+  SensitivityExperimentDetailPayload,
+  SensitivityExperimentListPayload,
+  SensitivityExperimentLogsPayload,
+  SensitivityExperimentMetadata,
+  SensitivityExperimentResultsPayload,
+  SensitivityExperimentSubmitResponse,
+  SensitivityExperimentSummary
+} from '../../shared/types';
+import { prepareModelRunSubmission } from './modelRuns';
+import { getResultsIndicatorCatalog } from './results';
+import {
+  prepareSensitivityExperimentSubmission,
+  type PreparedSensitivityExperimentSubmission
+} from './sensitivityRuns';
+import type { RuntimePathInput } from './runtimePaths';
+
+const INDEX_KEY = 'experiments/remote-job-index/index.json';
+const SOURCE_MANIFEST_KEY = 'tmp/github-actions/source/current-deploy.json';
+const REQUEST_PREFIX = 'tmp/dashboard-remote/requests';
+const SSM_DOCUMENT_NAME = 'AWS-RunShellScript';
+const REMOTE_LOG_GROUP = '/aws/ssm/uk-housing-market-abm-remote-experiments';
+const COMMAND_TIMEOUT_SECONDS = 24 * 60 * 60;
+const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
+
+type RemoteJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+type RemoteJobType = 'manual' | 'sensitivity';
+
+export interface RemoteExecutionConfig {
+  region: string;
+  runnerInstanceId: string;
+  artifactsBucket: string;
+  maxActiveRemoteRuns: number;
+}
+
+interface SourceDeployManifest {
+  commit: string;
+  bundleKey: string;
+  createdAt?: string;
+}
+
+interface RemoteJobRecord {
+  schemaVersion: 1;
+  jobRef: string;
+  type: RemoteJobType;
+  id: string;
+  title?: string;
+  status: RemoteJobStatus;
+  createdAt: string;
+  startedAt?: string;
+  endedAt?: string;
+  baseline: string;
+  runId?: string;
+  outputPath: string;
+  configPath: string;
+  artifactS3Prefix: string;
+  requestKey: string;
+  sourceCommit: string;
+  sourceBundleKey: string;
+  ssmCommandId?: string;
+  failureReason?: string;
+  warnings: ModelRunWarning[];
+  sensitivityMetadata?: SensitivityExperimentMetadata;
+}
+
+interface RemoteJobIndex {
+  schemaVersion: 1;
+  updatedAt: string;
+  jobs: RemoteJobRecord[];
+}
+
+interface RemoteRunRequest {
+  schemaVersion: 1;
+  jobRef: string;
+  type: RemoteJobType;
+  createdAt: string;
+  sourceCommit: string;
+  sourceBundleKey: string;
+  artifactS3Prefix: string;
+  payload: ModelRunSubmitRequest | SensitivityExperimentCreateRequest;
+}
+
+export interface RemoteAwsAdapter {
+  getRunnerStatus(instanceId: string): Promise<RemoteExecutionStatus>;
+  getSourceDeployManifest(bucket: string): Promise<SourceDeployManifest>;
+  putJson(bucket: string, key: string, value: unknown): Promise<void>;
+  getJson<T>(bucket: string, key: string): Promise<T | null>;
+  getText(bucket: string, key: string): Promise<string | null>;
+  listObjects(bucket: string, prefix: string): Promise<Array<{
+    key: string;
+    sizeBytes: number;
+    modifiedAt: string | null;
+  }>>;
+  sendRunCommand(input: {
+    instanceId: string;
+    bucket: string;
+    region: string;
+    requestKey: string;
+    jobRef: string;
+  }): Promise<string>;
+  getCommandInvocation(instanceId: string, commandId: string): Promise<{
+    status: CommandInvocationStatus | string;
+    stdout: string;
+    stderr: string;
+  } | null>;
+  cancelCommand(instanceId: string, commandId: string): Promise<void>;
+}
+
+function envValue(name: string): string {
+  return process.env[name]?.trim() ?? '';
+}
+
+export function getExecutionBackendFromEnv(): 'local_maven' | 'aws_ssm' {
+  return envValue('DASHBOARD_EXECUTION_BACKEND').toLowerCase() === 'aws_ssm' ? 'aws_ssm' : 'local_maven';
+}
+
+export function createRemoteExecutionConfigFromEnv(): RemoteExecutionConfig | null {
+  if (getExecutionBackendFromEnv() !== 'aws_ssm') {
+    return null;
+  }
+
+  const region = envValue('AWS_REGION') || envValue('AWS_DEFAULT_REGION') || 'eu-west-2';
+  const runnerInstanceId = envValue('AWS_RUNNER_INSTANCE_ID');
+  const artifactsBucket = envValue('AWS_ARTIFACTS_BUCKET');
+  const rawMaxActive = Number.parseInt(envValue('DASHBOARD_MAX_ACTIVE_REMOTE_RUNS') || '1', 10);
+
+  if (!runnerInstanceId || !artifactsBucket) {
+    return null;
+  }
+
+  return {
+    region,
+    runnerInstanceId,
+    artifactsBucket,
+    maxActiveRemoteRuns: Number.isFinite(rawMaxActive) && rawMaxActive > 0 ? rawMaxActive : 1
+  };
+}
+
+function isoNow(): string {
+  return new Date().toISOString();
+}
+
+function isActive(status: RemoteJobStatus): boolean {
+  return status === 'queued' || status === 'running';
+}
+
+function sanitizeS3Segment(value: string): string {
+  const sanitized = value
+    .trim()
+    .replace(/[^A-Za-z0-9._=-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return sanitized || 'run';
+}
+
+function utcDateFragment(date: Date): string {
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function toLines(text: string | null): string[] {
+  if (!text) {
+    return [];
+  }
+  return text.split(/\r?\n/).filter((line) => line.length > 0);
+}
+
+function sliceLogLines(lines: string[], cursor = 0, limit = 200) {
+  const safeCursor = Number.isFinite(cursor) && cursor > 0 ? Math.floor(cursor) : 0;
+  const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.min(Math.floor(limit), 1000) : 200;
+  const selected = lines.slice(safeCursor, safeCursor + safeLimit);
+  const nextCursor = safeCursor + selected.length;
+  return {
+    cursor: safeCursor,
+    nextCursor,
+    lines: selected,
+    hasMore: nextCursor < lines.length,
+    truncated: false
+  };
+}
+
+function mapSsmStatus(status: string): RemoteJobStatus {
+  if (status === 'Success') {
+    return 'succeeded';
+  }
+  if (status === 'Cancelled' || status === 'Cancelling') {
+    return 'canceled';
+  }
+  if (
+    status === 'Failed' ||
+    status === 'TimedOut' ||
+    status === 'ExecutionTimedOut' ||
+    status === 'DeliveryTimedOut' ||
+    status === 'Undeliverable' ||
+    status === 'Terminated'
+  ) {
+    return 'failed';
+  }
+  return 'running';
+}
+
+function streamBodyToString(body: unknown): Promise<string> {
+  const maybeTransform = body as { transformToString?: () => Promise<string> } | null;
+  if (maybeTransform?.transformToString) {
+    return maybeTransform.transformToString();
+  }
+
+  const readable = body as AsyncIterable<Uint8Array> | null;
+  if (!readable) {
+    return Promise.resolve('');
+  }
+
+  return (async () => {
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of readable) {
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks).toString('utf-8');
+  })();
+}
+
+export class AwsSdkRemoteAdapter implements RemoteAwsAdapter {
+  private readonly ec2: EC2Client;
+  private readonly ssm: SSMClient;
+  private readonly s3: S3Client;
+
+  constructor(region: string) {
+    this.ec2 = new EC2Client({ region });
+    this.ssm = new SSMClient({ region });
+    this.s3 = new S3Client({ region });
+  }
+
+  async getRunnerStatus(instanceId: string): Promise<RemoteExecutionStatus> {
+    const checkedAt = isoNow();
+    try {
+      const [instanceResult, ssmResult] = await Promise.all([
+        this.ec2.send(new DescribeInstancesCommand({ InstanceIds: [instanceId] })),
+        this.ssm.send(new DescribeInstanceInformationCommand({
+          Filters: [{ Key: 'InstanceIds', Values: [instanceId] }]
+        }))
+      ]);
+
+      const instance = instanceResult.Reservations?.flatMap((reservation) => reservation.Instances ?? [])[0];
+      const runnerState = (instance?.State?.Name ?? null) as InstanceStateName | null;
+      const ssmPingStatus = (ssmResult.InstanceInformationList?.[0]?.PingStatus ?? null) as PingStatus | null;
+      const available = runnerState === 'running' && ssmPingStatus === 'Online';
+      const reason = available
+        ? null
+        : runnerState !== 'running'
+          ? `EC2 runner is ${runnerState ?? 'unknown'}.`
+          : `SSM runner status is ${ssmPingStatus ?? 'unknown'}.`;
+
+      return {
+        backend: 'aws_ssm',
+        configured: true,
+        available,
+        runnerInstanceId: instanceId,
+        runnerState,
+        ssmPingStatus,
+        reason,
+        checkedAt
+      };
+    } catch (error) {
+      return {
+        backend: 'aws_ssm',
+        configured: true,
+        available: false,
+        runnerInstanceId: instanceId,
+        runnerState: null,
+        ssmPingStatus: null,
+        reason: (error as Error).message,
+        checkedAt
+      };
+    }
+  }
+
+  async getSourceDeployManifest(bucket: string): Promise<SourceDeployManifest> {
+    const manifest = await this.getJson<SourceDeployManifest>(bucket, SOURCE_MANIFEST_KEY);
+    if (!manifest?.commit || !manifest.bundleKey) {
+      throw new Error(`Missing deploy source manifest at s3://${bucket}/${SOURCE_MANIFEST_KEY}.`);
+    }
+    return manifest;
+  }
+
+  async putJson(bucket: string, key: string, value: unknown): Promise<void> {
+    await this.s3.send(new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: `${JSON.stringify(value, null, 2)}\n`,
+      ContentType: 'application/json',
+      ServerSideEncryption: 'AES256'
+    }));
+  }
+
+  async getJson<T>(bucket: string, key: string): Promise<T | null> {
+    const text = await this.getText(bucket, key);
+    return text ? (JSON.parse(text) as T) : null;
+  }
+
+  async getText(bucket: string, key: string): Promise<string | null> {
+    try {
+      const result = await this.s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+      return await streamBodyToString(result.Body);
+    } catch (error) {
+      if (error instanceof NoSuchKey || (error as { name?: string }).name === 'NoSuchKey') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async listObjects(bucket: string, prefix: string): Promise<Array<{
+    key: string;
+    sizeBytes: number;
+    modifiedAt: string | null;
+  }>> {
+    const objects: Array<{ key: string; sizeBytes: number; modifiedAt: string | null }> = [];
+    let continuationToken: string | undefined;
+    do {
+      const result = await this.s3.send(new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix,
+        ContinuationToken: continuationToken
+      }));
+      for (const object of result.Contents ?? []) {
+        if (!object.Key) {
+          continue;
+        }
+        objects.push({
+          key: object.Key,
+          sizeBytes: object.Size ?? 0,
+          modifiedAt: object.LastModified?.toISOString() ?? null
+        });
+      }
+      continuationToken = result.IsTruncated ? result.NextContinuationToken : undefined;
+    } while (continuationToken);
+    return objects;
+  }
+
+  async sendRunCommand(input: {
+    instanceId: string;
+    bucket: string;
+    region: string;
+    requestKey: string;
+    jobRef: string;
+  }): Promise<string> {
+    const script = buildRemoteRunnerScript(input);
+    const result = await this.ssm.send(new SendCommandCommand({
+      InstanceIds: [input.instanceId],
+      DocumentName: SSM_DOCUMENT_NAME,
+      Comment: `uk-housing-dashboard ${input.jobRef}`.slice(0, 100),
+      TimeoutSeconds: COMMAND_TIMEOUT_SECONDS,
+      CloudWatchOutputConfig: {
+        CloudWatchLogGroupName: REMOTE_LOG_GROUP,
+        CloudWatchOutputEnabled: true
+      },
+      Parameters: {
+        commands: [script]
+      }
+    }));
+    const commandId = result.Command?.CommandId;
+    if (!commandId) {
+      throw new Error('SSM send-command did not return a command id.');
+    }
+    return commandId;
+  }
+
+  async getCommandInvocation(instanceId: string, commandId: string): Promise<{
+    status: CommandInvocationStatus | string;
+    stdout: string;
+    stderr: string;
+  } | null> {
+    try {
+      const result = await this.ssm.send(new GetCommandInvocationCommand({
+        CommandId: commandId,
+        InstanceId: instanceId
+      }));
+      return {
+        status: result.Status ?? 'Pending',
+        stdout: result.StandardOutputContent ?? '',
+        stderr: result.StandardErrorContent ?? ''
+      };
+    } catch (error) {
+      if ((error as { name?: string }).name === 'InvocationDoesNotExist') {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  async cancelCommand(instanceId: string, commandId: string): Promise<void> {
+    await this.ssm.send(new CancelCommandCommand({
+      CommandId: commandId,
+      InstanceIds: [instanceId]
+    }));
+  }
+}
+
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+export function buildRemoteRunnerScript(input: {
+  instanceId: string;
+  bucket: string;
+  region: string;
+  requestKey: string;
+  jobRef: string;
+}): string {
+  const bucket = shellSingleQuote(input.bucket);
+  const region = shellSingleQuote(input.region);
+  const requestKey = shellSingleQuote(input.requestKey);
+  const jobRef = shellSingleQuote(input.jobRef);
+
+  return `set -euo pipefail
+BUCKET=${bucket}
+REGION=${region}
+REQUEST_KEY=${requestKey}
+JOB_REF=${jobRef}
+RUN_ROOT="$HOME/remote-runs/$JOB_REF"
+REQUEST_JSON="$RUN_ROOT/request.json"
+SOURCE_DIR="$RUN_ROOT/source"
+ARTIFACT_DIR="$RUN_ROOT/artifact"
+mkdir -p "$RUN_ROOT" "$ARTIFACT_DIR/logs"
+exec > >(tee -a "$ARTIFACT_DIR/logs/ssm-command.log") 2>&1
+echo "[remote] job=$JOB_REF request=s3://$BUCKET/$REQUEST_KEY"
+cleanup_failure() {
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    node - "$ARTIFACT_DIR/remote-status.json" "$JOB_REF" "$status" <<'NODE' || true
+const fs = require('node:fs');
+const [path, jobRef, status] = process.argv.slice(2);
+fs.mkdirSync(require('node:path').dirname(path), { recursive: true });
+fs.writeFileSync(path, JSON.stringify({
+  schemaVersion: 1,
+  jobRef,
+  status: 'failed',
+  exitCode: Number(status),
+  endedAt: new Date().toISOString()
+}, null, 2) + '\\n');
+NODE
+    if [ -f "$REQUEST_JSON" ]; then
+      PREFIX="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.artifactS3Prefix || '');" "$REQUEST_JSON" || true)"
+      if [ -n "$PREFIX" ]; then
+        aws s3 sync "$ARTIFACT_DIR/" "s3://$BUCKET/$PREFIX" --region "$REGION" --only-show-errors || true
+      fi
+    fi
+  fi
+  exit "$status"
+}
+trap cleanup_failure EXIT
+aws s3 cp "s3://$BUCKET/$REQUEST_KEY" "$REQUEST_JSON" --region "$REGION" --only-show-errors
+BUNDLE_KEY="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.sourceBundleKey);" "$REQUEST_JSON")"
+SOURCE_COMMIT="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.sourceCommit);" "$REQUEST_JSON")"
+ARTIFACT_PREFIX="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.artifactS3Prefix);" "$REQUEST_JSON")"
+aws s3 cp "s3://$BUCKET/$BUNDLE_KEY" "$RUN_ROOT/source.bundle" --region "$REGION" --only-show-errors
+rm -rf "$SOURCE_DIR"
+git clone "$RUN_ROOT/source.bundle" "$SOURCE_DIR"
+cd "$SOURCE_DIR"
+git checkout --detach "$SOURCE_COMMIT"
+git status --short > "$ARTIFACT_DIR/logs/source-status.txt"
+cd "$SOURCE_DIR/dashboard"
+npm ci --include=dev
+node --import tsx/esm server/remoteRunnerCli.ts --request "$REQUEST_JSON" --run-root "$RUN_ROOT/work" --artifact-root "$ARTIFACT_DIR"
+find "$ARTIFACT_DIR" -type f ! -name output-manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > "$ARTIFACT_DIR/output-manifest.sha256"
+aws s3 sync "$ARTIFACT_DIR/" "s3://$BUCKET/$ARTIFACT_PREFIX" --region "$REGION" --only-show-errors
+trap - EXIT
+echo "[remote] completed job=$JOB_REF prefix=s3://$BUCKET/$ARTIFACT_PREFIX"
+`;
+}
+
+function remoteResultsFileType(fileName: string): ResultsFileType {
+  if (fileName === 'Output-run1.csv') {
+    return 'output';
+  }
+  if (fileName.startsWith('coreIndicator-') && fileName.endsWith('.csv')) {
+    return 'core_indicator';
+  }
+  if (fileName === 'config.properties') {
+    return 'config';
+  }
+  if (fileName.endsWith('.csv')) {
+    return 'other';
+  }
+  return 'other';
+}
+
+function remoteResultsStatus(job: RemoteJobRecord, fileCount: number): ResultsRunStatus {
+  if (job.status !== 'succeeded') {
+    return 'invalid';
+  }
+  return fileCount > 0 ? 'partial' : 'invalid';
+}
+
+export class RemoteExecutionManager {
+  private readonly config: RemoteExecutionConfig;
+  private readonly adapter: RemoteAwsAdapter;
+
+  constructor(config: RemoteExecutionConfig, adapter?: RemoteAwsAdapter) {
+    this.config = config;
+    this.adapter = adapter ?? new AwsSdkRemoteAdapter(config.region);
+  }
+
+  async getStatus(): Promise<RemoteExecutionStatus> {
+    return this.adapter.getRunnerStatus(this.config.runnerInstanceId);
+  }
+
+  async decorateModelRunOptions(options: ModelRunOptionsPayload): Promise<ModelRunOptionsPayload> {
+    const status = await this.getStatus();
+    return {
+      ...options,
+      executionEnabled: status.available,
+      executionDisabledReason: status.available ? null : status.reason,
+      executionBackend: 'aws_ssm',
+      remoteExecution: status
+    };
+  }
+
+  async submitModelRun(
+    pathsInput: RuntimePathInput,
+    payload: ModelRunSubmitRequest
+  ): Promise<ModelRunSubmitResponse> {
+    const preparedResult = prepareModelRunSubmission(pathsInput, payload, { ignoreStorageCap: true });
+    if (!preparedResult.accepted) {
+      return preparedResult;
+    }
+
+    const prepared = preparedResult.prepared;
+    const now = new Date();
+    const jobRef = `manual:${prepared.jobId}`;
+    const artifactS3Prefix = `experiments/manual/${utcDateFragment(now)}/${sanitizeS3Segment(prepared.runId)}/`;
+    const requestKey = `${REQUEST_PREFIX}/${sanitizeS3Segment(jobRef)}.json`;
+    const source = await this.adapter.getSourceDeployManifest(this.config.artifactsBucket);
+
+    const job: RemoteJobRecord = {
+      schemaVersion: 1,
+      jobRef,
+      type: 'manual',
+      id: prepared.jobId,
+      title: prepared.title,
+      status: 'queued',
+      createdAt: now.toISOString(),
+      baseline: prepared.baseline,
+      runId: prepared.runId,
+      outputPath: `s3://${this.config.artifactsBucket}/${artifactS3Prefix}Results/${prepared.runId}`,
+      configPath: `s3://${this.config.artifactsBucket}/${artifactS3Prefix}request.json`,
+      artifactS3Prefix,
+      requestKey,
+      sourceCommit: source.commit,
+      sourceBundleKey: source.bundleKey,
+      warnings: prepared.warnings
+    };
+
+    await this.dispatchRemoteJob(job, payload);
+    return {
+      accepted: true,
+      warnings: prepared.warnings,
+      job: this.toModelRunJob(job)
+    };
+  }
+
+  async submitSensitivityExperiment(
+    pathsInput: RuntimePathInput,
+    payload: SensitivityExperimentCreateRequest
+  ): Promise<SensitivityExperimentSubmitResponse> {
+    const preparedResult = prepareSensitivityExperimentSubmission(pathsInput, payload);
+    if (!preparedResult.accepted) {
+      return preparedResult;
+    }
+
+    const prepared = preparedResult.prepared;
+    const now = new Date();
+    const jobRef = `sensitivity:${prepared.experimentId}`;
+    const artifactS3Prefix = `experiments/sensitivity/${utcDateFragment(now)}/${sanitizeS3Segment(prepared.experimentId)}/`;
+    const requestKey = `${REQUEST_PREFIX}/${sanitizeS3Segment(jobRef)}.json`;
+    const source = await this.adapter.getSourceDeployManifest(this.config.artifactsBucket);
+    const metadata = this.toSensitivityMetadata(prepared, now);
+
+    const job: RemoteJobRecord = {
+      schemaVersion: 1,
+      jobRef,
+      type: 'sensitivity',
+      id: prepared.experimentId,
+      title: prepared.title,
+      status: 'queued',
+      createdAt: now.toISOString(),
+      baseline: prepared.baseline,
+      outputPath: `s3://${this.config.artifactsBucket}/${artifactS3Prefix}Results/experiments/sensitivity/${prepared.experimentId}`,
+      configPath: `s3://${this.config.artifactsBucket}/${artifactS3Prefix}request.json`,
+      artifactS3Prefix,
+      requestKey,
+      sourceCommit: source.commit,
+      sourceBundleKey: source.bundleKey,
+      warnings: prepared.warnings,
+      sensitivityMetadata: metadata
+    };
+
+    await this.dispatchRemoteJob(job, payload);
+    return {
+      accepted: true,
+      warnings: prepared.warnings,
+      warningSummary: prepared.warningSummary,
+      experiment: metadata
+    };
+  }
+
+  async listModelRunJobs(): Promise<ModelRunJobsPayload> {
+    const index = await this.refreshIndex();
+    return {
+      jobs: index.jobs.filter((job) => job.type === 'manual').map((job) => this.toModelRunJob(job))
+    };
+  }
+
+  async getModelRunJob(jobId: string): Promise<ModelRunJob> {
+    const job = await this.findJob('manual', jobId);
+    return this.toModelRunJob(job);
+  }
+
+  async getModelRunJobLogs(jobId: string, cursor: number | undefined, limit: number | undefined): Promise<ModelRunJobLogsPayload> {
+    const job = await this.findJob('manual', jobId);
+    const lines = await this.getJobLogLines(job);
+    const slice = sliceLogLines(lines, cursor, limit);
+    return {
+      jobId,
+      ...slice,
+      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore
+    };
+  }
+
+  async clearModelRunJob(jobId: string): Promise<ModelRunJobClearResponse> {
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.type === 'manual' && item.id === jobId);
+    if (!job) {
+      throw new Error(`Unknown model run job: ${jobId}`);
+    }
+    if (isActive(job.status)) {
+      throw new Error('Only finished jobs can be cleared from the job queue.');
+    }
+    index.jobs = index.jobs.filter((item) => item.jobRef !== job.jobRef);
+    await this.saveIndex(index);
+    return { jobId, cleared: true };
+  }
+
+  async listRemoteManualResultRuns(): Promise<{ runs: ResultsRunSummary[] }> {
+    const index = await this.refreshIndex();
+    const summaries = await Promise.all(
+      index.jobs
+        .filter((job) => job.type === 'manual' && job.runId)
+        .map((job) => this.toRemoteResultsSummary(job))
+    );
+    summaries.sort((left, right) => Date.parse(right.modifiedAt) - Date.parse(left.modifiedAt));
+    return { runs: summaries };
+  }
+
+  async getRemoteManualResultDetail(runId: string): Promise<ResultsRunDetail> {
+    const job = await this.findManualJobByRunId(runId);
+    const summary = await this.toRemoteResultsSummary(job);
+    const unavailableNote = 'Remote artifact metadata only; download the S3 run artifact for local chart parsing.';
+    const indicators = getResultsIndicatorCatalog().map((indicator) => ({
+      ...indicator,
+      available: false,
+      coverageStatus: 'unsupported' as const,
+      note: unavailableNote
+    }));
+    return {
+      ...summary,
+      indicators,
+      kpiSummary: indicators.map((indicator) => ({
+        indicatorId: indicator.id,
+        title: indicator.title,
+        units: indicator.units,
+        windowType: 'tail_120' as const,
+        mean: null,
+        cv: null,
+        annualisedTrend: null,
+        range: null
+      }))
+    };
+  }
+
+  async getRemoteManualResultFiles(runId: string): Promise<{ runId: string; files: ResultsFileManifestEntry[] }> {
+    const job = await this.findManualJobByRunId(runId);
+    return {
+      runId,
+      files: await this.listRemoteRunFiles(job)
+    };
+  }
+
+  async listSensitivityExperiments(): Promise<SensitivityExperimentListPayload> {
+    const index = await this.refreshIndex();
+    return {
+      experiments: index.jobs
+        .filter((job) => job.type === 'sensitivity')
+        .map((job) => this.toSensitivitySummary(job))
+    };
+  }
+
+  async getSensitivityExperiment(experimentId: string): Promise<SensitivityExperimentDetailPayload> {
+    const job = await this.findJob('sensitivity', experimentId);
+    const metadata = await this.getRemoteSensitivityMetadata(job);
+    return { experiment: metadata };
+  }
+
+  async getSensitivityExperimentResults(experimentId: string): Promise<SensitivityExperimentResultsPayload> {
+    const job = await this.findJob('sensitivity', experimentId);
+    const summary = await this.adapter.getJson<{ results: SensitivityExperimentResultsPayload }>(
+      this.config.artifactsBucket,
+      `${job.artifactS3Prefix}Results/experiments/sensitivity/${experimentId}/summary.json`
+    );
+    return summary?.results ?? {
+      experimentId,
+      baselinePointId: null,
+      points: []
+    };
+  }
+
+  async getSensitivityExperimentCharts(experimentId: string): Promise<SensitivityExperimentChartsPayload> {
+    const job = await this.findJob('sensitivity', experimentId);
+    const metadata = await this.getRemoteSensitivityMetadata(job);
+    const summary = await this.adapter.getJson<{ charts: SensitivityExperimentChartsPayload }>(
+      this.config.artifactsBucket,
+      `${job.artifactS3Prefix}Results/experiments/sensitivity/${experimentId}/summary.json`
+    );
+    return summary?.charts ?? {
+      experimentId,
+      parameter: metadata.parameter,
+      windowType: 'tail_120',
+      tornado: [],
+      deltaTrend: []
+    };
+  }
+
+  async getSensitivityExperimentLogs(
+    experimentId: string,
+    cursor: number | undefined,
+    limit: number | undefined
+  ): Promise<SensitivityExperimentLogsPayload> {
+    const job = await this.findJob('sensitivity', experimentId);
+    const lines = await this.getJobLogLines(job);
+    const slice = sliceLogLines(lines, cursor, limit);
+    return {
+      experimentId,
+      ...slice,
+      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore
+    };
+  }
+
+  async listExperimentJobs(): Promise<ExperimentJobsPayload> {
+    const index = await this.refreshIndex();
+    const jobs = index.jobs
+      .map((job) => this.toExperimentJobSummary(job))
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+    const activeManual = jobs.find((job) => job.type === 'manual' && isActive(job.status as RemoteJobStatus)) ?? null;
+    const activeSensitivity = jobs.find((job) => job.type === 'sensitivity' && isActive(job.status as RemoteJobStatus)) ?? null;
+    return {
+      jobs,
+      locks: {
+        manualSubmissionLocked: Boolean(activeSensitivity),
+        sensitivitySubmissionLocked: Boolean(activeManual),
+        activeManualJobRef: activeManual?.jobRef ?? null,
+        activeSensitivityJobRef: activeSensitivity?.jobRef ?? null
+      }
+    };
+  }
+
+  async getExperimentJobLogs(jobRef: string, cursor: number | undefined, limit: number | undefined): Promise<ExperimentJobLogsPayload> {
+    const job = await this.findJobByRef(jobRef);
+    const lines = await this.getJobLogLines(job);
+    const slice = sliceLogLines(lines, cursor, limit);
+    return {
+      jobRef: job.jobRef,
+      type: job.type,
+      ...slice,
+      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore
+    };
+  }
+
+  async cancelExperimentJob(jobRef: string): Promise<{ job: ExperimentJobSummary }> {
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.jobRef === jobRef);
+    if (!job) {
+      throw new Error(`Unknown experiment jobRef: ${jobRef}`);
+    }
+    if (TERMINAL_STATUSES.has(job.status)) {
+      return { job: this.toExperimentJobSummary(job) };
+    }
+    if (job.ssmCommandId) {
+      await this.adapter.cancelCommand(this.config.runnerInstanceId, job.ssmCommandId);
+    }
+    job.status = 'canceled';
+    job.endedAt = isoNow();
+    await this.saveIndex(index);
+    return { job: this.toExperimentJobSummary(job) };
+  }
+
+  private async dispatchRemoteJob(
+    job: RemoteJobRecord,
+    payload: ModelRunSubmitRequest | SensitivityExperimentCreateRequest
+  ): Promise<void> {
+    const status = await this.getStatus();
+    if (!status.available) {
+      throw new Error(status.reason ?? 'EC2 experiment runner is unavailable.');
+    }
+
+    const index = await this.refreshIndex();
+    const activeCount = index.jobs.filter((item) => isActive(item.status)).length;
+    if (activeCount >= this.config.maxActiveRemoteRuns) {
+      throw new Error(`Remote experiment capacity reached (${this.config.maxActiveRemoteRuns}).`);
+    }
+
+    const request: RemoteRunRequest = {
+      schemaVersion: 1,
+      jobRef: job.jobRef,
+      type: job.type,
+      createdAt: job.createdAt,
+      sourceCommit: job.sourceCommit,
+      sourceBundleKey: job.sourceBundleKey,
+      artifactS3Prefix: job.artifactS3Prefix,
+      payload
+    };
+    await this.adapter.putJson(this.config.artifactsBucket, job.requestKey, request);
+    index.jobs.push(job);
+    await this.saveIndex(index);
+    try {
+      const commandId = await this.adapter.sendRunCommand({
+        instanceId: this.config.runnerInstanceId,
+        bucket: this.config.artifactsBucket,
+        region: this.config.region,
+        requestKey: job.requestKey,
+        jobRef: job.jobRef
+      });
+      job.ssmCommandId = commandId;
+      job.status = 'running';
+      job.startedAt = isoNow();
+      await this.saveIndex(index);
+    } catch (error) {
+      job.status = 'failed';
+      job.endedAt = isoNow();
+      job.failureReason = (error as Error).message.slice(0, 500);
+      await this.saveIndex(index);
+      throw error;
+    }
+  }
+
+  private async loadIndex(): Promise<RemoteJobIndex> {
+    const index = await this.adapter.getJson<RemoteJobIndex>(this.config.artifactsBucket, INDEX_KEY);
+    return index ?? {
+      schemaVersion: 1,
+      updatedAt: isoNow(),
+      jobs: []
+    };
+  }
+
+  private async saveIndex(index: RemoteJobIndex): Promise<void> {
+    index.updatedAt = isoNow();
+    await this.adapter.putJson(this.config.artifactsBucket, INDEX_KEY, index);
+  }
+
+  private async refreshIndex(): Promise<RemoteJobIndex> {
+    const index = await this.loadIndex();
+    let changed = false;
+    for (const job of index.jobs) {
+      if (!job.ssmCommandId || TERMINAL_STATUSES.has(job.status)) {
+        continue;
+      }
+      const invocation = await this.adapter.getCommandInvocation(this.config.runnerInstanceId, job.ssmCommandId);
+      if (!invocation) {
+        continue;
+      }
+      const nextStatus = mapSsmStatus(invocation.status);
+      if (nextStatus !== job.status) {
+        job.status = nextStatus;
+        changed = true;
+      }
+      if (TERMINAL_STATUSES.has(nextStatus) && !job.endedAt) {
+        job.endedAt = isoNow();
+        changed = true;
+      }
+      if (nextStatus === 'failed' && invocation.stderr && !job.failureReason) {
+        job.failureReason = invocation.stderr.split(/\r?\n/).find(Boolean)?.slice(0, 500);
+        changed = true;
+      }
+    }
+    if (changed) {
+      await this.saveIndex(index);
+    }
+    return index;
+  }
+
+  private async findJob(type: RemoteJobType, id: string): Promise<RemoteJobRecord> {
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.type === type && item.id === id.trim());
+    if (!job) {
+      throw new Error(type === 'manual' ? `Unknown model run job: ${id}` : `Unknown sensitivity experiment: ${id}`);
+    }
+    return job;
+  }
+
+  private async findJobByRef(jobRef: string): Promise<RemoteJobRecord> {
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.jobRef === jobRef.trim());
+    if (!job) {
+      throw new Error(`Unknown experiment jobRef: ${jobRef}`);
+    }
+    return job;
+  }
+
+  private async findManualJobByRunId(runId: string): Promise<RemoteJobRecord> {
+    const normalizedRunId = runId.trim();
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.type === 'manual' && item.runId === normalizedRunId);
+    if (!job) {
+      throw new Error(`Unknown remote manual result run: ${runId}`);
+    }
+    return job;
+  }
+
+  private remoteRunResultsPrefix(job: RemoteJobRecord): string {
+    return `${job.artifactS3Prefix}Results/${job.runId ?? job.id}/`;
+  }
+
+  private async listRemoteRunFiles(job: RemoteJobRecord): Promise<ResultsFileManifestEntry[]> {
+    const prefix = this.remoteRunResultsPrefix(job);
+    const objects = await this.adapter.listObjects(this.config.artifactsBucket, prefix);
+    const files: ResultsFileManifestEntry[] = [];
+    for (const object of objects) {
+      const relativeName = object.key.slice(prefix.length);
+      if (!relativeName || relativeName.includes('/')) {
+        continue;
+      }
+      const fileType = remoteResultsFileType(relativeName);
+      files.push({
+        fileName: relativeName,
+        filePath: `s3://${this.config.artifactsBucket}/${object.key}`,
+        sizeBytes: object.sizeBytes,
+        modifiedAt: object.modifiedAt ?? job.endedAt ?? job.startedAt ?? job.createdAt,
+        fileType,
+        coverageStatus: object.sizeBytes === 0 ? 'empty' : 'unsupported',
+        note: fileType === 'config' ? undefined : 'Remote artifact manifest only.'
+      });
+    }
+    return files.sort((left, right) => left.fileName.localeCompare(right.fileName));
+  }
+
+  private async toRemoteResultsSummary(job: RemoteJobRecord): Promise<ResultsRunSummary> {
+    const files = await this.listRemoteRunFiles(job);
+    const sizeBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
+    const modifiedAt = files
+      .map((file) => Date.parse(file.modifiedAt))
+      .filter(Number.isFinite)
+      .sort((left, right) => right - left)[0];
+    return {
+      runId: job.runId ?? job.id,
+      path: `s3://${this.config.artifactsBucket}/${this.remoteRunResultsPrefix(job)}`,
+      modifiedAt: Number.isFinite(modifiedAt) ? new Date(modifiedAt).toISOString() : (job.endedAt ?? job.startedAt ?? job.createdAt),
+      createdAt: job.createdAt,
+      sizeBytes,
+      fileCount: files.length,
+      status: remoteResultsStatus(job, files.length),
+      configAvailable: files.some((file) => file.fileName === 'config.properties'),
+      parseCoverage: {
+        requiredCount: 0,
+        supportedCount: 0,
+        emptyCount: files.filter((file) => file.coverageStatus === 'empty').length,
+        errorCount: 0
+      }
+    };
+  }
+
+  private toModelRunJob(job: RemoteJobRecord): ModelRunJob {
+    return {
+      jobId: job.id,
+      runId: job.runId ?? job.id,
+      title: job.title,
+      baseline: job.baseline,
+      status: job.status,
+      backend: 'aws_ssm',
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      endedAt: job.endedAt,
+      outputPath: job.outputPath,
+      configPath: job.configPath,
+      exitCode: job.status === 'succeeded' ? 0 : null,
+      signal: job.status === 'canceled' ? 'SSM_CANCEL' : null
+    };
+  }
+
+  private toExperimentJobSummary(job: RemoteJobRecord): ExperimentJobSummary {
+    return {
+      jobRef: job.jobRef,
+      type: job.type,
+      id: job.id,
+      title: job.title || job.runId || job.id,
+      status: job.status,
+      backend: 'aws_ssm',
+      createdAt: job.createdAt,
+      startedAt: job.startedAt,
+      endedAt: job.endedAt,
+      baseline: job.baseline,
+      runId: job.runId
+    };
+  }
+
+  private toSensitivityMetadata(
+    prepared: PreparedSensitivityExperimentSubmission,
+    now: Date
+  ): SensitivityExperimentMetadata {
+    return {
+      experimentId: prepared.experimentId,
+      title: prepared.title,
+      baseline: prepared.baseline,
+      status: 'queued',
+      createdAt: now.toISOString(),
+      seedsPerPoint: prepared.seeds.length,
+      seeds: prepared.seeds,
+      maxWorkers: prepared.maxWorkers,
+      generalOverrides: prepared.generalOverrides,
+      parameter: {
+        key: prepared.parameter.key,
+        title: prepared.parameter.title,
+        description: prepared.parameter.description,
+        type: prepared.parameter.type as 'integer' | 'number',
+        baselineValue: prepared.baselineValue,
+        min: prepared.min,
+        max: prepared.max,
+        sampleCount: prepared.sampleCount
+      },
+      warnings: prepared.warnings,
+      warningSummary: prepared.warningSummary,
+      sampledPoints: prepared.samplePoints,
+      collapsedSlots: prepared.collapsedSlots,
+      runCommand: {
+        mode: 'maven',
+        commandTemplate: 'remote AWS SSM runner using repository Maven wrapper'
+      }
+    };
+  }
+
+  private toSensitivitySummary(job: RemoteJobRecord): SensitivityExperimentSummary {
+    const metadata = job.sensitivityMetadata;
+    if (!metadata) {
+      throw new Error(`Remote sensitivity job is missing metadata: ${job.jobRef}`);
+    }
+    return {
+      ...metadata,
+      status: job.status,
+      startedAt: job.startedAt,
+      endedAt: job.endedAt
+    };
+  }
+
+  private async getRemoteSensitivityMetadata(job: RemoteJobRecord): Promise<SensitivityExperimentMetadata> {
+    if (job.type !== 'sensitivity' || !job.sensitivityMetadata) {
+      throw new Error(`Remote job is not a sensitivity experiment: ${job.jobRef}`);
+    }
+    const stored = await this.adapter.getJson<SensitivityExperimentMetadata>(
+      this.config.artifactsBucket,
+      `${job.artifactS3Prefix}Results/experiments/sensitivity/${job.id}/metadata.json`
+    );
+    return {
+      ...(stored ?? job.sensitivityMetadata),
+      status: job.status,
+      startedAt: job.startedAt,
+      endedAt: job.endedAt,
+      failureReason: stored?.failureReason ?? job.failureReason
+    };
+  }
+
+  private async getJobLogLines(job: RemoteJobRecord): Promise<string[]> {
+    const artifactLog = await this.adapter.getText(this.config.artifactsBucket, `${job.artifactS3Prefix}logs/remote-runner.log`);
+    if (artifactLog) {
+      return toLines(artifactLog);
+    }
+    if (!job.ssmCommandId) {
+      return [`[system] Remote job ${job.jobRef} has not been dispatched yet.`];
+    }
+    const invocation = await this.adapter.getCommandInvocation(this.config.runnerInstanceId, job.ssmCommandId);
+    return [
+      `[system] Remote job ${job.jobRef} status=${job.status}`,
+      ...toLines(invocation?.stdout ?? null).map((line) => `[stdout] ${line}`),
+      ...toLines(invocation?.stderr ?? null).map((line) => `[stderr] ${line}`)
+    ];
+  }
+}

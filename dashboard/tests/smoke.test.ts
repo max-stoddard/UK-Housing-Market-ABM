@@ -85,6 +85,12 @@ import {
 } from '../server/lib/writeAuth.js';
 import { appendLogLine, type LogBufferState } from '../server/lib/logs/logBuffer.js';
 import { createRotatingLogWriter } from '../server/lib/logs/persistentLogs.js';
+import {
+  RemoteExecutionManager,
+  buildRemoteRunnerScript,
+  type RemoteAwsAdapter,
+  type RemoteExecutionConfig
+} from '../server/lib/remoteExecution.js';
 import { loadDashboardInputVersionHistory } from '../server/lib/dashboardInputVersionHistory.js';
 import { compareVersions, listVersions, parseVersionParts } from '../server/lib/versioning.js';
 import { assertAxisSpecComplete, getAxisSpec } from '../src/lib/chartAxes.js';
@@ -1387,6 +1393,213 @@ function createModelRunFixtureRepo(prefix = 'dashboard-model-runs-smoke-'): stri
   writeModelRunFixtureInputData(inputDataRoot);
   fs.mkdirSync(resultsRoot, { recursive: true });
   return root;
+}
+
+class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
+  runnerState = 'stopped';
+  ssmPingStatus = 'Offline';
+  readonly objects = new Map<string, string>();
+  readonly commands: Array<{ commandId: string; script: string; requestKey: string; jobRef: string }> = [];
+  readonly commandStatuses = new Map<string, string>();
+
+  constructor(private readonly sourceManifest = { commit: 'remote-fixture-commit', bundleKey: 'tmp/github-actions/source/remote-fixture.bundle' }) {
+    this.objects.set(
+      'fixture-bucket/tmp/github-actions/source/current-deploy.json',
+      JSON.stringify(sourceManifest)
+    );
+  }
+
+  async getRunnerStatus(instanceId: string) {
+    const available = this.runnerState === 'running' && this.ssmPingStatus === 'Online';
+    return {
+      backend: 'aws_ssm' as const,
+      configured: true,
+      available,
+      runnerInstanceId: instanceId,
+      runnerState: this.runnerState,
+      ssmPingStatus: this.ssmPingStatus,
+      reason: available ? null : `EC2 runner is ${this.runnerState}.`,
+      checkedAt: new Date().toISOString()
+    };
+  }
+
+  async getSourceDeployManifest() {
+    return this.sourceManifest;
+  }
+
+  async putJson(bucket: string, key: string, value: unknown): Promise<void> {
+    this.objects.set(`${bucket}/${key}`, JSON.stringify(value));
+  }
+
+  async getJson<T>(bucket: string, key: string): Promise<T | null> {
+    const value = this.objects.get(`${bucket}/${key}`);
+    return value ? (JSON.parse(value) as T) : null;
+  }
+
+  async getText(bucket: string, key: string): Promise<string | null> {
+    return this.objects.get(`${bucket}/${key}`) ?? null;
+  }
+
+  async listObjects(bucket: string, prefix: string): Promise<Array<{ key: string; sizeBytes: number; modifiedAt: string | null }>> {
+    const bucketPrefix = `${bucket}/${prefix}`;
+    return [...this.objects.entries()]
+      .filter(([key]) => key.startsWith(bucketPrefix))
+      .map(([key, value]) => ({
+        key: key.slice(bucket.length + 1),
+        sizeBytes: Buffer.byteLength(value),
+        modifiedAt: new Date('2026-05-11T00:00:00.000Z').toISOString()
+      }));
+  }
+
+  async sendRunCommand(input: {
+    instanceId: string;
+    bucket: string;
+    region: string;
+    requestKey: string;
+    jobRef: string;
+  }): Promise<string> {
+    const commandId = `command-${this.commands.length + 1}`;
+    this.commands.push({
+      commandId,
+      script: buildRemoteRunnerScript(input),
+      requestKey: input.requestKey,
+      jobRef: input.jobRef
+    });
+    this.commandStatuses.set(commandId, 'InProgress');
+    return commandId;
+  }
+
+  async getCommandInvocation(_instanceId: string, commandId: string): Promise<{ status: string; stdout: string; stderr: string } | null> {
+    return {
+      status: this.commandStatuses.get(commandId) ?? 'InProgress',
+      stdout: 'remote stdout fixture',
+      stderr: ''
+    };
+  }
+
+  async cancelCommand(_instanceId: string, commandId: string): Promise<void> {
+    this.commandStatuses.set(commandId, 'Cancelled');
+  }
+}
+
+const remoteFixtureRoot = createModelRunFixtureRepo('dashboard-remote-execution-smoke-');
+try {
+  const remoteConfig: RemoteExecutionConfig = {
+    region: 'eu-west-2',
+    runnerInstanceId: 'i-remote-fixture',
+    artifactsBucket: 'fixture-bucket',
+    maxActiveRemoteRuns: 1
+  };
+  const remoteAdapter = new FakeRemoteAwsAdapter();
+  const remoteManager = new RemoteExecutionManager(remoteConfig, remoteAdapter);
+  const remoteOptions = getModelRunOptions(remoteFixtureRoot, 'v1.0', true);
+  const unavailableOptions = await remoteManager.decorateModelRunOptions(remoteOptions);
+  assert.equal(unavailableOptions.executionEnabled, false, 'Expected stopped remote runner to disable execution options');
+  assert.equal(unavailableOptions.executionBackend, 'aws_ssm', 'Expected remote options to identify AWS SSM backend');
+  assert.ok(
+    unavailableOptions.executionDisabledReason?.includes('stopped'),
+    'Expected stopped remote runner reason to be surfaced in options'
+  );
+  await assert.rejects(
+    () => remoteManager.submitModelRun(remoteFixtureRoot, {
+      baseline: 'v1.0',
+      title: 'remote stopped fixture',
+      overrides: { SEED: 44 },
+      confirmWarnings: true
+    }),
+    /stopped/,
+    'Expected stopped remote runner to reject submissions before SSM dispatch'
+  );
+
+  remoteAdapter.runnerState = 'running';
+  remoteAdapter.ssmPingStatus = 'Online';
+  const availableOptions = await remoteManager.decorateModelRunOptions(remoteOptions);
+  assert.equal(availableOptions.executionEnabled, true, 'Expected running SSM-ready runner to enable execution options');
+
+  const manualSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
+    baseline: 'v1.0',
+    title: 'remote manual fixture',
+    overrides: { SEED: 45 },
+    confirmWarnings: true
+  });
+  assert.equal(manualSubmit.accepted, true, 'Expected remote manual run to be accepted');
+  assert.equal(remoteAdapter.commands.length, 1, 'Expected remote manual submit to dispatch one SSM command');
+  const manualCommand = remoteAdapter.commands[0];
+  assert.ok(manualCommand?.script.includes('remoteRunnerCli.ts'), 'Expected fixed SSM command to call the remote runner CLI');
+  assert.equal(manualCommand?.requestKey.includes(':'), false, 'Expected remote request S3 keys to be sanitized');
+  assert.ok(
+    manualCommand?.script.includes('aws s3 sync "$ARTIFACT_DIR/"'),
+    'Expected fixed SSM command to sync only the artifact directory'
+  );
+  assert.equal(
+    manualCommand?.script.includes('aws s3 sync "$SOURCE_DIR"'),
+    false,
+    'Expected fixed SSM command not to sync the source checkout'
+  );
+  assert.equal(
+    manualCommand?.script.includes('private-datasets'),
+    false,
+    'Expected fixed SSM command not to reference private dataset paths'
+  );
+  assert.equal(
+    manualCommand?.script.includes('/agents'),
+    false,
+    'Expected fixed SSM command not to sync operational agent paths'
+  );
+  assert.ok(
+    remoteAdapter.objects.has(`fixture-bucket/${manualCommand?.requestKey ?? ''}`),
+    'Expected remote submit to persist a request JSON to S3 before dispatch'
+  );
+  remoteAdapter.commandStatuses.set(manualCommand?.commandId ?? '', 'Success');
+  const remoteRunPrefix = manualSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
+  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/config.properties`, 'SEED=45\n');
+  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/Output-run1.csv`, 'Model time; nHomeless\n0; 1\n');
+  const manualJobs = await remoteManager.listModelRunJobs();
+  assert.equal(manualJobs.jobs[0]?.status, 'succeeded', 'Expected SSM Success to refresh remote manual job status');
+  const remoteManualResults = await remoteManager.listRemoteManualResultRuns();
+  assert.equal(
+    remoteManualResults.runs.some((run) => run.runId === manualSubmit.job?.runId && run.path.startsWith('s3://fixture-bucket/')),
+    true,
+    'Expected remote manual results list to expose S3-backed run artifacts'
+  );
+  const remoteManualFiles = await remoteManager.getRemoteManualResultFiles(manualSubmit.job?.runId ?? '');
+  assert.equal(
+    remoteManualFiles.files.some((file) => file.fileName === 'Output-run1.csv' && file.filePath.startsWith('s3://fixture-bucket/')),
+    true,
+    'Expected remote manual result files endpoint to expose S3 object paths'
+  );
+  const manualLogs = await remoteManager.getExperimentJobLogs(`manual:${manualSubmit.job?.jobId ?? ''}`, 0, 20);
+  assert.ok(
+    manualLogs.lines.some((line) => line.includes('remote stdout fixture')),
+    'Expected remote logs endpoint to expose SSM output while artifacts are not yet synced'
+  );
+
+  const sensitivitySubmit = await remoteManager.submitSensitivityExperiment(remoteFixtureRoot, {
+    baseline: 'v1.0',
+    title: 'remote sensitivity fixture',
+    parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+    min: 0,
+    max: 1,
+    sampleCount: 2,
+    overrides: { N_SIMS: 1 },
+    confirmWarnings: true
+  });
+  assert.equal(sensitivitySubmit.accepted, true, 'Expected remote sensitivity experiment to be accepted');
+  assert.equal(remoteAdapter.commands.length, 2, 'Expected remote sensitivity submit to dispatch one SSM command');
+  const remoteJobs = await remoteManager.listExperimentJobs();
+  assert.ok(
+    remoteJobs.jobs.some((job) => job.jobRef === `sensitivity:${sensitivitySubmit.experiment?.experimentId}`),
+    'Expected unified remote job list to include sensitivity jobs'
+  );
+  assert.equal(
+    remoteJobs.locks.manualSubmissionLocked,
+    true,
+    'Expected active remote sensitivity job to lock manual submission'
+  );
+  const canceled = await remoteManager.cancelExperimentJob(`sensitivity:${sensitivitySubmit.experiment?.experimentId ?? ''}`);
+  assert.equal(canceled.job.status, 'canceled', 'Expected remote cancel to map to canceled job status');
+} finally {
+  fs.rmSync(remoteFixtureRoot, { recursive: true, force: true });
 }
 
 function createDesktopRuntimeFixture(prefix = 'dashboard-runtime-paths-smoke-'): {
@@ -5423,11 +5636,11 @@ assert.ok(
   'Dashboard README should document dev, cloud, and desktop runtime targets together'
 );
 assert.ok(
-  dashboardReadmeSource.includes('DASHBOARD_ENABLE_MODEL_RUNS=false') &&
+  dashboardReadmeSource.includes('DASHBOARD_EXECUTION_BACKEND=aws_ssm') &&
     dashboardReadmeSource.includes('/healthz') &&
     dashboardReadmeSource.includes('/api/runtime-deps') &&
-    dashboardReadmeSource.includes('public model execution fails closed'),
-  'Runtime matrix should document cloud fail-closed model execution and read-route availability'
+    dashboardReadmeSource.includes('The API does not start EC2 instances'),
+  'Runtime matrix should document cloud remote execution gating and read-route availability'
 );
 assert.ok(
   dashboardReadmeSource.includes('Packaged launcher for dashboard-managed manual and sensitivity runs') &&
