@@ -1,6 +1,5 @@
 // Author: Max Stoddard
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -10,7 +9,7 @@ import {
   createMavenModelLauncher,
   createPackagedModelLauncher,
   getConfiguredMavenBin,
-  prepareCommandForSpawn,
+  spawnCommand,
   type ModelLauncher,
   type ModelLaunchRequest
 } from '../server/lib/modelLauncher.js';
@@ -31,8 +30,7 @@ interface ProcessResult {
 
 function runCommand(command: string, args: string[], cwd: string): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const prepared = prepareCommandForSpawn(command, args, { cwd, shell: false });
-    const child = spawn(prepared.command, prepared.args, prepared.options);
+    const child = spawnCommand(command, args, { cwd, shell: false });
     let stdout = '';
     let stderr = '';
 

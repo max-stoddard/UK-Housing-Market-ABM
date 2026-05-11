@@ -1,6 +1,7 @@
 // Author: Max Stoddard
-import { spawn, type ChildProcessWithoutNullStreams, type SpawnOptionsWithoutStdio } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import path from 'node:path';
+import crossSpawn from 'cross-spawn';
 
 export type ModelLauncherMode = 'maven' | 'packaged';
 
@@ -32,58 +33,21 @@ export interface ModelLauncher {
   launch: (request: ModelLaunchRequest) => ChildProcessWithoutNullStreams;
 }
 
-const windowsBatchInvokerScript = [
-  '$ErrorActionPreference = "Stop"',
-  '$command = $args[0]',
-  '$commandArgs = @()',
-  'if ($args.Count -gt 1) { $commandArgs = $args[1..($args.Count - 1)] }',
-  '& $command @commandArgs',
-  'exit $LASTEXITCODE'
-].join('; ');
-const windowsBatchInvokerEncodedScript = Buffer.from(windowsBatchInvokerScript, 'utf16le').toString('base64');
-
 function defaultMavenWrapperBin(repoRoot?: string): string {
   const wrapperName = process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw';
   return repoRoot ? path.join(repoRoot, wrapperName) : `.${path.sep}${wrapperName}`;
-}
-
-function isWindowsBatchCommand(command: string): boolean {
-  return process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
 }
 
 export function getConfiguredMavenBin(repoRoot?: string): string {
   return process.env.DASHBOARD_MAVEN_BIN?.trim() || defaultMavenWrapperBin(repoRoot);
 }
 
-export function prepareCommandForSpawn(
+export function spawnCommand(
   command: string,
   args: string[],
   options: SpawnOptionsWithoutStdio
-): ModelLauncherCommand {
-  if (!isWindowsBatchCommand(command)) {
-    return {
-      command,
-      args,
-      options: { ...options, shell: false },
-      commandTemplate: `${command} ${args.join(' ')}`
-    };
-  }
-
-  return {
-    command: 'powershell.exe',
-    args: [
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-EncodedCommand',
-      windowsBatchInvokerEncodedScript,
-      command,
-      ...args
-    ],
-    options: { ...options, shell: false },
-    commandTemplate: `${command} ${args.join(' ')}`
-  };
+): ChildProcessWithoutNullStreams {
+  return crossSpawn(command, args, { ...options, shell: false }) as ChildProcessWithoutNullStreams;
 }
 
 function quoteForExecArgs(value: string): string {
@@ -142,8 +106,7 @@ export function createMavenModelLauncher(mavenBin = getConfiguredMavenBin()): Mo
     buildCommand: (request) => buildMavenModelLaunchCommand(mavenBin, request),
     launch: (request) => {
       const command = buildMavenModelLaunchCommand(mavenBin, request);
-      const prepared = prepareCommandForSpawn(command.command, command.args, command.options);
-      return spawn(prepared.command, prepared.args, prepared.options);
+      return spawnCommand(command.command, command.args, command.options);
     }
   };
 }
@@ -162,8 +125,7 @@ export function createPackagedModelLauncher(javaExe: string, modelJar: string): 
     buildCommand: (request) => buildPackagedModelLaunchCommand(javaExe, modelJar, request),
     launch: (request) => {
       const command = buildPackagedModelLaunchCommand(javaExe, modelJar, request);
-      const prepared = prepareCommandForSpawn(command.command, command.args, command.options);
-      return spawn(prepared.command, prepared.args, prepared.options);
+      return spawnCommand(command.command, command.args, command.options);
     }
   };
 }
