@@ -169,6 +169,7 @@ Resources:
                 Action:
                   - cloudfront:CreateInvalidation
                   - cloudfront:GetDistribution
+                  - cloudfront:GetInvalidation
                 Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
               - Sid: EcrAuth
                 Effect: Allow

@@ -2,6 +2,18 @@
 name: Dashboard CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      deploy_target:
+        description: AWS dashboard surface to deploy from master.
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - frontend
+          - api
+          - source
   pull_request:
     branches:
       - master
@@ -73,6 +85,36 @@ jobs:
         name: Classify changed paths
         run: |
           set -euo pipefail
+
+          write_outputs() {
+            echo "frontend_changed=$1" >> "$GITHUB_OUTPUT"
+            echo "api_changed=$2" >> "$GITHUB_OUTPUT"
+            echo "model_changed=$3" >> "$GITHUB_OUTPUT"
+            echo "source_bundle_changed=$4" >> "$GITHUB_OUTPUT"
+            echo "dashboard_checks_required=$5" >> "$GITHUB_OUTPUT"
+          }
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            case "${{ inputs.deploy_target }}" in
+              all)
+                write_outputs true true true true true
+                ;;
+              frontend)
+                write_outputs true false false false true
+                ;;
+              api)
+                write_outputs false true false false true
+                ;;
+              source)
+                write_outputs false false true true false
+                ;;
+              *)
+                echo "Unsupported deploy_target: ${{ inputs.deploy_target }}" >&2
+                exit 1
+                ;;
+            esac
+            exit 0
+          fi
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BEFORE="${{ github.event.pull_request.base.sha }}"
@@ -190,7 +232,7 @@ jobs:
       - model-tests
     if: |
       always() &&
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/master' &&
       needs.classify-changes.outputs.frontend_changed == 'true' &&
       needs.dashboard-checks.result == 'success' &&
@@ -231,7 +273,18 @@ jobs:
         run: aws s3 sync dashboard/dist "s3://$AWS_FRONTEND_BUCKET/" --delete --region "$AWS_REGION"
 
       - name: Invalidate CloudFront
-        run: aws cloudfront create-invalidation --distribution-id "$AWS_CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+        run: |
+          set -euo pipefail
+          INVALIDATION_ID="$(aws cloudfront create-invalidation \
+            --distribution-id "$AWS_CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text)"
+          test -n "$INVALIDATION_ID"
+          test "$INVALIDATION_ID" != "None"
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$AWS_CLOUDFRONT_DISTRIBUTION_ID" \
+            --id "$INVALIDATION_ID"
 
   deploy-api:
     runs-on: ubuntu-latest
@@ -242,7 +295,7 @@ jobs:
       - model-tests
     if: |
       always() &&
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/master' &&
       needs.classify-changes.outputs.api_changed == 'true' &&
       needs.dashboard-checks.result == 'success' &&
@@ -276,7 +329,7 @@ jobs:
           ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
         run: |
           set -euo pipefail
-          IMAGE_TAG="${GITHUB_SHA::12}"
+          IMAGE_TAG="${GITHUB_SHA::12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           IMAGE="$ECR_REGISTRY/$AWS_ECR_REPOSITORY:$IMAGE_TAG"
           docker build --platform linux/amd64 --file dashboard/Dockerfile.api --tag "$IMAGE" .
           docker push "$IMAGE"
@@ -366,12 +419,14 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - classify-changes
+      - dashboard-checks
       - model-tests
     if: |
       always() &&
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.ref == 'refs/heads/master' &&
       needs.classify-changes.outputs.source_bundle_changed == 'true' &&
+      (needs.dashboard-checks.result == 'success' || needs.dashboard-checks.result == 'skipped') &&
       (needs.model-tests.result == 'success' || needs.model-tests.result == 'skipped')
     steps:
       - name: Validate AWS deployment configuration
