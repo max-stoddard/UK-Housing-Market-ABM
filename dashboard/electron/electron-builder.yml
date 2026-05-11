@@ -3,7 +3,7 @@ appId: uk.housing.model.dashboard
 productName: UK Housing Model
 artifactName: UK-Housing-Model-${version}-Setup.${ext}
 asar: false
-forceCodeSigning: false
+forceCodeSigning: true
 publish: null
 
 directories:
@@ -31,7 +31,7 @@ win:
     - target: nsis
       arch:
         - x64
-  signAndEditExecutable: false
+  signAndEditExecutable: true
 
 nsis:
   oneClick: true

@@ -153,6 +153,10 @@ function runCapture(command, args, cwd) {
   return `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
 }
 
+function powerShellSingleQuoted(value) {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
 function installerFileName(appVersion) {
   return `UK-Housing-Model-${appVersion}-Setup.exe`;
 }
@@ -170,6 +174,7 @@ function validateBuilderConfig() {
     `productName: ${productName}`,
     'artifactName: UK-Housing-Model-${version}-Setup.${ext}',
     'asar: false',
+    'forceCodeSigning: true',
     'publish: null',
     'app: ../release/windows/resources/app',
     'output: ../release/windows/installer',
@@ -179,6 +184,7 @@ function validateBuilderConfig() {
     'from: ../release/windows/resources/release-data',
     'from: ../release/windows/resources/release-manifest.json',
     'target: nsis',
+    'signAndEditExecutable: true',
     'perMachine: false',
     'deleteAppDataOnUninstall: false'
   ];
@@ -306,7 +312,56 @@ function resolveReleaseCommit() {
   return runCapture('git', ['rev-parse', 'HEAD'], repoRoot);
 }
 
-function buildInstallerManifest(options, appPackage, installerPath, resourceManifest) {
+function readAuthenticodeSignature(installerPath) {
+  if (process.platform !== 'win32') {
+    return null;
+  }
+
+  const script = [
+    `$signature = Get-AuthenticodeSignature -LiteralPath ${powerShellSingleQuoted(installerPath)}`,
+    '$cert = $signature.SignerCertificate',
+    '$subject = if ($cert) { $cert.Subject } else { $null }',
+    '$issuer = if ($cert) { $cert.Issuer } else { $null }',
+    '$thumbprint = if ($cert) { $cert.Thumbprint } else { $null }',
+    "$notBefore = if ($cert) { $cert.NotBefore.ToUniversalTime().ToString('o') } else { $null }",
+    "$notAfter = if ($cert) { $cert.NotAfter.ToUniversalTime().ToString('o') } else { $null }",
+    '[pscustomobject]@{Status=[string]$signature.Status;StatusMessage=[string]$signature.StatusMessage;Subject=$subject;Issuer=$issuer;Thumbprint=$thumbprint;NotBefore=$notBefore;NotAfter=$notAfter} | ConvertTo-Json -Compress'
+  ].join('; ');
+
+  const output = runCapture('powershell', ['-NoProfile', '-Command', script], repoRoot);
+  try {
+    return JSON.parse(output);
+  } catch (error) {
+    fail(`Failed to parse Authenticode signature metadata for ${installerPath}: ${error.message}\n${output}`);
+  }
+}
+
+function verifyInstallerSignature(installerPath) {
+  const signature = readAuthenticodeSignature(installerPath);
+  if (!signature) {
+    return null;
+  }
+  if (signature.Status !== 'Valid') {
+    fail(
+      `Windows installer Authenticode signature is not valid: ${signature.Status}` +
+        (signature.StatusMessage ? ` (${signature.StatusMessage})` : '')
+    );
+  }
+  if (!signature.Subject || !signature.Thumbprint) {
+    fail('Windows installer Authenticode signature is missing signer certificate metadata.');
+  }
+  return {
+    status: signature.Status,
+    statusMessage: signature.StatusMessage,
+    subject: signature.Subject,
+    issuer: signature.Issuer,
+    thumbprint: signature.Thumbprint,
+    notBefore: signature.NotBefore,
+    notAfter: signature.NotAfter
+  };
+}
+
+function buildInstallerManifest(options, appPackage, installerPath, resourceManifest, signature) {
   const installerHash = sha256File(installerPath);
   const relativeInstallerPath = normalizeRel(path.relative(options.installerRoot, installerPath));
   return {
@@ -315,7 +370,7 @@ function buildInstallerManifest(options, appPackage, installerPath, resourceMani
     distribution: {
       channel: 'windows-desktop',
       method: 'GitHub Releases',
-      unsigned: true
+      signed: true
     },
     app: {
       name: appPackage.name,
@@ -332,7 +387,8 @@ function buildInstallerManifest(options, appPackage, installerPath, resourceMani
       fileName: path.basename(installerPath),
       target,
       arch,
-      unsigned: true,
+      signed: true,
+      signature,
       sizeBytes: fs.statSync(installerPath).size,
       sha256: installerHash
     },
@@ -414,11 +470,23 @@ function validateReleaseManifest(installerRoot, installerPath, releaseManifestPa
   if (manifest.installer?.target !== target || manifest.installer?.arch !== arch) {
     fail('Installer release manifest has unexpected target or architecture.');
   }
-  if (manifest.installer?.unsigned !== true || manifest.distribution?.unsigned !== true) {
-    fail('Installer release manifest must record the v1 package as unsigned.');
+  if (manifest.installer?.signed !== true || manifest.distribution?.signed !== true) {
+    fail('Installer release manifest must record the Windows package as signed.');
+  }
+  if (manifest.installer?.unsigned === true || manifest.distribution?.unsigned === true) {
+    fail('Installer release manifest must not record the Windows package as unsigned.');
   }
   if (manifest.installer?.sha256 !== sha256File(installerPath)) {
     fail('Installer release manifest installer hash is stale.');
+  }
+  if (process.platform === 'win32') {
+    const actualSignature = verifyInstallerSignature(installerPath);
+    if (manifest.installer?.signature?.status !== 'Valid') {
+      fail('Installer release manifest must include a valid Authenticode signature status.');
+    }
+    if (manifest.installer?.signature?.thumbprint !== actualSignature?.thumbprint) {
+      fail('Installer release manifest signer thumbprint does not match the installer.');
+    }
   }
   if (manifest.packagedResources?.phase10ManifestSha256 !== resourceManifest.sha256) {
     fail('Installer release manifest Phase 10 resource manifest hash is stale.');
@@ -437,22 +505,24 @@ function main() {
   const installerPath = expectedInstallerPath(options.installerRoot, dashboardPackage.version);
   const releaseManifestPath = path.join(options.installerRoot, manifestFileName);
 
+  if (options.check && process.platform !== 'win32') {
+    log(
+      `validated installer config and resources; Windows installer signature checks run only on win32, not ${os.platform()}.`
+    );
+    return;
+  }
+
   if (!fs.existsSync(installerPath)) {
-    if (options.check && process.platform !== 'win32') {
-      log(
-        `validated installer config and resources; Windows installer artifact is not required on ${os.platform()} checks.`
-      );
-      return;
-    }
     fail(`Missing Windows installer artifact: ${installerPath}`);
   }
 
   const winUnpackedResources = path.join(options.installerRoot, 'win-unpacked', 'resources');
   validatePackagedResourceTree(winUnpackedResources, resourceManifest);
+  const signature = verifyInstallerSignature(installerPath);
 
   if (!options.check) {
     fs.mkdirSync(options.installerRoot, { recursive: true });
-    const manifest = buildInstallerManifest(options, dashboardPackage, installerPath, resourceManifest);
+    const manifest = buildInstallerManifest(options, dashboardPackage, installerPath, resourceManifest, signature);
     writeJson(releaseManifestPath, manifest);
     writeChecksums(options.installerRoot, installerPath, releaseManifestPath);
     log(`wrote installer release manifest and checksums under ${options.installerRoot}`);

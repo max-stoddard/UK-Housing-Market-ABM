@@ -5413,7 +5413,7 @@ assert.equal(
 assert.equal(
   packageJson.scripts['release:installer'],
   'npm run release:resources && npm --prefix electron run release:installer && node ../scripts/windows/write-installer-release-manifest.mjs',
-  'Installer release script should assemble validated resources before building the unsigned Windows installer'
+  'Installer release script should assemble validated resources before building the signed Windows installer'
 );
 assert.equal(
   packageJson.scripts['release:installer:check'],
@@ -5443,7 +5443,17 @@ const electronBuilderConfig = fs.readFileSync(path.resolve(repoRoot, 'dashboard/
 assert.ok(electronBuilderConfig.includes('appId: uk.housing.model.dashboard'), 'Installer should use a stable appId');
 assert.ok(electronBuilderConfig.includes('productName: UK Housing Model'), 'Installer should use the desktop product name');
 assert.ok(electronBuilderConfig.includes('asar: false'), 'Installer should keep app files unpacked for v1 path compatibility');
+assert.ok(electronBuilderConfig.includes('forceCodeSigning: true'), 'Installer builds should require code signing');
 assert.ok(electronBuilderConfig.includes('target: nsis'), 'Installer should use the offline NSIS target');
+assert.ok(
+  electronBuilderConfig.includes('signAndEditExecutable: true'),
+  'Installer builds should sign and edit the Windows executable'
+);
+assert.ok(
+  !electronBuilderConfig.includes('forceCodeSigning: false') &&
+    !electronBuilderConfig.includes('signAndEditExecutable: false'),
+  'Installer builds should not allow unsigned Windows executables'
+);
 assert.ok(!electronBuilderConfig.includes('nsis-web'), 'Installer should not use nsis-web for the offline v1 package');
 assert.ok(
   electronBuilderConfig.includes('from: ../release/windows/resources/release-data'),
@@ -5452,6 +5462,55 @@ assert.ok(
 assert.ok(
   electronBuilderConfig.includes('deleteAppDataOnUninstall: false'),
   'Installer updates/uninstalls should not delete Electron userData by default'
+);
+
+const installerManifestSource = fs.readFileSync(
+  path.resolve(repoRoot, 'scripts/windows/write-installer-release-manifest.mjs'),
+  'utf-8'
+);
+assert.ok(
+  installerManifestSource.includes('Get-AuthenticodeSignature'),
+  'Installer release metadata should verify the Windows Authenticode signature'
+);
+assert.ok(
+  installerManifestSource.includes('signed: true') && installerManifestSource.includes('signature,'),
+  'Installer release metadata should record signed installer status and signer metadata'
+);
+assert.ok(
+  !installerManifestSource.includes('unsigned: true'),
+  'Installer release metadata should not record signed releases as unsigned'
+);
+
+const windowsReleaseWorkflowSource = fs.readFileSync(
+  path.resolve(repoRoot, '.github/workflows/windows-release.yml'),
+  'utf-8'
+);
+assert.ok(
+  windowsReleaseWorkflowSource.includes('Validate Windows signing secrets') &&
+    windowsReleaseWorkflowSource.includes('secrets.WIN_CSC_LINK') &&
+    windowsReleaseWorkflowSource.includes('secrets.WIN_CSC_KEY_PASSWORD'),
+  'Windows release workflow should fail early when code-signing secrets are missing'
+);
+assert.ok(
+  windowsReleaseWorkflowSource.includes('Build signed Windows installer') &&
+    windowsReleaseWorkflowSource.includes('WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}') &&
+    windowsReleaseWorkflowSource.includes('WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}'),
+  'Windows release workflow should pass signing secrets only to the installer build step'
+);
+assert.ok(
+  windowsReleaseWorkflowSource.includes('packages the model as a user-friendly Windows desktop app') &&
+    windowsReleaseWorkflowSource.includes('Installation on Windows:') &&
+    windowsReleaseWorkflowSource.includes('Run the installer') &&
+    windowsReleaseWorkflowSource.includes('Start Menu or desktop shortcut'),
+  'Windows release notes should focus on the signed desktop app and high-level installation'
+);
+assert.ok(
+  !windowsReleaseWorkflowSource.includes('Draft unsigned') &&
+    !windowsReleaseWorkflowSource.includes('not code-signed') &&
+    !windowsReleaseWorkflowSource.includes('Included scope:') &&
+    !windowsReleaseWorkflowSource.includes('Not included:') &&
+    !windowsReleaseWorkflowSource.includes('AWS resources'),
+  'Windows release notes should not use old unsigned, draft, scope, or AWS wording'
 );
 
 function createDesktopMainFrame(origin: string, url: string): DesktopFrameLike {
