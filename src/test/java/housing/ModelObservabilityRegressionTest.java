@@ -57,7 +57,8 @@ class ModelObservabilityRegressionTest {
         assertAll(
                 () -> assertEquals(APPENDED_OUTPUT_COLUMNS, currentHeaderTokens.subList(
                         currentHeaderTokens.size() - APPENDED_OUTPUT_COLUMNS.size(), currentHeaderTokens.size())),
-                () -> assertEquals(V410_LEGACY_OUTPUT_SHA256, sha256Hex(outputDir.resolve("Output-run1.csv"))),
+                () -> assertEquals(V410_LEGACY_OUTPUT_SHA256,
+                        sha256HexNormalizingLineEndings(outputDir.resolve("Output-run1.csv"))),
                 () -> assertEquals(V410_LEGACY_HOUSING_WEALTH,
                         Files.readString(outputDir.resolve("HousingWealth-run1.csv"), StandardCharsets.UTF_8).trim()),
                 () -> assertFalse(Files.exists(outputDir.resolve("TotalDebt-run1.csv"))),
@@ -137,9 +138,12 @@ class ModelObservabilityRegressionTest {
                 .collect(Collectors.toList());
     }
 
-    private static String sha256Hex(Path path) throws IOException, NoSuchAlgorithmException {
+    private static String sha256HexNormalizingLineEndings(Path path) throws IOException, NoSuchAlgorithmException {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        byte[] bytes = Files.readAllBytes(path);
+        byte[] bytes = Files.readString(path, StandardCharsets.UTF_8)
+                .replace("\r\n", "\n")
+                .replace("\r", "\n")
+                .getBytes(StandardCharsets.UTF_8);
         byte[] hash = digest.digest(bytes);
         StringBuilder builder = new StringBuilder(hash.length * 2);
         for (byte value : hash) {

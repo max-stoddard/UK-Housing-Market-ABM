@@ -2,6 +2,7 @@ package data;
 
 import housing.Model;
 import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 import utilities.BinnedData;
 import utilities.BinnedDataDouble;
@@ -47,12 +48,10 @@ public class Wealth {
         double pdfBinWidth;
         double lastBinMin;
 
-        Iterator<CSVRecord> records;
-        try {
-            // Open a file reader
-            Reader in = new FileReader(Model.config.DATA_WEALTH_GIVEN_INCOME);
-            // Pass reader to CSVFormat parser, which will use first line (header) to set column names
-            records = CSVFormat.EXCEL.withHeader().parse(in).iterator();
+        // Pass reader to CSVFormat parser, which will use first line (header) to set column names
+        try (Reader in = new FileReader(Model.config.DATA_WEALTH_GIVEN_INCOME);
+             CSVParser parser = CSVFormat.EXCEL.withHeader().parse(in)) {
+            Iterator<CSVRecord> records = parser.iterator();
             CSVRecord record;
             // Read through records
             if (records.hasNext()) {

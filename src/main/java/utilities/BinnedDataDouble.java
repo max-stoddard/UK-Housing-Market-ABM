@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 
 import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
 /**
@@ -35,10 +36,7 @@ public class BinnedDataDouble extends BinnedData<Double> {
         super(0.0,0.0);
         binLowerEdges = new ArrayList<>();
         binUpperEdges = new ArrayList<>();
-        try {
-            // Open file and buffered readers
-            FileReader in = new FileReader(filename);
-            BufferedReader buffReader = new BufferedReader(in);
+        try (BufferedReader buffReader = new BufferedReader(new FileReader(filename))) {
             // Skip initial comment lines keeping mark of previous position to return to if line is not comment
             buffReader.mark(1000); // 1000 is just the number of characters that can be read while preserving the mark
             String line = buffReader.readLine();
@@ -48,30 +46,32 @@ public class BinnedDataDouble extends BinnedData<Double> {
             }
             buffReader.reset(); // Return to previous position (before reading the first line that was not a comment)
             // Pass advanced buffered reader to CSVFormat parser
-            Iterator<CSVRecord> records = CSVFormat.EXCEL.parse(buffReader).iterator();
-            CSVRecord record;
-            // Read through records
-            if(records.hasNext()) {
-                record = records.next();
-                // Use the first record to set the first bin minimum and the bin width...
-                double lowerEdge = Double.valueOf(record.get(0));
-                double upperEdge = Double.valueOf(record.get(1));
-                this.setFirstBinMin(lowerEdge);
-                this.setBinWidth(upperEdge - getSupportLowerBound());
-                // ...before recording the explicit edges and actually adding it to the array
-                binLowerEdges.add(lowerEdge);
-                binUpperEdges.add(upperEdge);
-                add(Double.valueOf(record.get(2)));
-                while(records.hasNext()) {
+            try (CSVParser parser = CSVFormat.EXCEL.parse(buffReader)) {
+                Iterator<CSVRecord> records = parser.iterator();
+                CSVRecord record;
+                // Read through records
+                if(records.hasNext()) {
                     record = records.next();
-                    // Next records keep their own edges in case the CSV uses variable-width bins
-                    binLowerEdges.add(Double.valueOf(record.get(0)));
-                    binUpperEdges.add(Double.valueOf(record.get(1)));
+                    // Use the first record to set the first bin minimum and the bin width...
+                    double lowerEdge = Double.valueOf(record.get(0));
+                    double upperEdge = Double.valueOf(record.get(1));
+                    this.setFirstBinMin(lowerEdge);
+                    this.setBinWidth(upperEdge - getSupportLowerBound());
+                    // ...before recording the explicit edges and actually adding it to the array
+                    binLowerEdges.add(lowerEdge);
+                    binUpperEdges.add(upperEdge);
                     add(Double.valueOf(record.get(2)));
+                    while(records.hasNext()) {
+                        record = records.next();
+                        // Next records keep their own edges in case the CSV uses variable-width bins
+                        binLowerEdges.add(Double.valueOf(record.get(0)));
+                        binUpperEdges.add(Double.valueOf(record.get(1)));
+                        add(Double.valueOf(record.get(2)));
+                    }
+                    // If the lower edges follow the original equal-width convention, discard the extra edge storage so
+                    // existing input files keep their previous interpretation exactly
+                    preserveLegacyEqualWidthBehaviourWhenPossible();
                 }
-                // If the lower edges follow the original equal-width convention, discard the extra edge storage so
-                // existing input files keep their previous interpretation exactly
-                preserveLegacyEqualWidthBehaviourWhenPossible();
             }
         } catch (IOException e) {
             System.out.println("Problem while loading data from " + filename

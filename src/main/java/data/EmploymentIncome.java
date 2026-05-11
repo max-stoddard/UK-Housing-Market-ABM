@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 
 import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
 
 import utilities.BinnedDataDouble;
@@ -57,12 +58,10 @@ public class EmploymentIncome {
         double lastAgeBinMin;
         double lastAgeBinMax;
 
-        Iterator<CSVRecord> records;
-        try {
-            // Open a file reader
-            Reader in = new FileReader(fileName);
-            // Pass reader to CSVFormat parser, which will use first line (header) to set column names
-            records = CSVFormat.EXCEL.withHeader().parse(in).iterator();
+        // Pass reader to CSVFormat parser, which will use first line (header) to set column names
+        try (Reader in = new FileReader(fileName);
+             CSVParser parser = CSVFormat.EXCEL.withHeader().parse(in)) {
+            Iterator<CSVRecord> records = parser.iterator();
             CSVRecord record;
             // Read through records
             if (records.hasNext()) {
