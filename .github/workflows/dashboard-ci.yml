@@ -6,20 +6,32 @@ on:
     branches:
       - master
     paths:
+      - .dockerignore
+      - .github/aws/**
+      - .github/workflows/dashboard-ci.yml
+      - .mvn/**
       - dashboard/**
       - input-data-versions/**
-      - .github/workflows/dashboard-ci.yml
-      - .dockerignore
-      - render.yaml
+      - mvnw
+      - mvnw.cmd
+      - pom.xml
+      - scripts/**
+      - src/**
   push:
     branches:
       - master
     paths:
+      - .dockerignore
+      - .github/aws/**
+      - .github/workflows/dashboard-ci.yml
+      - .mvn/**
       - dashboard/**
       - input-data-versions/**
-      - .github/workflows/dashboard-ci.yml
-      - .dockerignore
-      - render.yaml
+      - mvnw
+      - mvnw.cmd
+      - pom.xml
+      - scripts/**
+      - src/**
 
 concurrency:
   group: dashboard-ci-${{ github.workflow }}-${{ github.ref }}
@@ -27,14 +39,30 @@ concurrency:
 
 permissions:
   contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-2' }}
+  AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+  AWS_FRONTEND_BUCKET: ${{ vars.AWS_FRONTEND_BUCKET }}
+  AWS_CLOUDFRONT_DISTRIBUTION_ID: ${{ vars.AWS_CLOUDFRONT_DISTRIBUTION_ID }}
+  AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY || 'uk-housing-market-abm-api' }}
+  AWS_ECS_CLUSTER: ${{ vars.AWS_ECS_CLUSTER }}
+  AWS_ECS_SERVICE: ${{ vars.AWS_ECS_SERVICE }}
+  AWS_ECS_CONTAINER_NAME: ${{ vars.AWS_ECS_CONTAINER_NAME || 'dashboard-api' }}
+  AWS_ARTIFACTS_BUCKET: ${{ vars.AWS_ARTIFACTS_BUCKET }}
+  AWS_SOURCE_BUNDLE_PREFIX: ${{ vars.AWS_SOURCE_BUNDLE_PREFIX || 'tmp/github-actions/source' }}
+  VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
 
 jobs:
   classify-changes:
     runs-on: ubuntu-latest
     outputs:
-      static_changed: ${{ steps.classify.outputs.static_changed }}
+      frontend_changed: ${{ steps.classify.outputs.frontend_changed }}
       api_changed: ${{ steps.classify.outputs.api_changed }}
-      blueprint_changed: ${{ steps.classify.outputs.blueprint_changed }}
+      model_changed: ${{ steps.classify.outputs.model_changed }}
+      source_bundle_changed: ${{ steps.classify.outputs.source_bundle_changed }}
+      dashboard_checks_required: ${{ steps.classify.outputs.dashboard_checks_required }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -63,9 +91,9 @@ jobs:
           printf '%s\n' "$CHANGED" > changed-paths.txt
 
           if grep -Eq '^(dashboard/src/|dashboard/shared/|dashboard/public/|dashboard/\.nvmrc$|dashboard/package\.json$|dashboard/package-lock\.json$|dashboard/vite\.config\.ts$|dashboard/tsconfig\.json$|dashboard/index\.html$)' changed-paths.txt; then
-            echo "static_changed=true" >> "$GITHUB_OUTPUT"
+            echo "frontend_changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "static_changed=false" >> "$GITHUB_OUTPUT"
+            echo "frontend_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
           if grep -Eq '^(dashboard/Dockerfile\.api$|dashboard/server/|dashboard/shared/|dashboard/package\.json$|dashboard/package-lock\.json$|dashboard/tsconfig\.server\.json$|input-data-versions/|\.dockerignore$)' changed-paths.txt; then
@@ -74,14 +102,29 @@ jobs:
             echo "api_changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if grep -Eq '^render\.yaml$' changed-paths.txt; then
-            echo "blueprint_changed=true" >> "$GITHUB_OUTPUT"
+          if grep -Eq '^(src/|pom\.xml$|mvnw$|mvnw\.cmd$|\.mvn/)' changed-paths.txt; then
+            echo "model_changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "blueprint_changed=false" >> "$GITHUB_OUTPUT"
+            echo "model_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(dashboard/server/|dashboard/shared/|dashboard/package\.json$|dashboard/package-lock\.json$|dashboard/tsconfig\.server\.json$|src/|scripts/|input-data-versions/|pom\.xml$|mvnw$|mvnw\.cmd$|\.mvn/)' changed-paths.txt; then
+            echo "source_bundle_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "source_bundle_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if grep -Eq '^(dashboard/|input-data-versions/|\.dockerignore$|\.github/workflows/dashboard-ci\.yml$|\.github/aws/)' changed-paths.txt; then
+            echo "dashboard_checks_required=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "dashboard_checks_required=false" >> "$GITHUB_OUTPUT"
           fi
 
   dashboard-checks:
     runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+    if: needs.classify-changes.outputs.dashboard_checks_required == 'true'
     defaults:
       run:
         working-directory: dashboard
@@ -120,39 +163,283 @@ jobs:
       - name: Build dashboard API container
         run: docker build --file dashboard/Dockerfile.api --tag uk-housing-model-dashboard-api:${{ github.sha }} .
 
-  render-deploy-fallback:
+  model-tests:
+    runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+    if: needs.classify-changes.outputs.model_changed == 'true'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Run Maven tests
+        run: ./mvnw test
+
+  deploy-frontend:
+    runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+      - dashboard-checks
+      - model-tests
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.classify-changes.outputs.frontend_changed == 'true' &&
+      needs.dashboard-checks.result == 'success' &&
+      (needs.model-tests.result == 'success' || needs.model-tests.result == 'skipped')
+    steps:
+      - name: Validate AWS deployment configuration
+        run: |
+          set -euo pipefail
+          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$AWS_FRONTEND_BUCKET"
+          test -n "$AWS_CLOUDFRONT_DISTRIBUTION_ID"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: dashboard/.nvmrc
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        working-directory: dashboard
+        run: npm ci --include=dev
+
+      - name: Build frontend
+        working-directory: dashboard
+        run: npm run build:client
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload frontend assets
+        run: aws s3 sync dashboard/dist "s3://$AWS_FRONTEND_BUCKET/" --delete --region "$AWS_REGION"
+
+      - name: Invalidate CloudFront
+        run: aws cloudfront create-invalidation --distribution-id "$AWS_CLOUDFRONT_DISTRIBUTION_ID" --paths "/*"
+
+  deploy-api:
     runs-on: ubuntu-latest
     needs:
       - classify-changes
       - dashboard-checks
       - api-container-checks
+      - model-tests
     if: |
       always() &&
       github.event_name == 'push' &&
       github.ref == 'refs/heads/master' &&
-      needs.classify-changes.result == 'success' &&
+      needs.classify-changes.outputs.api_changed == 'true' &&
       needs.dashboard-checks.result == 'success' &&
-      (needs.api-container-checks.result == 'success' || needs.api-container-checks.result == 'skipped')
-    env:
-      RENDER_STATIC_DEPLOY_HOOK: ${{ secrets.RENDER_STATIC_DEPLOY_HOOK }}
-      RENDER_API_DEPLOY_HOOK: ${{ secrets.RENDER_API_DEPLOY_HOOK }}
+      needs.api-container-checks.result == 'success' &&
+      (needs.model-tests.result == 'success' || needs.model-tests.result == 'skipped')
     steps:
-      - name: Trigger Render static deploy hook
-        if: needs.classify-changes.outputs.static_changed == 'true' && env.RENDER_STATIC_DEPLOY_HOOK != ''
-        run: curl --fail --silent --show-error -X POST "$RENDER_STATIC_DEPLOY_HOOK"
+      - name: Validate AWS deployment configuration
+        run: |
+          set -euo pipefail
+          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$AWS_ECR_REPOSITORY"
+          test -n "$AWS_ECS_CLUSTER"
+          test -n "$AWS_ECS_SERVICE"
+          test -n "$AWS_ECS_CONTAINER_NAME"
 
-      - name: Trigger Render API deploy hook
-        if: needs.classify-changes.outputs.api_changed == 'true' && env.RENDER_API_DEPLOY_HOOK != ''
-        run: curl --fail --silent --show-error -X POST "$RENDER_API_DEPLOY_HOOK"
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Missing static deploy hook secret
-        if: needs.classify-changes.outputs.static_changed == 'true' && env.RENDER_STATIC_DEPLOY_HOOK == ''
-        run: echo "RENDER_STATIC_DEPLOY_HOOK is not set; static fallback trigger skipped."
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Missing API deploy hook secret
-        if: needs.classify-changes.outputs.api_changed == 'true' && env.RENDER_API_DEPLOY_HOOK == ''
-        run: echo "RENDER_API_DEPLOY_HOOK is not set; API fallback trigger skipped."
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Blueprint sync required
-        if: needs.classify-changes.outputs.blueprint_changed == 'true'
-        run: echo "render.yaml changed; re-sync the Render Blueprint manually because deploy hooks do not apply Blueprint config changes."
+      - name: Build and push API image
+        env:
+          ECR_REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+        run: |
+          set -euo pipefail
+          IMAGE_TAG="${GITHUB_SHA::12}"
+          IMAGE="$ECR_REGISTRY/$AWS_ECR_REPOSITORY:$IMAGE_TAG"
+          docker build --platform linux/amd64 --file dashboard/Dockerfile.api --tag "$IMAGE" .
+          docker push "$IMAGE"
+          echo "api_image_tag=$IMAGE_TAG" >> "$GITHUB_ENV"
+          echo "api_image_uri=$IMAGE" >> "$GITHUB_ENV"
+          echo "ecr_registry=$ECR_REGISTRY" >> "$GITHUB_ENV"
+
+      - name: Wait for clean ECR scan
+        run: |
+          set -euo pipefail
+          aws ecr start-image-scan \
+            --repository-name "$AWS_ECR_REPOSITORY" \
+            --image-id "imageTag=$api_image_tag" \
+            --region "$AWS_REGION" || true
+          aws ecr wait image-scan-complete \
+            --repository-name "$AWS_ECR_REPOSITORY" \
+            --image-id "imageTag=$api_image_tag" \
+            --region "$AWS_REGION"
+          SCAN_JSON="$(aws ecr describe-image-scan-findings \
+            --repository-name "$AWS_ECR_REPOSITORY" \
+            --image-id "imageTag=$api_image_tag" \
+            --region "$AWS_REGION")"
+          CRITICAL="$(jq -r '.imageScanFindings.findingSeverityCounts.CRITICAL // 0' <<< "$SCAN_JSON")"
+          HIGH="$(jq -r '.imageScanFindings.findingSeverityCounts.HIGH // 0' <<< "$SCAN_JSON")"
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "ECR image scan found CRITICAL=$CRITICAL HIGH=$HIGH findings." >&2
+            exit 1
+          fi
+          DIGEST="$(aws ecr describe-images \
+            --repository-name "$AWS_ECR_REPOSITORY" \
+            --image-ids "imageTag=$api_image_tag" \
+            --query 'imageDetails[0].imageDigest' \
+            --output text \
+            --region "$AWS_REGION")"
+          test -n "$DIGEST"
+          test "$DIGEST" != "None"
+          echo "api_image_by_digest=$ecr_registry/$AWS_ECR_REPOSITORY@$DIGEST" >> "$GITHUB_ENV"
+
+      - name: Register task definition revision
+        run: |
+          set -euo pipefail
+          TASK_DEFINITION_ARN="$(aws ecs describe-services \
+            --cluster "$AWS_ECS_CLUSTER" \
+            --services "$AWS_ECS_SERVICE" \
+            --query 'services[0].taskDefinition' \
+            --output text)"
+          aws ecs describe-task-definition \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            > /tmp/current-task-definition.json
+          jq -e --arg CONTAINER "$AWS_ECS_CONTAINER_NAME" \
+            '.taskDefinition.containerDefinitions[] | select(.name == $CONTAINER)' \
+            /tmp/current-task-definition.json >/dev/null
+          jq --arg IMAGE "$api_image_by_digest" --arg CONTAINER "$AWS_ECS_CONTAINER_NAME" '
+            .taskDefinition
+            | .containerDefinitions = (
+                .containerDefinitions
+                | map(if .name == $CONTAINER then .image = $IMAGE else . end)
+              )
+            | del(
+                .taskDefinitionArn,
+                .revision,
+                .status,
+                .requiresAttributes,
+                .compatibilities,
+                .registeredAt,
+                .registeredBy
+              )
+          ' /tmp/current-task-definition.json > /tmp/next-task-definition.json
+          NEXT_TASK_DEFINITION_ARN="$(aws ecs register-task-definition \
+            --cli-input-json file:///tmp/next-task-definition.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)"
+          echo "next_task_definition_arn=$NEXT_TASK_DEFINITION_ARN" >> "$GITHUB_ENV"
+
+      - name: Update ECS service
+        run: |
+          set -euo pipefail
+          aws ecs update-service \
+            --cluster "$AWS_ECS_CLUSTER" \
+            --service "$AWS_ECS_SERVICE" \
+            --task-definition "$next_task_definition_arn"
+          aws ecs wait services-stable \
+            --cluster "$AWS_ECS_CLUSTER" \
+            --services "$AWS_ECS_SERVICE"
+
+  deploy-source-bundle:
+    runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+      - model-tests
+    if: |
+      always() &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      needs.classify-changes.outputs.source_bundle_changed == 'true' &&
+      (needs.model-tests.result == 'success' || needs.model-tests.result == 'skipped')
+    steps:
+      - name: Validate AWS deployment configuration
+        run: |
+          set -euo pipefail
+          test -n "$AWS_DEPLOY_ROLE_ARN"
+          test -n "$AWS_ARTIFACTS_BUCKET"
+          test -n "$AWS_SOURCE_BUNDLE_PREFIX"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify private datasets are not tracked
+        run: |
+          set -euo pipefail
+          if git ls-files 'private-datasets/**' | grep -q .; then
+            echo "Tracked private-datasets files cannot be included in the source bundle." >&2
+            exit 1
+          fi
+
+      - name: Create source bundle
+        run: |
+          set -euo pipefail
+          git bundle create /tmp/uk-housing-model-source.bundle HEAD
+          KEY="$AWS_SOURCE_BUNDLE_PREFIX/${GITHUB_SHA}.bundle"
+          echo "source_bundle_key=$KEY" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload source bundle
+        run: |
+          set -euo pipefail
+          aws s3 cp /tmp/uk-housing-model-source.bundle \
+            "s3://$AWS_ARTIFACTS_BUCKET/$source_bundle_key" \
+            --region "$AWS_REGION" \
+            --metadata "git-sha=$GITHUB_SHA,git-ref=$GITHUB_REF_NAME,source-method=s3-git-bundle"
+
+      - name: Write current source deploy manifest
+        run: |
+          set -euo pipefail
+          CREATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --arg ref "$GITHUB_REF_NAME" \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg bucket "$AWS_ARTIFACTS_BUCKET" \
+            --arg bundleKey "$source_bundle_key" \
+            --arg createdAt "$CREATED_AT" \
+            --arg workflowRunId "$GITHUB_RUN_ID" \
+            '{
+              schemaVersion: 1,
+              sourceMethod: "s3-git-bundle",
+              commit: $commit,
+              ref: $ref,
+              repository: $repository,
+              bundleBucket: $bucket,
+              bundleKey: $bundleKey,
+              createdAt: $createdAt,
+              workflowRunId: $workflowRunId
+            }' > /tmp/current-deploy.json
+          aws s3 cp /tmp/current-deploy.json \
+            "s3://$AWS_ARTIFACTS_BUCKET/$AWS_SOURCE_BUNDLE_PREFIX/current-deploy.json" \
+            --content-type application/json \
+            --region "$AWS_REGION" \
+            --metadata "git-sha=$GITHUB_SHA,git-ref=$GITHUB_REF_NAME,source-method=s3-git-bundle"

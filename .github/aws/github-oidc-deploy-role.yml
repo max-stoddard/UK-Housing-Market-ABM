@@ -1,0 +1,363 @@
+# Author: Max Stoddard
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Repo-scoped GitHub OIDC deployment role for the UK Housing Model dashboard AWS deployment.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: max-stoddard
+    Description: GitHub repository owner allowed to assume the role.
+  GitHubRepository:
+    Type: String
+    Default: UK-Housing-Market-ABM
+    Description: GitHub repository name allowed to assume the role.
+  GitHubBranch:
+    Type: String
+    Default: master
+    Description: Branch ref allowed to assume the role.
+  RoleName:
+    Type: String
+    Default: uk-housing-market-abm-github-deploy
+    Description: IAM role name for GitHub Actions deployments.
+  CreateGitHubOidcProvider:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Set false if token.actions.githubusercontent.com already exists in this AWS account.
+  FrontendBucketName:
+    Type: String
+    Description: Private S3 bucket used for the dashboard frontend.
+  ArtifactsBucketName:
+    Type: String
+    Description: Private S3 bucket used for source bundles and experiment artifacts.
+  SourceBundlePrefix:
+    Type: String
+    Default: tmp/github-actions/source
+    Description: Artifacts bucket prefix where GitHub Actions uploads source bundles.
+  CloudFrontDistributionId:
+    Type: String
+    Description: CloudFront distribution invalidated after frontend uploads.
+  EcrRepositoryName:
+    Type: String
+    Default: uk-housing-market-abm-api
+    Description: ECR repository for the dashboard API image.
+  EcsClusterName:
+    Type: String
+    Description: ECS cluster that runs the dashboard API service.
+  EcsServiceName:
+    Type: String
+    Description: ECS service updated after pushing a new API image.
+  EcsTaskExecutionRoleArn:
+    Type: String
+    Description: Task execution role ARN used by the ECS task definition.
+  EcsTaskRoleArn:
+    Type: String
+    Description: Task role ARN used by the ECS task definition.
+  EcsTaskExecutionRoleName:
+    Type: String
+    Default: ""
+    Description: Optional ECS task execution role name to grant SSM SecureString read access for dashboard write credentials.
+  EcsTaskRoleName:
+    Type: String
+    Default: ""
+    Description: Optional ECS task role name to grant EC2/SSM/S3 access for remote experiment dispatch.
+  RunnerInstanceRoleName:
+    Type: String
+    Default: ""
+    Description: Optional EC2 runner instance role name to grant S3 source/request read and artifact write access.
+  RunnerInstanceId:
+    Type: String
+    Default: i-03c1e655fa9636710
+    Description: EC2 experiment runner instance allowed for SSM command dispatch.
+  DashboardWriteUsernameParameterArn:
+    Type: String
+    Default: ""
+    Description: Optional SSM SecureString parameter ARN for DASHBOARD_WRITE_USERNAME.
+  DashboardWritePasswordParameterArn:
+    Type: String
+    Default: ""
+    Description: Optional SSM SecureString parameter ARN for DASHBOARD_WRITE_PASSWORD.
+  SsmSecureStringKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: Optional customer KMS key ARN used by dashboard write credential SecureString parameters.
+
+Conditions:
+  ShouldCreateGitHubOidcProvider: !Equals [!Ref CreateGitHubOidcProvider, "true"]
+  HasEcsTaskExecutionRoleName: !Not [!Equals [!Ref EcsTaskExecutionRoleName, ""]]
+  HasEcsTaskRoleName: !Not [!Equals [!Ref EcsTaskRoleName, ""]]
+  HasRunnerInstanceRoleName: !Not [!Equals [!Ref RunnerInstanceRoleName, ""]]
+  HasDashboardWriteUsernameParameterArn: !Not [!Equals [!Ref DashboardWriteUsernameParameterArn, ""]]
+  HasDashboardWritePasswordParameterArn: !Not [!Equals [!Ref DashboardWritePasswordParameterArn, ""]]
+  HasDashboardWriteParameters: !And
+    - !Condition HasDashboardWriteUsernameParameterArn
+    - !Condition HasDashboardWritePasswordParameterArn
+  ShouldAttachExecutionRoleSecretsPolicy: !And
+    - !Condition HasEcsTaskExecutionRoleName
+    - !Condition HasDashboardWriteParameters
+  HasSsmSecureStringKmsKeyArn: !Not [!Equals [!Ref SsmSecureStringKmsKeyArn, ""]]
+  ShouldAttachExecutionRoleKmsPolicy: !And
+    - !Condition ShouldAttachExecutionRoleSecretsPolicy
+    - !Condition HasSsmSecureStringKmsKeyArn
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateGitHubOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Repo-scoped deployment role for the UK Housing Model dashboard GitHub Actions workflow.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - ShouldCreateGitHubOidcProvider
+                - !Ref GitHubOidcProvider
+                - !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOwner}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}
+      Policies:
+        - PolicyName: dashboard-aws-deploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: FrontendBucketDeploy
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${FrontendBucketName}
+              - Sid: FrontendObjectDeploy
+                Effect: Allow
+                Action:
+                  - s3:DeleteObject
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${FrontendBucketName}/*
+              - Sid: SourceBundleUpload
+                Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/${SourceBundlePrefix}/*
+              - Sid: SourceBundlePrefixList
+                Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}
+                Condition:
+                  StringLike:
+                    s3:prefix: !Sub ${SourceBundlePrefix}/*
+              - Sid: CloudFrontInvalidation
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateInvalidation
+                  - cloudfront:GetDistribution
+                Resource: !Sub arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistributionId}
+              - Sid: EcrAuth
+                Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: "*"
+              - Sid: EcrImagePush
+                Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:BatchGetImage
+                  - ecr:CompleteLayerUpload
+                  - ecr:DescribeImages
+                  - ecr:DescribeImageScanFindings
+                  - ecr:DescribeRepositories
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:StartImageScan
+                  - ecr:UploadLayerPart
+                Resource: !Sub arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/${EcrRepositoryName}
+              - Sid: EcsServiceDeploy
+                Effect: Allow
+                Action:
+                  - ecs:DescribeServices
+                  - ecs:UpdateService
+                Resource: !Sub arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:service/${EcsClusterName}/${EcsServiceName}
+              - Sid: EcsTaskDefinitionDeploy
+                Effect: Allow
+                Action:
+                  - ecs:DescribeTaskDefinition
+                  - ecs:RegisterTaskDefinition
+                Resource: "*"
+              - Sid: PassEcsTaskRoles
+                Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource:
+                  - !Ref EcsTaskExecutionRoleArn
+                  - !Ref EcsTaskRoleArn
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: ecs-tasks.amazonaws.com
+
+  EcsTaskRemoteExecutionPolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasEcsTaskRoleName
+    Properties:
+      PolicyName: dashboard-remote-execution
+      Roles:
+        - !Ref EcsTaskRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DescribeRunnerState
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ssm:DescribeInstanceInformation
+            Resource: "*"
+          - Sid: DispatchFixedRunnerCommand
+            Effect: Allow
+            Action:
+              - ssm:SendCommand
+            Resource:
+              - !Sub arn:${AWS::Partition}:ssm:${AWS::Region}::document/AWS-RunShellScript
+              - !Sub arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${RunnerInstanceId}
+          - Sid: ObserveAndCancelRunnerCommand
+            Effect: Allow
+            Action:
+              - ssm:CancelCommand
+              - ssm:GetCommandInvocation
+            Resource: "*"
+          - Sid: RemoteExperimentBucketList
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListBucket
+            Resource: !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - experiments/remote-job-index/*
+                  - experiments/manual/*
+                  - experiments/sensitivity/*
+                  - tmp/dashboard-remote/requests/*
+                  - !Sub ${SourceBundlePrefix}/*
+          - Sid: RemoteExperimentRead
+            Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/manual/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/sensitivity/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/${SourceBundlePrefix}/current-deploy.json
+          - Sid: RemoteExperimentWriteIndexAndRequests
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/remote-job-index/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/tmp/dashboard-remote/requests/*
+
+  EcsTaskExecutionDashboardSecretsPolicy:
+    Type: AWS::IAM::Policy
+    Condition: ShouldAttachExecutionRoleSecretsPolicy
+    Properties:
+      PolicyName: dashboard-write-credentials-ssm
+      Roles:
+        - !Ref EcsTaskExecutionRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ReadDashboardWriteCredentials
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource:
+              - !Ref DashboardWriteUsernameParameterArn
+              - !Ref DashboardWritePasswordParameterArn
+
+  EcsTaskExecutionDashboardSecretsKmsPolicy:
+    Type: AWS::IAM::Policy
+    Condition: ShouldAttachExecutionRoleKmsPolicy
+    Properties:
+      PolicyName: dashboard-write-credentials-kms
+      Roles:
+        - !Ref EcsTaskExecutionRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DecryptDashboardWriteCredentials
+            Effect: Allow
+            Action:
+              - kms:Decrypt
+            Resource: !Ref SsmSecureStringKmsKeyArn
+
+  RunnerArtifactsPolicy:
+    Type: AWS::IAM::Policy
+    Condition: HasRunnerInstanceRoleName
+    Properties:
+      PolicyName: dashboard-runner-artifacts
+      Roles:
+        - !Ref RunnerInstanceRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: RunnerArtifactsBucketList
+            Effect: Allow
+            Action:
+              - s3:GetBucketLocation
+              - s3:ListBucket
+            Resource: !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}
+            Condition:
+              StringLike:
+                s3:prefix:
+                  - experiments/manual/*
+                  - experiments/sensitivity/*
+                  - logs/ec2-runner/*
+                  - tmp/*
+                  - !Sub ${SourceBundlePrefix}/*
+          - Sid: RunnerReadSourceAndRequests
+            Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/${SourceBundlePrefix}/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/tmp/dashboard-remote/requests/*
+          - Sid: RunnerWriteExperimentArtifacts
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/manual/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/sensitivity/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/logs/ec2-runner/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/tmp/*
+          - Sid: RunnerDeleteTmpOnly
+            Effect: Allow
+            Action:
+              - s3:DeleteObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/tmp/*
+
+Outputs:
+  RoleArn:
+    Description: GitHub Actions OIDC deployment role ARN.
+    Value: !GetAtt GitHubDeployRole.Arn
+  AllowedSubject:
+    Description: GitHub OIDC subject allowed to assume the role.
+    Value: !Sub repo:${GitHubOwner}/${GitHubRepository}:ref:refs/heads/${GitHubBranch}

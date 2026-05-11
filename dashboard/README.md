@@ -5,7 +5,7 @@ Local React dashboard for visualizing `input-data-versions/` model parameters, w
 
 ## Toolchain
 
-Use Node 22 for dashboard work. `dashboard/.nvmrc` and `dashboard/package.json` `engines.node` are the source of truth for local development, CI, and the Render static build.
+Use Node 22 for dashboard work. `dashboard/.nvmrc` and `dashboard/package.json` `engines.node` are the source of truth for local development, CI, and the AWS static build.
 
 ## Run
 
@@ -29,7 +29,7 @@ npm run start:server
 
 The frontend can call either same-origin API routes or an external API base URL.
 
-- `VITE_API_BASE_URL` (optional): absolute API origin, for example `https://uk-housing-market-abm-api.onrender.com`
+- `VITE_API_BASE_URL` (optional): absolute HTTPS API origin for split frontend/API deploys.
   - if unset, frontend calls relative `/api/*` paths.
 
 Dashboard API environment variables:
@@ -42,13 +42,18 @@ Dashboard API environment variables:
 - `DASHBOARD_MAVEN_BIN` (optional): Maven executable used by model runs (defaults to the repo-local Maven wrapper).
 - `DASHBOARD_RESULTS_CAP_MB` (optional): total `Results/` storage cap in MB for dashboard-managed runs (defaults to `400`). New run submissions are blocked when usage is at/above cap after managed-run pruning.
 - `DASHBOARD_LOG_MEMORY` (optional): set to `true` to log request duration plus RSS/heap deltas for public API routes.
+- `DASHBOARD_EXECUTION_BACKEND` (optional): `local_maven` by default; set `aws_ssm` in AWS when experiment submissions should dispatch to the EC2 runner instead of running Java/Maven in the API container.
+- `AWS_REGION` (AWS SSM backend): defaults to `eu-west-2` when unset.
+- `AWS_RUNNER_INSTANCE_ID` (AWS SSM backend): EC2 runner instance allowed for experiment dispatch.
+- `AWS_ARTIFACTS_BUCKET` (AWS SSM backend): private bucket used for source bundles, remote requests, job index, and experiment artifacts.
+- `DASHBOARD_MAX_ACTIVE_REMOTE_RUNS` (AWS SSM backend): active remote run limit, default `1`.
 
 Runtime target compatibility:
 
 | Target | Runtime shape | Model execution | Writable/auth boundary |
 | --- | --- | --- | --- |
 | Dev mode | Repo-shaped local workflow using the developer machine's Node, Java, and repo-local Maven wrapper. | Enabled by default in non-production when Java and the Maven wrapper are available. | Dev bypass is active only when `NODE_ENV != production` and the request is not `Preview non-dev`; no cloud or desktop runtime should depend on it. |
-| Cloud mode | Lightweight public API/container path from `dashboard/Dockerfile.api`; no Electron requirement. | `DASHBOARD_ENABLE_MODEL_RUNS=false` by default; `/healthz`, `/api/runtime-deps`, and read routes remain usable without Java or Maven. | Public API image must not include Java, Maven, git, `private-datasets/`, or baseline `Results/`; public model execution fails closed. |
+| Cloud mode | Lightweight public API/container path from `dashboard/Dockerfile.api`; no Electron requirement. | Local Java/Maven execution stays out of ECS. Optional `DASHBOARD_EXECUTION_BACKEND=aws_ssm` dispatches manual and sensitivity experiments to the configured EC2 runner only when it is already running and SSM-ready. | Public API image must not include Java, Maven, git, `private-datasets/`, or baseline `Results/`; write actions require configured credentials. |
 | Desktop mode | Electron-owned local server on `127.0.0.1` with random port, packaged Java 25 runtime/fat jar, and Electron `userData` writable roots. | Packaged launcher for dashboard-managed manual and sensitivity runs; release resources are assembled from allowlisted input data and the runnable model jar. | Per-session bearer token and no packaged dev bypass; release data stays allowlisted and separate from cloud credentials/resources. |
 
 Experiments availability:
@@ -136,7 +141,7 @@ Local development defaults:
 - when running in local dev (`NODE_ENV != production`), dashboard requests run in dev view mode by default.
 - dev view mode bypasses write-auth configuration lockouts so `Experiments` run mode is usable without setting credentials.
 - actual run execution still requires Java and Maven in the API runtime.
-- use the `Preview non-dev` toggle in the app header (shown in dev) to switch to the same runtime/auth policy used by Render production.
+- use the `Preview non-dev` toggle in the app header (shown in dev) to switch to the same runtime/auth policy used by AWS production.
 
 Optional local auth testing (login required):
 
@@ -154,7 +159,7 @@ Health endpoint:
 
 - `GET /healthz`
 - `GET /api/runtime-deps` (runtime diagnostics):
-  - returns `java`, `maven`, `mavenBin`, and `versionInfo` for dependency checks.
+  - returns `java`, `maven`, `mavenBin`, `versionInfo`, and remote execution status when the AWS SSM backend is configured.
 
 Homepage preview endpoint:
 
@@ -163,14 +168,16 @@ Homepage preview endpoint:
 - avoids dashboard input version history, dataset attribution, and other compare-page metadata
 - keeps the homepage live without forcing the full compare path on first public load
 
-## Render Deployment
+## AWS Deployment
 
-Repository root includes `render.yaml` with:
+The dashboard is deployed from GitHub Actions to the AWS v1 architecture described in `docs/cloud/recommended-aws-setup.md`:
 
-- static web service: `uk-housing-market-abm`
-- API web service: `uk-housing-market-abm-api` (slim Docker runtime for public dashboard APIs)
+- private S3 frontend bucket behind CloudFront
+- ECR image for the dashboard API
+- ECS/Fargate API service behind the API origin used by CloudFront
+- private artifacts bucket for source bundles used by remote experiment workflows
 
-The public Render API is intentionally lightweight:
+The public AWS API is intentionally lightweight:
 
 - Dockerfile: `dashboard/Dockerfile.api`
 - base image: Node 22 slim, aligned with dashboard CI
@@ -178,17 +185,17 @@ The public Render API is intentionally lightweight:
 - does not include git, Java, Maven, or baseline `Results/` outputs
 - uses compiled server output (`dist-server`) instead of running through `tsx`
 
-The Render static service builds only the client bundle with `npm run build:client`. Server compilation remains part of local/CI full builds and the API container validation job.
+The AWS frontend deploy builds only the client bundle with `npm run build:client`, uploads `dashboard/dist` to S3, and invalidates CloudFront. Server compilation remains part of local/CI full builds and the API container validation job.
 
-Render production defaults to `DASHBOARD_ENABLE_MODEL_RUNS=false`, which keeps the Experiments workspace visible but disables model execution.
+AWS production keeps Java/Maven out of the ECS API container. To enable website-triggered remote experiments, configure the ECS task with:
 
-If you intentionally want remote experiment execution again, treat it as a separate service concern. The public 512 MB instance is not intended to host model execution or results analytics.
+- `DASHBOARD_EXECUTION_BACKEND=aws_ssm`
+- `AWS_REGION=eu-west-2`
+- `AWS_RUNNER_INSTANCE_ID=i-03c1e655fa9636710`
+- `AWS_ARTIFACTS_BUCKET=uk-housing-market-abm-artifacts-prod-064123637755`
+- `DASHBOARD_MAX_ACTIVE_REMOTE_RUNS=1`
 
-Local development remains the supported way to use experiments. If you still want to re-enable them in another environment, start with:
-
-- `DASHBOARD_ENABLE_MODEL_RUNS=true`
-- `DASHBOARD_WRITE_USERNAME` (secret)
-- `DASHBOARD_WRITE_PASSWORD` (secret)
+Dashboard write credentials should be stored as SSM SecureString parameters and exposed to the ECS task as secrets for `DASHBOARD_WRITE_USERNAME` and `DASHBOARD_WRITE_PASSWORD`. If the runner is stopped or not SSM-ready, the API reports the backend as unavailable and the frontend disables run controls. The API does not start EC2 instances.
 
 Deploys are configured from `master` and gated by passing GitHub checks.
 
@@ -198,12 +205,26 @@ GitHub Actions validates:
 - `npm run build`
 - `npm run test:smoke`
 - `docker build -f dashboard/Dockerfile.api .` whenever API deployment inputs change (`dashboard/server/**`, `dashboard/shared/**`, `dashboard/Dockerfile.api`, `dashboard/tsconfig.server.json`, `input-data-versions/**`, `.dockerignore`, or dashboard package manifests)
+- `./mvnw test` whenever model or Maven inputs change (`src/**`, `pom.xml`, `mvnw`, `mvnw.cmd`, or `.mvn/**`)
 
-If Render stops showing commit events (for example, "No event for this commit"), first re-link the service repository in Render to the current GitHub repo identity (`max-stoddard/UK-Housing-Market-ABM`) and re-sync the Blueprint.
+Pushes to `master` deploy only the changed AWS surfaces:
 
-Changes to `render.yaml` still require a Render Blueprint sync. The optional GitHub deploy-hook fallback does not apply Blueprint config updates on its own.
+- frontend changes sync `dashboard/dist` to the configured S3 bucket and invalidate CloudFront
+- API changes push a new ECR image and update the configured ECS service task definition
+- model, Maven, script, runner-source, or input-data changes upload a git source bundle and current-deploy manifest to the artifacts bucket
 
-Optional resilience fallback:
+The workflow uses GitHub OIDC rather than long-lived AWS access keys. Create the deployment role with `.github/aws/github-oidc-deploy-role.yml`. The same template can also attach optional runtime policies to the ECS task role, ECS task execution role, and EC2 runner role for SSM dispatch, SecureString reads, and S3 artifact access. Then configure these repository variables:
 
-- add `RENDER_STATIC_DEPLOY_HOOK` and `RENDER_API_DEPLOY_HOOK` as GitHub repository secrets
-- `.github/workflows/dashboard-ci.yml` will call these hooks after checks pass on `master`, only when matching service inputs changed
+- `AWS_DEPLOY_ROLE_ARN`
+- `AWS_REGION` (defaults to `eu-west-2` when unset)
+- `AWS_FRONTEND_BUCKET`
+- `AWS_CLOUDFRONT_DISTRIBUTION_ID`
+- `AWS_ECR_REPOSITORY` (defaults to `uk-housing-market-abm-api` when unset)
+- `AWS_ECS_CLUSTER`
+- `AWS_ECS_SERVICE`
+- `AWS_ECS_CONTAINER_NAME` (defaults to `dashboard-api` when unset)
+- `AWS_ARTIFACTS_BUCKET`
+- `AWS_SOURCE_BUNDLE_PREFIX` (defaults to `tmp/github-actions/source` when unset)
+- `VITE_API_BASE_URL` only when the frontend should call a separate HTTPS API origin instead of same-origin `/api/*`
+
+Do not add static AWS access keys to repository secrets for this deployment path.
