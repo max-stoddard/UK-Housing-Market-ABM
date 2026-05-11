@@ -16,6 +16,7 @@ const mavenBin = process.env.MAVEN_BIN?.trim() || path.join(repoRoot, process.pl
 const defaultOutputRoot = path.join(dashboardRoot, 'release', 'windows', 'resources');
 const modelJarName = 'housing-model-1.0-SNAPSHOT-windows-release.jar';
 const releaseLayoutVersion = 1;
+const releaseInputVersionAllowlist = new Set(['v0oo', 'v0', 'v4.19', 'v4.4']);
 
 function usage() {
   return `Usage: node scripts/windows/assemble-release-resources.mjs [options]
@@ -314,9 +315,15 @@ function assembleReleaseData(outputRoot) {
   const releaseInputRoot = path.join(releaseDataRoot, 'input-data-versions');
   ensureDir(releaseInputRoot);
 
-  const versions = listCanonicalVersions(inputDataRoot);
+  const versions = listCanonicalVersions(inputDataRoot).filter((version) => releaseInputVersionAllowlist.has(version));
   if (versions.length === 0) {
-    fail(`No canonical input-data version folders found under ${inputDataRoot}`);
+    fail(`No allowlisted canonical input-data version folders found under ${inputDataRoot}`);
+  }
+
+  for (const version of releaseInputVersionAllowlist) {
+    if (!versions.includes(version)) {
+      fail(`Allowlisted input-data version is missing or invalid: ${version}`);
+    }
   }
 
   for (const version of versions) {
@@ -437,9 +444,13 @@ function validateReleaseDataAllowlist(releaseDataRoot) {
   const versionDirs = fs.readdirSync(inputVersionsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter((name) => /^v/i.test(name));
+    .filter((name) => /^v\d+(?:\.\d+)*o*$/i.test(name));
   if (versionDirs.includes('v1')) {
     fail('release-data must not include the non-canonical v1 input-data folder.');
+  }
+  const disallowedVersionDirs = versionDirs.filter((version) => !releaseInputVersionAllowlist.has(version));
+  if (disallowedVersionDirs.length > 0) {
+    fail(`release-data includes non-allowlisted input-data versions: ${disallowedVersionDirs.join(', ')}`);
   }
 }
 

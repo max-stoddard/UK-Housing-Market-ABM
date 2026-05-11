@@ -52,15 +52,16 @@ Runtime target compatibility:
 
 | Target | Runtime shape | Model execution | Writable/auth boundary |
 | --- | --- | --- | --- |
-| Dev mode | Repo-shaped local workflow using the developer machine's Node, Java, and repo-local Maven wrapper. | Enabled by default in non-production when Java and the Maven wrapper are available. | Dev bypass is active only when `NODE_ENV != production` and the request is not `Preview non-dev`; no cloud or desktop runtime should depend on it. |
+| Dev mode | Repo-shaped local workflow using the developer machine's Node, Java, and repo-local Maven wrapper. | Enabled by default in non-production when Java and the Maven wrapper are available. | Dev bypass is active only when `NODE_ENV != production` and the selected view is `Dev mode`; no cloud or desktop runtime should depend on it. |
 | Cloud mode | Lightweight public API/container path from `dashboard/Dockerfile.api`; no Electron requirement. | Local Java/Maven execution stays out of ECS. Optional `DASHBOARD_EXECUTION_BACKEND=aws_ssm` dispatches manual and sensitivity experiments to the configured EC2 runner only when it is already running and SSM-ready. | Public API image must not include Java, Maven, git, `private-datasets/`, or baseline `Results/`; write actions require configured credentials. |
 | Desktop mode | Electron-owned local server on `127.0.0.1` with random port, packaged Java 25 runtime/fat jar, and Electron `userData` writable roots. | Packaged launcher for dashboard-managed manual and sensitivity runs; release resources are assembled from allowlisted input data and the runnable model jar. | Per-session bearer token and no packaged dev bypass; release data stays allowlisted and separate from cloud credentials/resources. |
 
 Experiments availability:
 
-- The `Experiments` navigation item, `/experiments`, and `/login` are available in dev, production, and `Preview non-dev`.
+- The `Experiments` navigation item, `/experiments`, and `/login` are available in dev, production, and preview views.
 - Experiment, model-run, results-management, and auth-for-experiments API routes are registered in every runtime.
 - Actual model execution remains controlled separately by `DASHBOARD_ENABLE_MODEL_RUNS`, Java/Maven-wrapper runtime availability, and write credentials.
+- Local dev view and local `Preview desktop` allow result downloads without dashboard credentials; `Preview cloud` and production cloud require configured credentials/login for downloads.
 - The homepage no longer shows git-history stats; production avoids all git/GitHub diff work entirely.
 
 Write-access behavior:
@@ -104,16 +105,16 @@ Unified experiment monitoring endpoints:
 
 Experiments route:
 
-- Available in local dev view, production, and `Preview non-dev`.
+- Available in local dev view, production, and preview views.
 - Unified page at `/experiments` with query-based selectors.
 - `type=manual|sensitivity` and `mode=run|view` drive setup/results combinations.
 - optional focus params: `jobRef` (run mode queue/log), `runId` (manual view), `experimentId` (sensitivity view).
 
-KPI definitions (tail-120 window, used for manual KPI cards and sensitivity analytics):
+KPI definitions (tail-120 window; experiment UI surfaces Mean, CV, and Range):
 
 - `Mean`: arithmetic mean of the tail-120 monthly values.
 - `CV`: `stdev / abs(mean)`; returns `null` when `abs(mean)` is near zero.
-- `Annualised Trend`: OLS monthly slope multiplied by `12`.
+- `Annualised Trend`: OLS monthly slope multiplied by `12`; retained in backend payloads for compatibility, but not offered as an experiment KPI basis.
 - `Range`: `P95 - P5` using linear percentile interpolation.
 
 Sensitivity behavior:
@@ -124,7 +125,8 @@ Sensitivity behavior:
 - optional full-output retention under `Results/experiments/sensitivity/<experimentId>/points`
 - persisted experiment metadata + chart-ready summaries under `Results/experiments/sensitivity/<experimentId>`
 - merged live logs with lifecycle markers + stdout/stderr stream under sensitivity and unified logs endpoints
-- tornado charts support KPI-basis selection (`Mean`, `CV`, `Annualised Trend`, `Range`)
+- tornado charts support KPI-basis selection (`Mean`, `CV`, `Range`); backend summaries retain `annualisedTrend` for compatibility
+- submission warnings flag Central Bank policy sweeps that are likely non-binding one-at-a-time for the selected baseline/range
 - manual run submissions are blocked while a sensitivity experiment is active, and sensitivity submissions are blocked while manual jobs are active
 
 ### Local Auth Setup
@@ -141,7 +143,7 @@ Local development defaults:
 - when running in local dev (`NODE_ENV != production`), dashboard requests run in dev view mode by default.
 - dev view mode bypasses write-auth configuration lockouts so `Experiments` run mode is usable without setting credentials.
 - actual run execution still requires Java and Maven in the API runtime.
-- use the `Preview non-dev` toggle in the app header (shown in dev) to switch to the same runtime/auth policy used by AWS production.
+- use the runtime view selector in the app header (shown in dev) to switch between `Dev mode`, `Preview desktop`, and `Preview cloud`.
 
 Optional local auth testing (login required):
 
@@ -181,7 +183,7 @@ The public AWS API is intentionally lightweight:
 
 - Dockerfile: `dashboard/Dockerfile.api`
 - base image: Node 22 slim, aligned with dashboard CI
-- ships only the public dashboard server plus `input-data-versions`
+- ships only the public dashboard server plus packaged `input-data-versions` snapshots `v0oo`, `v0`, `v4.19`, and `v4.4`
 - does not include git, Java, Maven, or baseline `Results/` outputs
 - uses compiled server output (`dist-server`) instead of running through `tsx`
 
