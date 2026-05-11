@@ -298,6 +298,14 @@ function assertNoDisallowedPackageEntries(root) {
   walk(root);
 }
 
+function resolveReleaseCommit() {
+  const configuredCommit = process.env.RELEASE_GIT_COMMIT?.trim();
+  if (configuredCommit) {
+    return configuredCommit;
+  }
+  return runCapture('git', ['rev-parse', 'HEAD'], repoRoot);
+}
+
 function buildInstallerManifest(options, appPackage, installerPath, resourceManifest) {
   const installerHash = sha256File(installerPath);
   const relativeInstallerPath = normalizeRel(path.relative(options.installerRoot, installerPath));
@@ -317,7 +325,7 @@ function buildInstallerManifest(options, appPackage, installerPath, resourceMani
       appId
     },
     git: {
-      commit: runCapture('git', ['rev-parse', 'HEAD'], repoRoot)
+      commit: resolveReleaseCommit()
     },
     installer: {
       path: relativeInstallerPath,
