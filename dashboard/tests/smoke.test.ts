@@ -4891,6 +4891,11 @@ assert.ok(
     dashboardServerSource.includes("req.path.startsWith('/api/')"),
   'Constructible server should keep desktop static serving behind API routes'
 );
+assert.ok(
+  dashboardServerSource.includes("const isDevRuntime = options.isDevRuntime ?? (envValue('NODE_ENV').toLowerCase() !== 'production');") &&
+    dashboardServerSource.includes("input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && !isPreviewStrictRequest(req)"),
+  'Dev write bypass should remain limited to non-production, non-desktop requests outside Preview non-dev'
+);
 
 assert.ok(
   publicRoutesSource.includes("app.get('/api/home-preview'"),
@@ -5190,6 +5195,41 @@ assert.ok(
   'Renderer desktop API typings should include support-bundle export'
 );
 
+const dashboardReadmeSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/README.md'), 'utf-8');
+assert.ok(
+  dashboardReadmeSource.includes('Runtime target compatibility:') &&
+    dashboardReadmeSource.includes('| Dev mode | Repo-shaped local workflow') &&
+    dashboardReadmeSource.includes('| Cloud mode | Lightweight public API/container path') &&
+    dashboardReadmeSource.includes('| Desktop mode | Electron-owned local server'),
+  'Dashboard README should document dev, cloud, and desktop runtime targets together'
+);
+assert.ok(
+  dashboardReadmeSource.includes('DASHBOARD_ENABLE_MODEL_RUNS=false') &&
+    dashboardReadmeSource.includes('/healthz') &&
+    dashboardReadmeSource.includes('/api/runtime-deps') &&
+    dashboardReadmeSource.includes('public model execution fails closed'),
+  'Runtime matrix should document cloud fail-closed model execution and read-route availability'
+);
+assert.ok(
+  dashboardReadmeSource.includes('Packaged launcher for dashboard-managed manual and sensitivity runs') &&
+    dashboardReadmeSource.includes('Per-session bearer token') &&
+    dashboardReadmeSource.includes('release data stays allowlisted and separate from cloud credentials/resources'),
+  'Runtime matrix should describe implemented desktop runtime boundaries'
+);
+
+const windowsReleaseDocSource = fs.readFileSync(
+  path.resolve(repoRoot, 'docs/windows/recommended-release-setup.md'),
+  'utf-8'
+);
+assert.ok(
+  windowsReleaseDocSource.includes('It is not a statement of current repo capability') &&
+    windowsReleaseDocSource.includes('The original baseline was a developer-oriented runtime without an Electron shell') &&
+    windowsReleaseDocSource.includes('phase-by-phase capability changes as they land') &&
+    windowsReleaseDocSource.includes('Public cloud compatibility'),
+  'Windows release docs should distinguish the original baseline from completed release phases'
+);
+
+const dockerignoreSource = fs.readFileSync(path.resolve(repoRoot, '.dockerignore'), 'utf-8');
 const dockerfileSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/Dockerfile.api'), 'utf-8');
 assert.ok(
   dockerfileSource.includes('RUN npm run build:server'),
@@ -5198,6 +5238,23 @@ assert.ok(
 assert.ok(
   !dockerfileSource.includes('openjdk-17-jdk'),
   'Docker API image should no longer install Java'
+);
+assert.ok(
+  dockerfileSource.includes('FROM node:22-trixie-slim') &&
+    !dockerfileSource.includes('maven') &&
+    !dockerfileSource.includes('git') &&
+    !dockerfileSource.includes('private-datasets') &&
+    !dockerfileSource.includes('Results'),
+  'Docker API image should stay Node-only and avoid model execution/private/generated payloads'
+);
+assert.ok(
+  dockerignoreSource.includes('*') &&
+    dockerignoreSource.includes('!dashboard/server/**') &&
+    dockerignoreSource.includes('!dashboard/shared/**') &&
+    dockerignoreSource.includes('!input-data-versions/**') &&
+    !dockerignoreSource.includes('!private-datasets') &&
+    !dockerignoreSource.includes('!Results'),
+  'Docker build context should remain allowlisted away from private datasets and generated Results'
 );
 
 console.log('Smoke tests passed.');

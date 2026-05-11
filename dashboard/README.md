@@ -43,6 +43,14 @@ Dashboard API environment variables:
 - `DASHBOARD_RESULTS_CAP_MB` (optional): total `Results/` storage cap in MB for dashboard-managed runs (defaults to `400`). New run submissions are blocked when usage is at/above cap after managed-run pruning.
 - `DASHBOARD_LOG_MEMORY` (optional): set to `true` to log request duration plus RSS/heap deltas for public API routes.
 
+Runtime target compatibility:
+
+| Target | Runtime shape | Model execution | Writable/auth boundary |
+| --- | --- | --- | --- |
+| Dev mode | Repo-shaped local workflow using the developer machine's Node, Java, and Maven. | Enabled by default in non-production when Java/Maven are available. | Dev bypass is active only when `NODE_ENV != production` and the request is not `Preview non-dev`; no cloud or desktop runtime should depend on it. |
+| Cloud mode | Lightweight public API/container path from `dashboard/Dockerfile.api`; no Electron requirement. | `DASHBOARD_ENABLE_MODEL_RUNS=false` by default; `/healthz`, `/api/runtime-deps`, and read routes remain usable without Java or Maven. | Public API image must not include Java, Maven, git, `private-datasets/`, or baseline `Results/`; public model execution fails closed. |
+| Desktop mode | Electron-owned local server on `127.0.0.1` with random port, packaged Java 25 runtime/fat jar, and Electron `userData` writable roots. | Packaged launcher for dashboard-managed manual and sensitivity runs; release resources are assembled from allowlisted input data and the runnable model jar. | Per-session bearer token and no packaged dev bypass; release data stays allowlisted and separate from cloud credentials/resources. |
+
 Experiments availability:
 
 - The `Experiments` navigation item, `/experiments`, and `/login` are available in dev, production, and `Preview non-dev`.
