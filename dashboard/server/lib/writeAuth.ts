@@ -180,6 +180,39 @@ export function createWriteAuthController(
   };
 }
 
+export function createDesktopWriteAuthController(desktopTokenRaw: string | undefined): WriteAuthController {
+  const desktopToken = desktopTokenRaw?.trim() ?? '';
+  if (!desktopToken) {
+    throw new Error('Desktop write auth token is required and must be non-empty.');
+  }
+
+  const resolveAccess = (authorizationHeader: string | undefined): WriteAccessStatus => {
+    const token = parseBearerToken(authorizationHeader);
+    if (!token || !secureEquals(desktopToken, token)) {
+      return {
+        authEnabled: true,
+        canWrite: false,
+        token: null
+      };
+    }
+
+    return {
+      authEnabled: true,
+      canWrite: true,
+      token
+    };
+  };
+
+  return {
+    resolveAccess,
+    login: () => ({ ok: false, canWrite: false }),
+    logout: () => {
+      // Desktop auth uses an Electron-owned per-session bearer token, not server-side sessions.
+    },
+    authEnabled: true
+  };
+}
+
 export function createWriteAuthControllerFromEnv(): WriteAuthController {
   return createWriteAuthController(process.env.DASHBOARD_WRITE_USERNAME, process.env.DASHBOARD_WRITE_PASSWORD);
 }

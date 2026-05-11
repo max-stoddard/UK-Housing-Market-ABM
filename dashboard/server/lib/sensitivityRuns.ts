@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,17 +29,32 @@ import {
   appendOutputChunk,
   flushPartialLine,
   readLogSlice,
-  type LogBufferState
+  type LogBufferState,
+  type LogLineSink
 } from './logs/logBuffer';
+import {
+  createMavenModelLauncher,
+  type ModelLauncher,
+  type ModelLauncherCommand
+} from './modelLauncher';
+import {
+  formatRuntimePath,
+  resolveRuntimePaths,
+  type RuntimePathInput,
+  type RuntimePaths
+} from './runtimePaths';
+import {
+  hashDirectory,
+  hashFile,
+  writeSensitivityRunManifest,
+  type SensitivityRunManifestPoint
+} from './runManifest';
 import { buildEmptyKpiValues, computeTail120Kpi } from './stats/kpi';
 
-const INPUT_DATA_VERSIONS_DIR = 'input-data-versions';
-const RESULTS_DIR = 'Results';
-const EXPERIMENTS_DIR = path.join(RESULTS_DIR, 'experiments', 'sensitivity');
-const TMP_EXPERIMENT_RUNS_DIR = path.join('tmp', 'dashboard-sensitivity-runs');
+const EXPERIMENTS_DIR = path.join('experiments', 'sensitivity');
+const TMP_EXPERIMENT_RUNS_DIR = 'dashboard-sensitivity-runs';
 const SUMMARY_FILE_NAME = 'summary.json';
 const METADATA_FILE_NAME = 'metadata.json';
-const DEFAULT_MAVEN_BIN = process.env.DASHBOARD_MAVEN_BIN?.trim() || 'mvn';
 const CANCEL_KILL_TIMEOUT_MS = 10_000;
 const MAX_LOG_LINES = 10_000;
 const TERMINAL_STATUSES = new Set<SensitivityExperimentStatus>(['succeeded', 'failed', 'canceled']);
@@ -57,11 +72,19 @@ type SpawnModelRunFn = (
   outputPath: string
 ) => ChildProcessWithoutNullStreams;
 
+interface SubmitSensitivityExperimentOptions {
+  launcher?: ModelLauncher;
+  logSink?: LogLineSink;
+}
+
 interface ExperimentRecord {
+  runtimePaths: RuntimePaths;
   metadata: SensitivityExperimentMetadata;
   results: SensitivityExperimentResultsPayload;
   charts: SensitivityExperimentChartsPayload;
   logBuffer: LogBufferState;
+  launcher: ModelLauncher;
+  manifestPoints: SensitivityRunManifestPoint[];
   process?: ChildProcessWithoutNullStreams;
   killTimer?: NodeJS.Timeout;
   cancelRequested: boolean;
@@ -220,27 +243,50 @@ const POLICY_CORE_INDICATORS: IndicatorDef[] = [
 ];
 
 const repoStates = new Map<string, RepoState>();
+const defaultSensitivityLauncher = createMavenModelLauncher();
+let sensitivityLauncherOverrideForTests: ModelLauncher | null = null;
 
-function spawnModelRunWithMavenBin(
-  mavenBin: string,
-  repoRoot: string,
-  configPath: string,
-  outputPath: string
-): ChildProcessWithoutNullStreams {
-  const escapedConfigPath = configPath.replace(/"/g, '\\"');
-  const escapedOutputPath = outputPath.replace(/"/g, '\\"');
-  const execArgs = `-configFile "${escapedConfigPath}" -outputFolder "${escapedOutputPath}" -dev`;
-  return spawn(mavenBin, ['compile', 'exec:java', `-Dexec.args=${execArgs}`], {
-    cwd: repoRoot
-  });
+function createSpawnFunctionLauncher(spawnFn: SpawnModelRunFn): ModelLauncher {
+  return {
+    mode: 'maven',
+    metadata: {
+      mode: 'maven',
+      commandTemplate: 'test model launcher'
+    },
+    buildCommand: (request): ModelLauncherCommand => ({
+      command: 'test-model-launcher',
+      args: [request.configPath, request.outputPath],
+      options: {
+        cwd: request.repoRoot
+      },
+      commandTemplate: 'test model launcher'
+    }),
+    launch: (request) => spawnFn(request.repoRoot, request.configPath, request.outputPath)
+  };
 }
 
-let spawnModelRunProcess: SpawnModelRunFn = (repoRoot, configPath, outputPath) =>
-  spawnModelRunWithMavenBin(DEFAULT_MAVEN_BIN, repoRoot, configPath, outputPath);
+function resolveSensitivityLauncher(launcher: ModelLauncher | undefined): ModelLauncher {
+  return launcher ?? sensitivityLauncherOverrideForTests ?? defaultSensitivityLauncher;
+}
 
-function getRepoState(repoRoot: string): RepoState {
-  const normalizedRepoRoot = path.resolve(repoRoot);
-  const current = repoStates.get(normalizedRepoRoot);
+function toRunCommandMetadata(launcher: ModelLauncher): SensitivityExperimentMetadata['runCommand'] {
+  return {
+    mode: launcher.metadata.mode,
+    mavenBin: launcher.metadata.mavenBin,
+    javaExe: launcher.metadata.javaExe,
+    modelJar: launcher.metadata.modelJar,
+    commandTemplate: launcher.metadata.commandTemplate
+  };
+}
+
+function runtimeStateKey(paths: RuntimePaths): string {
+  return [paths.dataRoot, paths.resultsRoot, paths.tempRoot].map((value) => path.resolve(value)).join('\0');
+}
+
+function getRepoState(pathsInput: RuntimePathInput): RepoState {
+  const paths = resolveRuntimePaths(pathsInput);
+  const stateKey = runtimeStateKey(paths);
+  const current = repoStates.get(stateKey);
   if (current) {
     return current;
   }
@@ -251,7 +297,7 @@ function getRepoState(repoRoot: string): RepoState {
     order: [],
     activeExperimentId: null
   };
-  repoStates.set(normalizedRepoRoot, created);
+  repoStates.set(stateKey, created);
   return created;
 }
 
@@ -259,8 +305,8 @@ function isTerminal(status: SensitivityExperimentStatus): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
-function asRelativePath(root: string, absolutePath: string): string {
-  return path.relative(root, absolutePath).replace(/\\/g, '/');
+function asRuntimePath(paths: RuntimePaths, absolutePath: string): string {
+  return formatRuntimePath(paths, absolutePath);
 }
 
 function formatRunTimestamp(date: Date): string {
@@ -293,31 +339,49 @@ function buildExperimentId(date: Date): string {
   return `sensitivity-${formatRunTimestamp(date)}-${randomUUID().slice(0, 8)}`;
 }
 
-function metadataPath(repoRoot: string, experimentId: string): string {
-  return path.join(repoRoot, EXPERIMENTS_DIR, experimentId, METADATA_FILE_NAME);
+function metadataPath(pathsInput: RuntimePathInput, experimentId: string): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return path.join(paths.resultsRoot, EXPERIMENTS_DIR, experimentId, METADATA_FILE_NAME);
 }
 
-function summaryPath(repoRoot: string, experimentId: string): string {
-  return path.join(repoRoot, EXPERIMENTS_DIR, experimentId, SUMMARY_FILE_NAME);
+function summaryPath(pathsInput: RuntimePathInput, experimentId: string): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return path.join(paths.resultsRoot, EXPERIMENTS_DIR, experimentId, SUMMARY_FILE_NAME);
 }
 
-function getExperimentOutputDir(repoRoot: string, experimentId: string): string {
-  return path.join(repoRoot, EXPERIMENTS_DIR, experimentId);
+function getExperimentOutputDir(pathsInput: RuntimePathInput, experimentId: string): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return path.join(paths.resultsRoot, EXPERIMENTS_DIR, experimentId);
 }
 
-function writeMetadata(repoRoot: string, metadata: SensitivityExperimentMetadata): void {
-  const filePath = metadataPath(repoRoot, metadata.experimentId);
+function writeManifest(pathsInput: RuntimePathInput, record: ExperimentRecord): void {
+  const paths = resolveRuntimePaths(pathsInput);
+  const summaryPayload: PersistedSummary = {
+    results: record.results,
+    charts: record.charts
+  };
+  writeSensitivityRunManifest(getExperimentOutputDir(paths, record.metadata.experimentId), {
+    paths,
+    launcher: record.launcher,
+    experiment: record.metadata,
+    summaryPayload,
+    points: record.manifestPoints
+  });
+}
+
+function writeMetadata(pathsInput: RuntimePathInput, metadata: SensitivityExperimentMetadata): void {
+  const filePath = metadataPath(pathsInput, metadata.experimentId);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(metadata, null, 2)}\n`, 'utf-8');
 }
 
 function writeSummary(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   experimentId: string,
   results: SensitivityExperimentResultsPayload,
   charts: SensitivityExperimentChartsPayload
 ): void {
-  const filePath = summaryPath(repoRoot, experimentId);
+  const filePath = summaryPath(pathsInput, experimentId);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const payload: PersistedSummary = { results, charts };
   fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
@@ -473,8 +537,12 @@ function normalizeChartsPayload(
   };
 }
 
-function readSummary(repoRoot: string, experimentId: string, parameter: SensitivityExperimentMetadata['parameter']): PersistedSummary | null {
-  const filePath = summaryPath(repoRoot, experimentId);
+function readSummary(
+  pathsInput: RuntimePathInput,
+  experimentId: string,
+  parameter: SensitivityExperimentMetadata['parameter']
+): PersistedSummary | null {
+  const filePath = summaryPath(pathsInput, experimentId);
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -520,11 +588,12 @@ function emptyCharts(
   };
 }
 
-function createLogBuffer(): LogBufferState {
+function createLogBuffer(sink?: LogLineSink): LogBufferState {
   return {
     logLines: [],
     logStart: 0,
-    partialLine: ''
+    partialLine: '',
+    ...(sink ? { sink } : {})
   };
 }
 
@@ -555,6 +624,20 @@ function stripInlineComment(value: string): string {
     return value.slice(0, index);
   }
   return value;
+}
+
+function readConfigSeed(configPath: string): number | null {
+  const lines = fs.readFileSync(configPath, 'utf-8').split(/\r?\n/);
+  const seedLine = lines.find((line) => /^\s*SEED\s*=/.test(line));
+  if (!seedLine) {
+    return null;
+  }
+  const match = /^\s*SEED\s*=\s*(.+)$/.exec(seedLine);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseFloat(unquote(stripInlineComment(match[1]).trim()));
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function rewriteConfigForRun(
@@ -770,13 +853,14 @@ function appendLifecycle(record: ExperimentRecord, message: string): void {
   appendLogLine(record.logBuffer, `[system] ${message}`, MAX_LOG_LINES);
 }
 
-function ensureLoaded(repoRoot: string): void {
-  const state = getRepoState(repoRoot);
+function ensureLoaded(pathsInput: RuntimePathInput): void {
+  const paths = resolveRuntimePaths(pathsInput);
+  const state = getRepoState(paths);
   if (state.loaded) {
     return;
   }
 
-  const root = path.join(repoRoot, EXPERIMENTS_DIR);
+  const root = path.join(paths.resultsRoot, EXPERIMENTS_DIR);
   if (!fs.existsSync(root)) {
     state.loaded = true;
     return;
@@ -788,7 +872,7 @@ function ensureLoaded(repoRoot: string): void {
     .map((entry) => entry.name);
 
   for (const experimentId of entries) {
-    const filePath = metadataPath(repoRoot, experimentId);
+    const filePath = metadataPath(paths, experimentId);
     if (!fs.existsSync(filePath)) {
       continue;
     }
@@ -803,19 +887,22 @@ function ensureLoaded(repoRoot: string): void {
         metadata.status = 'failed';
         metadata.failureReason = 'interrupted_on_restart';
         metadata.endedAt = new Date().toISOString();
-        writeMetadata(repoRoot, metadata);
+        writeMetadata(paths, metadata);
       }
 
-      const persistedSummary = readSummary(repoRoot, experimentId, metadata.parameter);
+      const persistedSummary = readSummary(paths, experimentId, metadata.parameter);
       const results = persistedSummary?.results ?? emptyResults(experimentId);
       addDeltaAgainstBaseline(results);
       const charts = buildChartsFromResults(experimentId, metadata.parameter, results);
 
       const record: ExperimentRecord = {
+        runtimePaths: paths,
         metadata,
         results,
         charts,
         logBuffer: createLogBuffer(),
+        launcher: defaultSensitivityLauncher,
+        manifestPoints: [],
         cancelRequested: false
       };
 
@@ -838,11 +925,11 @@ function ensureLoaded(repoRoot: string): void {
   state.loaded = true;
 }
 
-function resolveParameterDefinitions(repoRoot: string, baseline: string): {
+function resolveParameterDefinitions(pathsInput: RuntimePathInput, baseline: string): {
   baseline: string;
   parameters: ModelRunParameterDefinition[];
 } {
-  const options = getModelRunOptions(repoRoot, baseline, true);
+  const options = getModelRunOptions(pathsInput, baseline, true);
   return {
     baseline: options.requestedBaseline,
     parameters: options.parameters
@@ -850,7 +937,7 @@ function resolveParameterDefinitions(repoRoot: string, baseline: string): {
 }
 
 function validatePayload(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   payload: SensitivityExperimentCreateRequest
 ): {
   baseline: string;
@@ -881,7 +968,7 @@ function validatePayload(
     throw new Error('parameterKey is required.');
   }
 
-  const { parameters } = resolveParameterDefinitions(repoRoot, baseline);
+  const { parameters } = resolveParameterDefinitions(pathsInput, baseline);
   const parameter = parameters.find((item) => item.key === parameterKey);
   if (!parameter) {
     throw new Error(`Unsupported sensitivity parameter: ${parameterKey}`);
@@ -977,18 +1064,19 @@ function computeKpiPercentDiffFromBaseline(current: KpiMetricValues, baseline: K
 }
 
 async function runPoint(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   record: ExperimentRecord,
   point: SensitivitySamplePoint
 ): Promise<SensitivityPointResult> {
+  const paths = resolveRuntimePaths(pathsInput);
   const metadata = record.metadata;
-  const baselineDirPath = path.join(repoRoot, INPUT_DATA_VERSIONS_DIR, metadata.baseline);
+  const baselineDirPath = path.join(paths.dataRoot, metadata.baseline);
   const baselineConfigPath = path.join(baselineDirPath, 'config.properties');
-  const pointTempRoot = path.join(repoRoot, TMP_EXPERIMENT_RUNS_DIR, metadata.experimentId, point.pointId);
+  const pointTempRoot = path.join(paths.tempRoot, TMP_EXPERIMENT_RUNS_DIR, metadata.experimentId, point.pointId);
   const configPath = path.join(pointTempRoot, 'config.properties');
 
   const outputPath = metadata.retainFullOutput
-    ? path.join(getExperimentOutputDir(repoRoot, metadata.experimentId), 'points', point.pointId)
+    ? path.join(getExperimentOutputDir(paths, metadata.experimentId), 'points', point.pointId)
     : path.join(pointTempRoot, 'output');
 
   fs.rmSync(pointTempRoot, { recursive: true, force: true });
@@ -1003,6 +1091,8 @@ async function runPoint(
     configPath,
     new Map([[metadata.parameter.key, overrideValue]])
   );
+  const generatedConfigHash = hashFile(configPath);
+  const seed = readConfigSeed(configPath);
 
   fs.mkdirSync(outputPath, { recursive: true });
 
@@ -1018,7 +1108,7 @@ async function runPoint(
     let child: ChildProcessWithoutNullStreams;
 
     try {
-      child = spawnModelRunProcess(repoRoot, configPath, outputPath);
+      child = record.launcher.launch({ repoRoot: paths.repoRoot, configPath, outputPath });
     } catch (error) {
       const message = `Failed to spawn model process: ${(error as Error).message}`;
       appendLogLine(record.logBuffer, `[stderr] ${message}`, MAX_LOG_LINES);
@@ -1078,6 +1168,7 @@ async function runPoint(
     indicatorMetrics = getPointIndicatorKpis(outputPath);
   }
 
+  const outputHash = hashDirectory(outputPath);
   const result: SensitivityPointResult = {
     pointId: point.pointId,
     value: point.value,
@@ -1086,7 +1177,7 @@ async function runPoint(
     isBaseline: point.isBaseline,
     status: executionResult.status,
     runId,
-    outputPath: metadata.retainFullOutput ? asRelativePath(repoRoot, outputPath) : null,
+    outputPath: metadata.retainFullOutput ? asRuntimePath(paths, outputPath) : null,
     error: executionResult.error,
     indicatorMetrics
   };
@@ -1095,6 +1186,22 @@ async function runPoint(
     record,
     `Point ${point.label} (${point.pointId}) finished with status ${result.status}${result.error ? `: ${result.error}` : ''}`
   );
+
+  record.manifestPoints.push({
+    pointId: point.pointId,
+    value: point.value,
+    label: point.label,
+    isBaseline: point.isBaseline,
+    status: result.status,
+    runId,
+    outputPath: result.outputPath,
+    generatedConfigHash,
+    seed,
+    overriddenParameters: {
+      [metadata.parameter.key]: point.value
+    },
+    outputHash
+  });
 
   if (!metadata.retainFullOutput) {
     fs.rmSync(outputPath, { recursive: true, force: true });
@@ -1199,13 +1306,15 @@ function buildChartsFromResults(
   };
 }
 
-async function runExperiment(repoRoot: string, record: ExperimentRecord): Promise<void> {
-  const state = getRepoState(repoRoot);
+async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRecord): Promise<void> {
+  const paths = resolveRuntimePaths(pathsInput);
+  const state = getRepoState(paths);
   const { metadata } = record;
 
   metadata.status = 'running';
   metadata.startedAt = new Date().toISOString();
-  writeMetadata(repoRoot, metadata);
+  writeMetadata(paths, metadata);
+  writeManifest(paths, record);
   state.activeExperimentId = metadata.experimentId;
   appendLifecycle(record, `Experiment ${metadata.experimentId} running`);
 
@@ -1217,7 +1326,7 @@ async function runExperiment(repoRoot: string, record: ExperimentRecord): Promis
         break;
       }
 
-      const pointResult = await runPoint(repoRoot, record, point);
+      const pointResult = await runPoint(paths, record, point);
       pointResults.push(pointResult);
       record.results = {
         experimentId: metadata.experimentId,
@@ -1226,7 +1335,8 @@ async function runExperiment(repoRoot: string, record: ExperimentRecord): Promis
       };
       addDeltaAgainstBaseline(record.results);
       record.charts = buildChartsFromResults(metadata.experimentId, metadata.parameter, record.results);
-      writeSummary(repoRoot, metadata.experimentId, record.results, record.charts);
+      writeSummary(paths, metadata.experimentId, record.results, record.charts);
+      writeManifest(paths, record);
 
       if (pointResult.status === 'failed') {
         metadata.status = 'failed';
@@ -1257,8 +1367,9 @@ async function runExperiment(repoRoot: string, record: ExperimentRecord): Promis
     appendLifecycle(record, `Experiment failed: ${metadata.failureReason}`);
   } finally {
     metadata.endedAt = new Date().toISOString();
-    writeMetadata(repoRoot, metadata);
-    writeSummary(repoRoot, metadata.experimentId, record.results, record.charts);
+    writeMetadata(paths, metadata);
+    writeSummary(paths, metadata.experimentId, record.results, record.charts);
+    writeManifest(paths, record);
     state.activeExperimentId = null;
     record.process = undefined;
     if (record.killTimer) {
@@ -1269,9 +1380,9 @@ async function runExperiment(repoRoot: string, record: ExperimentRecord): Promis
   }
 }
 
-export function hasActiveSensitivityExperiment(repoRoot: string): boolean {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+export function hasActiveSensitivityExperiment(pathsInput: RuntimePathInput): boolean {
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   if (!state.activeExperimentId) {
     return false;
   }
@@ -1280,15 +1391,15 @@ export function hasActiveSensitivityExperiment(repoRoot: string): boolean {
   return Boolean(record && !isTerminal(record.metadata.status));
 }
 
-export function getActiveSensitivityExperimentId(repoRoot: string): string | null {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+export function getActiveSensitivityExperimentId(pathsInput: RuntimePathInput): string | null {
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   return state.activeExperimentId;
 }
 
-export function listSensitivityExperiments(repoRoot: string): SensitivityExperimentListPayload {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+export function listSensitivityExperiments(pathsInput: RuntimePathInput): SensitivityExperimentListPayload {
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   const experiments = [...state.order]
     .reverse()
     .map((id) => state.experimentsById.get(id))
@@ -1297,9 +1408,9 @@ export function listSensitivityExperiments(repoRoot: string): SensitivityExperim
   return { experiments };
 }
 
-export function getSensitivityExperiment(repoRoot: string, experimentId: string): SensitivityExperimentDetailPayload {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+export function getSensitivityExperiment(pathsInput: RuntimePathInput, experimentId: string): SensitivityExperimentDetailPayload {
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   const record = state.experimentsById.get(experimentId.trim());
   if (!record) {
     throw new Error(`Unknown sensitivity experiment: ${experimentId}`);
@@ -1308,11 +1419,11 @@ export function getSensitivityExperiment(repoRoot: string, experimentId: string)
 }
 
 export function getSensitivityExperimentResults(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   experimentId: string
 ): SensitivityExperimentResultsPayload {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   const record = state.experimentsById.get(experimentId.trim());
   if (!record) {
     throw new Error(`Unknown sensitivity experiment: ${experimentId}`);
@@ -1321,11 +1432,11 @@ export function getSensitivityExperimentResults(
 }
 
 export function getSensitivityExperimentCharts(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   experimentId: string
 ): SensitivityExperimentChartsPayload {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   const record = state.experimentsById.get(experimentId.trim());
   if (!record) {
     throw new Error(`Unknown sensitivity experiment: ${experimentId}`);
@@ -1334,13 +1445,13 @@ export function getSensitivityExperimentCharts(
 }
 
 export function getSensitivityExperimentLogs(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   experimentId: string,
   cursor: number | undefined,
   limit: number | undefined
 ): SensitivityExperimentLogsPayload {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   const record = state.experimentsById.get(experimentId.trim());
   if (!record) {
     throw new Error(`Unknown sensitivity experiment: ${experimentId}`);
@@ -1359,11 +1470,14 @@ export function getSensitivityExperimentLogs(
 }
 
 export function submitSensitivityExperiment(
-  repoRoot: string,
-  payload: SensitivityExperimentCreateRequest
+  pathsInput: RuntimePathInput,
+  payload: SensitivityExperimentCreateRequest,
+  options: SubmitSensitivityExperimentOptions = {}
 ): SensitivityExperimentSubmitResponse {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+  const paths = resolveRuntimePaths(pathsInput);
+  ensureLoaded(paths);
+  const state = getRepoState(paths);
+  const launcher = resolveSensitivityLauncher(options.launcher);
 
   if (state.activeExperimentId) {
     const active = state.experimentsById.get(state.activeExperimentId);
@@ -1385,7 +1499,7 @@ export function submitSensitivityExperiment(
     samplePoints,
     collapsedSlots,
     valuesByKey
-  } = validatePayload(repoRoot, payload);
+  } = validatePayload(paths, payload);
   const { warnings, warningSummary } = buildWarnings(valuesByKey, parameter.key, samplePoints);
 
   if (warnings.length > 0 && payload.confirmWarnings !== true) {
@@ -1422,31 +1536,32 @@ export function submitSensitivityExperiment(
     warningSummary,
     sampledPoints: samplePoints,
     collapsedSlots,
-    runCommand: {
-      mavenBin: DEFAULT_MAVEN_BIN,
-      commandTemplate: 'mvn compile exec:java -Dexec.args="-configFile <path> -outputFolder <path> -dev"'
-    }
+    runCommand: toRunCommandMetadata(launcher)
   };
 
   const record: ExperimentRecord = {
+    runtimePaths: paths,
     metadata,
     results: emptyResults(experimentId),
     charts: emptyCharts(experimentId, metadata.parameter),
-    logBuffer: createLogBuffer(),
+    logBuffer: createLogBuffer(options.logSink ? (line) => options.logSink?.(`[sensitivity:${experimentId}] ${line}`) : undefined),
+    launcher,
+    manifestPoints: [],
     cancelRequested: false
   };
 
   appendLifecycle(record, `Experiment ${experimentId} queued`);
 
-  writeMetadata(repoRoot, metadata);
-  writeSummary(repoRoot, experimentId, record.results, record.charts);
+  writeMetadata(paths, metadata);
+  writeSummary(paths, experimentId, record.results, record.charts);
+  writeManifest(paths, record);
 
   state.experimentsById.set(experimentId, record);
   state.order.push(experimentId);
   state.activeExperimentId = experimentId;
 
   queueMicrotask(() => {
-    void runExperiment(repoRoot, record);
+    void runExperiment(paths, record);
   });
 
   return {
@@ -1458,11 +1573,11 @@ export function submitSensitivityExperiment(
 }
 
 export function cancelSensitivityExperiment(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   experimentId: string
 ): SensitivityExperimentDetailPayload {
-  ensureLoaded(repoRoot);
-  const state = getRepoState(repoRoot);
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
   const normalized = experimentId.trim();
   if (!normalized) {
     throw new Error('experimentId is required.');
@@ -1484,7 +1599,8 @@ export function cancelSensitivityExperiment(
   if (record.metadata.status === 'queued') {
     record.metadata.status = 'canceled';
     record.metadata.endedAt = new Date().toISOString();
-    writeMetadata(repoRoot, record.metadata);
+    writeMetadata(record.runtimePaths, record.metadata);
+    writeManifest(record.runtimePaths, record);
     if (state.activeExperimentId === normalized) {
       state.activeExperimentId = null;
     }
@@ -1510,22 +1626,30 @@ export function cancelSensitivityExperiment(
 }
 
 export function __setSensitivityRunSpawnForTests(spawnFn: SpawnModelRunFn | null): void {
-  spawnModelRunProcess =
-    spawnFn ??
-    ((repoRoot, configPath, outputPath) => spawnModelRunWithMavenBin(DEFAULT_MAVEN_BIN, repoRoot, configPath, outputPath));
+  sensitivityLauncherOverrideForTests = spawnFn ? createSpawnFunctionLauncher(spawnFn) : null;
 }
 
-export function __resetSensitivityRunsForTests(): void {
+export function shutdownSensitivityRunProcesses(): void {
+  const now = new Date().toISOString();
   for (const state of repoStates.values()) {
     for (const record of state.experimentsById.values()) {
       if (record.killTimer) {
         clearTimeout(record.killTimer);
+        record.killTimer = undefined;
       }
       if (record.process && !isTerminal(record.metadata.status)) {
+        record.cancelRequested = true;
+        record.metadata.status = 'canceled';
+        record.metadata.canceledByUser = true;
+        record.metadata.endedAt = now;
         record.process.kill('SIGKILL');
       }
     }
   }
+}
+
+export function __resetSensitivityRunsForTests(): void {
+  shutdownSensitivityRunProcesses();
   repoStates.clear();
   __setSensitivityRunSpawnForTests(null);
 }

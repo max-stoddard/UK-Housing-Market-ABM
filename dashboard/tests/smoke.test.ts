@@ -47,9 +47,44 @@ import {
   listSensitivityExperiments,
   submitSensitivityExperiment
 } from '../server/lib/sensitivityRuns.js';
+import {
+  buildMavenModelLaunchCommand,
+  buildPackagedModelLaunchCommand,
+  createMavenModelLauncher,
+  createPackagedModelLauncher,
+  type ModelLauncher,
+  type ModelLauncherMode,
+  type ModelLaunchRequest
+} from '../server/lib/modelLauncher.js';
+import { startDashboardServer } from '../server/dashboardServer.js';
 import { cancelExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../server/lib/experimentJobs.js';
 import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFilePath } from '../server/lib/io.js';
-import { createWriteAuthController, getWriteAuthConfigurationError, resolveDashboardWriteAccess } from '../server/lib/writeAuth.js';
+import {
+  assertDesktopWritablePathsOutsideResources,
+  createDesktopRuntimePaths,
+  createDevelopmentRuntimePaths,
+  type RuntimePaths
+} from '../server/lib/runtimePaths.js';
+import { checkRuntimeDependencies, parseJavaMajorVersion } from '../server/lib/runtimeDeps.js';
+import { exportDesktopSupportBundle } from '../server/lib/supportBundle.js';
+import {
+  RUN_MANIFEST_FILE_NAME,
+  type ManualRunManifest,
+  type SensitivityRunManifest
+} from '../server/lib/runManifest.js';
+import {
+  MANAGED_RUN_MARKER,
+  isDashboardManagedRun,
+  writeDashboardManagedRunMarker
+} from '../server/lib/runOwnership.js';
+import {
+  createDesktopWriteAuthController,
+  createWriteAuthController,
+  getWriteAuthConfigurationError,
+  resolveDashboardWriteAccess
+} from '../server/lib/writeAuth.js';
+import { appendLogLine, type LogBufferState } from '../server/lib/logs/logBuffer.js';
+import { createRotatingLogWriter } from '../server/lib/logs/persistentLogs.js';
 import { loadDashboardInputVersionHistory } from '../server/lib/dashboardInputVersionHistory.js';
 import { compareVersions, listVersions, parseVersionParts } from '../server/lib/versioning.js';
 import { assertAxisSpecComplete, getAxisSpec } from '../src/lib/chartAxes.js';
@@ -59,6 +94,13 @@ import {
   normaliseExperimentRouteState,
   parseExperimentRouteState
 } from '../src/pages/experiments/routeState.js';
+import {
+  classifyDesktopWindowOpenTarget,
+  deriveTrustedDashboardOrigin,
+  shouldBlockDashboardNavigation,
+  validateTrustedDesktopIpcSender,
+  type DesktopFrameLike
+} from '../shared/desktopSecurity.js';
 import {
   KPI_DETAIL_ROWS,
   computeKpiDeltaValue,
@@ -119,6 +161,19 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 3000): Promise<vo
     }
     await waitForAsyncTick(10);
   }
+}
+
+async function fetchText(url: string, init?: Parameters<typeof fetch>[1]): Promise<{
+  status: number;
+  contentType: string;
+  text: string;
+}> {
+  const response = await fetch(url, init);
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type') ?? '',
+    text: await response.text()
+  };
 }
 
 const kpiStats = computeKpiFromValues([1, 2, 3, 4, 5]);
@@ -766,6 +821,246 @@ class FakeModelProcess extends EventEmitter {
   }
 }
 
+function createFakeLauncher(
+  mode: ModelLauncherMode,
+  launch: (request: ModelLaunchRequest) => FakeModelProcess
+): ModelLauncher {
+  return {
+    mode,
+    metadata: {
+      mode,
+      commandTemplate: `fake ${mode} launcher`,
+      ...(mode === 'maven'
+        ? { mavenBin: 'fake-mvn' }
+        : { javaExe: 'fake-java', modelJar: 'fake-model.jar' })
+    },
+    buildCommand: (request) => ({
+      command: mode === 'maven' ? 'fake-mvn' : 'fake-java',
+      args: mode === 'maven'
+        ? ['compile', 'exec:java']
+        : ['-jar', 'fake-model.jar', '-configFile', request.configPath, '-outputFolder', request.outputPath, '-dev'],
+      options: mode === 'maven'
+        ? { cwd: request.repoRoot }
+        : { cwd: request.repoRoot, shell: false },
+      commandTemplate: `fake ${mode} launcher`
+    }),
+    launch: (request) => launch(request) as never
+  };
+}
+
+const launcherSmokeRequest: ModelLaunchRequest = {
+  repoRoot: '/repo root',
+  configPath: '/tmp/config path/config.properties',
+  outputPath: '/tmp/output path'
+};
+const mavenLauncher = createMavenModelLauncher('mvn-fixture');
+const mavenCommand = buildMavenModelLaunchCommand('mvn-fixture', launcherSmokeRequest);
+assert.deepEqual(
+  mavenLauncher.buildCommand(launcherSmokeRequest),
+  mavenCommand,
+  'Expected Maven launcher to use the shared Maven command builder'
+);
+assert.equal(mavenCommand.command, 'mvn-fixture', 'Expected Maven command to use configured Maven binary');
+assert.deepEqual(
+  mavenCommand.args.slice(0, 2),
+  ['compile', 'exec:java'],
+  'Expected Maven launcher to preserve compile exec:java development flow'
+);
+assert.ok(
+  mavenCommand.args[2]?.includes('-Dexec.args=-configFile "/tmp/config path/config.properties" -outputFolder "/tmp/output path" -dev'),
+  'Expected Maven launcher to pass explicit config/output paths through exec args'
+);
+assert.equal(mavenCommand.options.cwd, launcherSmokeRequest.repoRoot, 'Expected Maven launcher to run from repo root');
+
+const packagedLauncher = createPackagedModelLauncher('/runtime/bin/java', '/app/model.jar');
+const packagedCommand = buildPackagedModelLaunchCommand('/runtime/bin/java', '/app/model.jar', launcherSmokeRequest);
+assert.deepEqual(
+  packagedLauncher.buildCommand(launcherSmokeRequest),
+  packagedCommand,
+  'Expected packaged launcher to use the shared packaged command builder'
+);
+assert.equal(packagedCommand.command, '/runtime/bin/java', 'Expected packaged launcher to use bundled Java executable');
+assert.deepEqual(
+  packagedCommand.args,
+  [
+    '-jar',
+    '/app/model.jar',
+    '-configFile',
+    launcherSmokeRequest.configPath,
+    '-outputFolder',
+    launcherSmokeRequest.outputPath,
+    '-dev'
+  ],
+  'Expected packaged launcher to pass Java args as separate array entries'
+);
+assert.equal(packagedCommand.options.shell, false, 'Expected packaged launcher to disable shell execution');
+assert.equal(packagedCommand.options.cwd, launcherSmokeRequest.repoRoot, 'Expected packaged launcher cwd to be repo root');
+
+const runtimePathFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-runtime-defaults-'));
+try {
+  const developmentPaths = createDevelopmentRuntimePaths(runtimePathFixtureRoot);
+  assert.equal(
+    developmentPaths.dataRoot,
+    path.join(runtimePathFixtureRoot, 'input-data-versions'),
+    'Expected development runtime data root to use the repo input-data-versions folder'
+  );
+  assert.equal(
+    developmentPaths.resultsRoot,
+    path.join(runtimePathFixtureRoot, 'Results'),
+    'Expected development runtime results root to preserve the repo Results folder'
+  );
+  assert.equal(
+    developmentPaths.tempRoot,
+    path.join(runtimePathFixtureRoot, 'tmp'),
+    'Expected development runtime temp root to preserve the repo tmp folder'
+  );
+  assert.equal(
+    developmentPaths.logsRoot,
+    path.join(runtimePathFixtureRoot, 'tmp', 'dashboard-logs'),
+    'Expected development runtime logs root to default under repo tmp'
+  );
+
+  const desktopPaths = createDesktopRuntimePaths({
+    appResourcesRoot: path.join(runtimePathFixtureRoot, 'resources'),
+    electronUserDataRoot: path.join(runtimePathFixtureRoot, 'user data'),
+    repoRoot: path.join(runtimePathFixtureRoot, 'repo cwd')
+  });
+  assert.equal(
+    desktopPaths.dataRoot,
+    path.join(runtimePathFixtureRoot, 'resources', 'release-data', 'input-data-versions'),
+    'Expected desktop data root to come from packaged release data'
+  );
+  assert.equal(
+    desktopPaths.resultsRoot,
+    path.join(runtimePathFixtureRoot, 'user data', 'Results'),
+    'Expected desktop results root to live under Electron userData'
+  );
+  assert.equal(
+    desktopPaths.tempRoot,
+    path.join(runtimePathFixtureRoot, 'user data', 'tmp'),
+    'Expected desktop temp root to live under Electron userData'
+  );
+  assert.equal(
+    desktopPaths.logsRoot,
+    path.join(runtimePathFixtureRoot, 'user data', 'logs'),
+    'Expected desktop logs root to live under Electron userData'
+  );
+  assert.throws(
+    () =>
+      assertDesktopWritablePathsOutsideResources({
+        ...desktopPaths,
+        resultsRoot: path.join(desktopPaths.appResourcesRoot ?? '', 'Results')
+      }),
+    /must not point under app resources/,
+    'Expected desktop writable paths under app resources to be rejected'
+  );
+} finally {
+  fs.rmSync(runtimePathFixtureRoot, { recursive: true, force: true });
+}
+
+assert.equal(
+  parseJavaMajorVersion('openjdk version "25.0.1" 2026-01-21'),
+  25,
+  'Expected Java major parser to support modern Java versions'
+);
+assert.equal(
+  parseJavaMajorVersion('java version "1.8.0_402"'),
+  8,
+  'Expected Java major parser to support legacy 1.x Java versions'
+);
+
+const runtimeDiagnosticsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-runtime-diagnostics-'));
+try {
+  const fileBackedRoot = path.join(runtimeDiagnosticsRoot, 'not-a-directory');
+  fs.writeFileSync(fileBackedRoot, 'not a directory', 'utf-8');
+  const diagnosticPaths: RuntimePaths = {
+    ...createDevelopmentRuntimePaths(runtimeDiagnosticsRoot),
+    dataRoot: path.join(runtimeDiagnosticsRoot, 'missing-release-data'),
+    resultsRoot: fileBackedRoot,
+    tempRoot: fileBackedRoot,
+    logsRoot: fileBackedRoot
+  };
+  const diagnostics = checkRuntimeDependencies({
+    runtimePaths: diagnosticPaths,
+    javaBin: path.join(runtimeDiagnosticsRoot, 'missing-runtime', 'bin', 'java.exe'),
+    mavenBin: path.join(runtimeDiagnosticsRoot, 'missing-mvn'),
+    modelJar: path.join(runtimeDiagnosticsRoot, 'missing-model.jar')
+  });
+  assert.equal(diagnostics.java.available, false, 'Expected missing configured Java runtime to be reported');
+  assert.ok(diagnostics.java.error, 'Expected missing configured Java runtime to include an error');
+  assert.equal(diagnostics.maven.available, false, 'Expected missing Maven to be reported without throwing');
+  assert.equal(diagnostics.modelArtifact.exists, false, 'Expected missing model artifact to be reported');
+  assert.ok(diagnostics.modelArtifact.error?.includes('missing'), 'Expected missing model artifact error to be clear');
+  assert.equal(diagnostics.runtimePaths?.dataRoot.exists, false, 'Expected missing data root to be reported');
+  assert.equal(diagnostics.runtimePaths?.resultsRoot.writable, false, 'Expected unwritable results root to be reported');
+  assert.equal(diagnostics.runtimePaths?.tempRoot.writable, false, 'Expected unwritable temp root to be reported');
+  assert.equal(diagnostics.runtimePaths?.logsRoot.writable, false, 'Expected unwritable logs root to be reported');
+} finally {
+  fs.rmSync(runtimeDiagnosticsRoot, { recursive: true, force: true });
+}
+
+const supportBundleFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-support-bundle-'));
+try {
+  const supportBundlePaths = createDesktopRuntimePaths({
+    appResourcesRoot: path.join(supportBundleFixtureRoot, 'resources'),
+    electronUserDataRoot: path.join(supportBundleFixtureRoot, 'user data'),
+    repoRoot: path.join(supportBundleFixtureRoot, 'repo')
+  });
+  fs.mkdirSync(supportBundlePaths.appResourcesRoot ?? '', { recursive: true });
+  fs.mkdirSync(supportBundlePaths.logsRoot, { recursive: true });
+  fs.mkdirSync(supportBundlePaths.resultsRoot, { recursive: true });
+  fs.writeFileSync(
+    path.join(supportBundlePaths.appResourcesRoot ?? '', 'release-manifest.json'),
+    JSON.stringify({ app: { version: '0.1.0-test' }, releaseData: { sha256: 'release-data-hash' } }),
+    'utf-8'
+  );
+  fs.writeFileSync(path.join(supportBundlePaths.logsRoot, 'app.log'), 'app startup\n', 'utf-8');
+  fs.writeFileSync(path.join(supportBundlePaths.logsRoot, 'server.log'), 'server diagnostics\n', 'utf-8');
+  fs.writeFileSync(path.join(supportBundlePaths.logsRoot, 'model.log'), 'model run line\n', 'utf-8');
+  fs.writeFileSync(path.join(supportBundlePaths.resultsRoot, 'do-not-copy.csv'), 'private result payload\n', 'utf-8');
+
+  const supportBundle = exportDesktopSupportBundle({
+    runtimePaths: supportBundlePaths,
+    runtimeDiagnostics: {
+      java: true,
+      modelArtifact: { exists: true },
+      runtimePaths: { mode: 'desktop' }
+    },
+    generatedAt: new Date('2026-05-11T12:34:56.789Z'),
+    maxLogBytes: 1024
+  });
+  assert.ok(fs.existsSync(supportBundle.bundlePath), 'Expected support bundle folder to be created');
+  assert.deepEqual(
+    supportBundle.files,
+    ['logs/app.log', 'logs/model.log', 'logs/server.log', 'metadata.json', 'release-manifest.json', 'runtime-diagnostics.json'],
+    'Expected support bundle to include only manifest, diagnostics, metadata, and recent logs'
+  );
+  assert.ok(
+    fs.readFileSync(path.join(supportBundle.bundlePath, 'release-manifest.json'), 'utf-8').includes('0.1.0-test'),
+    'Expected support bundle to copy the packaged release manifest'
+  );
+  assert.ok(
+    fs.readFileSync(path.join(supportBundle.bundlePath, 'runtime-diagnostics.json'), 'utf-8').includes('modelArtifact'),
+    'Expected support bundle to include runtime diagnostics'
+  );
+  assert.ok(
+    fs.readFileSync(path.join(supportBundle.bundlePath, 'logs', 'model.log'), 'utf-8').includes('model run line'),
+    'Expected support bundle to include recent model logs'
+  );
+  assert.equal(
+    fs.existsSync(path.join(supportBundle.bundlePath, 'Results')),
+    false,
+    'Support bundle must not copy results payloads'
+  );
+  assert.equal(
+    fs.existsSync(path.join(supportBundle.bundlePath, 'private-datasets')),
+    false,
+    'Support bundle must not copy private dataset material'
+  );
+} finally {
+  fs.rmSync(supportBundleFixtureRoot, { recursive: true, force: true });
+}
+
 const expectedIds = [
   'income_given_age_joint',
   'wealth_given_income_joint',
@@ -1038,13 +1333,8 @@ DATA_INCOME_GIVEN_AGE = "src/main/resources/Income.csv"
 `;
 }
 
-function createModelRunFixtureRepo(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-model-runs-smoke-'));
-  const inputDataRoot = path.join(root, 'input-data-versions');
-  const resultsRoot = path.join(root, 'Results');
+function writeModelRunFixtureInputData(inputDataRoot: string): void {
   fs.mkdirSync(inputDataRoot, { recursive: true });
-  fs.mkdirSync(resultsRoot, { recursive: true });
-
   const baselines = ['v1.0', 'v1.1'];
   baselines.forEach((baseline, index) => {
     const baselinePath = path.join(inputDataRoot, baseline);
@@ -1084,7 +1374,51 @@ function createModelRunFixtureRepo(): string {
     JSON.stringify(dashboardInputVersionHistory, null, 2),
     'utf-8'
   );
+}
+
+function createModelRunFixtureRepo(prefix = 'dashboard-model-runs-smoke-'): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const inputDataRoot = path.join(root, 'input-data-versions');
+  const resultsRoot = path.join(root, 'Results');
+  writeModelRunFixtureInputData(inputDataRoot);
+  fs.mkdirSync(resultsRoot, { recursive: true });
   return root;
+}
+
+function createDesktopRuntimeFixture(prefix = 'dashboard-runtime-paths-smoke-'): {
+  root: string;
+  appResourcesRoot: string;
+  electronUserDataRoot: string;
+  paths: RuntimePaths;
+} {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const appResourcesRoot = path.join(root, 'App Resources');
+  const electronUserDataRoot = path.join(root, 'Electron User Data');
+  const paths = createDesktopRuntimePaths({
+    appResourcesRoot,
+    electronUserDataRoot,
+    repoRoot: path.join(root, 'repo cwd')
+  });
+  writeModelRunFixtureInputData(paths.dataRoot);
+  fs.mkdirSync(paths.resultsRoot, { recursive: true });
+  fs.mkdirSync(paths.tempRoot, { recursive: true });
+  fs.mkdirSync(paths.logsRoot, { recursive: true });
+  return { root, appResourcesRoot, electronUserDataRoot, paths };
+}
+
+function assertGeneratedDataPathsAreWindowsSafe(configText: string, baselineDirPath: string, label: string): void {
+  const expectedRoot = baselineDirPath.replace(/\\/g, '/');
+  for (const key of ['DATA_AGE_DISTRIBUTION', 'DATA_INCOME_GIVEN_AGE']) {
+    const match = new RegExp(`^${key}\\s*=\\s*"([^"]+)"$`, 'm').exec(configText);
+    assert.ok(match, `Expected ${label} generated config to quote ${key}`);
+    const configValue = match[1] ?? '';
+    assert.ok(
+      configValue.startsWith(`${expectedRoot}/`),
+      `Expected ${label} ${key} to point under the configured data root: ${configValue}`
+    );
+    assert.equal(configValue.includes('\\'), false, `Expected ${label} ${key} to use forward slashes`);
+    assert.ok(fs.existsSync(configValue), `Expected ${label} ${key} file to exist: ${configValue}`);
+  }
 }
 
 const catalog = getParameterCatalog();
@@ -1171,6 +1505,42 @@ if (inProgressVersion) {
   );
 }
 const latestVersion = versions[versions.length - 1];
+
+const desktopDataFixture = createDesktopRuntimeFixture('dashboard-data-runtime-smoke-');
+try {
+  assert.deepEqual(
+    getVersions(desktopDataFixture.paths),
+    ['v1.0', 'v1.1'],
+    'Expected version discovery to read from the configured runtime data root'
+  );
+  assert.deepEqual(
+    getInProgressVersions(desktopDataFixture.paths),
+    ['v1.1'],
+    'Expected in-progress discovery to read dashboard history from the configured runtime data root'
+  );
+  assert.equal(
+    loadDashboardInputVersionHistory(desktopDataFixture.paths)[0]?.snapshot_folder,
+    'v1.1',
+    'Expected dashboard input history to load from the runtime data root'
+  );
+  assert.equal(
+    getModelRunOptions(desktopDataFixture.paths, undefined, true).defaultBaseline,
+    'v1.0',
+    'Expected model-run options to use runtime data root baselines without falling back to repo data'
+  );
+  assert.equal(
+    getHomePreview(desktopDataFixture.paths, 'v1.0', ['age_distribution']).items.length,
+    1,
+    'Expected home preview to read fixture data from the configured data root'
+  );
+  assert.equal(
+    compareParameters(desktopDataFixture.paths, 'v1.0', 'v1.1', ['age_distribution']).items.length,
+    1,
+    'Expected compare service to read fixture data from the configured data root'
+  );
+} finally {
+  fs.rmSync(desktopDataFixture.root, { recursive: true, force: true });
+}
 
 const homePreview = getHomePreview(repoRoot, latestVersion, [
   'wealth_given_income_joint',
@@ -2438,6 +2808,20 @@ try {
     'Expected traversal-style run ids to be rejected'
   );
 
+  assert.throws(
+    () => deleteResultsRun(fixture.root, fixture.runIds.noConfig),
+    /not marked as a dashboard-managed run/,
+    'Expected unmarked result folders to be non-deletable from the dashboard'
+  );
+
+  writeDashboardManagedRunMarker(path.join(fixture.root, 'Results', fixture.runIds.noConfig), {
+    jobId: 'job-results-delete-fixture',
+    runId: fixture.runIds.noConfig,
+    baseline: 'v1.0',
+    title: null,
+    createdAt: new Date().toISOString()
+  });
+
   const deleted = deleteResultsRun(fixture.root, fixture.runIds.noConfig);
   assert.equal(deleted.deleted, true, 'Expected delete results API to report success');
   assert.equal(deleted.runId, fixture.runIds.noConfig, 'Expected delete payload to return the deleted runId');
@@ -2463,8 +2847,14 @@ try {
 
 const modelRunFixtureRoot = createModelRunFixtureRepo();
 const spawnedProcesses: FakeModelProcess[] = [];
+const originalDashboardAppVersion = process.env.DASHBOARD_APP_VERSION;
+const originalDashboardReleaseChannel = process.env.DASHBOARD_RELEASE_CHANNEL;
+const originalDashboardBuildCommitSha = process.env.DASHBOARD_BUILD_COMMIT_SHA;
 
 try {
+  process.env.DASHBOARD_APP_VERSION = '0.1.0-test';
+  process.env.DASHBOARD_RELEASE_CHANNEL = 'smoke-test';
+  process.env.DASHBOARD_BUILD_COMMIT_SHA = '0123456789abcdef0123456789abcdef01234567';
   __resetModelRunManagerForTests();
   __setModelRunSpawnForTests(() => {
     const fakeProcess = new FakeModelProcess();
@@ -2587,12 +2977,18 @@ try {
   assert.ok((warningResponse.warnings?.length ?? 0) > 0, 'Expected warning payload when confirmation is missing');
   assert.equal(listModelRunJobs().length, 0, 'Expected warning-only submit not to enqueue a job');
 
-  const firstSubmit = submitModelRun(modelRunFixtureRoot, {
-    baseline: 'v1.0',
-    title: 'first-run',
-    overrides: { N_STEPS: 5001 },
-    confirmWarnings: true
-  });
+  const manualPersistentLogPaths = createDevelopmentRuntimePaths(modelRunFixtureRoot);
+  const manualPersistentModelLog = createRotatingLogWriter(manualPersistentLogPaths.logsRoot, 'model');
+  const firstSubmit = submitModelRun(
+    manualPersistentLogPaths,
+    {
+      baseline: 'v1.0',
+      title: 'first-run',
+      overrides: { N_STEPS: 5001 },
+      confirmWarnings: true
+    },
+    { logSink: (line) => manualPersistentModelLog.writeLine(line) }
+  );
   assert.equal(firstSubmit.accepted, true, 'Expected confirmed warning submit to enqueue run');
   assert.ok(firstSubmit.job, 'Expected accepted submit to include job payload');
   assert.equal(firstSubmit.job?.runId, 'first-run v1.0', 'Expected run title to determine output folder name');
@@ -2614,6 +3010,18 @@ try {
   const firstLogs = getModelRunJobLogs(firstSubmit.job?.jobId ?? '', 0, 50);
   assert.ok(firstLogs.lines.some((line) => line.includes('sim line')), 'Expected stdout log line in polling payload');
   assert.ok(firstLogs.lines.some((line) => line.includes('warn line')), 'Expected stderr log line in polling payload');
+  const manualPersistentModelLogText = fs.readFileSync(
+    path.join(manualPersistentLogPaths.logsRoot, 'model.log'),
+    'utf-8'
+  );
+  assert.ok(
+    manualPersistentModelLogText.includes(`[manual:${firstSubmit.job?.jobId}] [stdout] sim line`),
+    'Expected manual stdout line to be persisted under logsRoot/model.log'
+  );
+  assert.ok(
+    manualPersistentModelLogText.includes(`[manual:${firstSubmit.job?.jobId}] [stderr] warn line`),
+    'Expected manual stderr line to be persisted under logsRoot/model.log'
+  );
 
   cancelModelRunJob(modelRunFixtureRoot, secondSubmit.job?.jobId ?? '');
   const canceledQueuedJob = listModelRunJobs().find((job) => job.jobId === secondSubmit.job?.jobId);
@@ -2640,9 +3048,31 @@ try {
     'Expected warning when recordCoreIndicators is disabled'
   );
 
+  const unmarkedRunFolder = path.join(modelRunFixtureRoot, 'Results', 'unmarked-overwrite v1.0');
+  fs.mkdirSync(unmarkedRunFolder, { recursive: true });
+  fs.writeFileSync(path.join(unmarkedRunFolder, 'Output-run1.csv'), 'Model time;nRenting\n0;1\n', 'utf-8');
+  assert.throws(
+    () =>
+      submitModelRun(modelRunFixtureRoot, {
+        baseline: 'v1.0',
+        title: 'unmarked-overwrite',
+        overrides: { SEED: 5 },
+        confirmWarnings: true
+      }),
+    /not marked as a dashboard-managed run/,
+    'Expected unmarked existing output folder to block manual submit even when warnings are confirmed'
+  );
+
   const preexistingRunFolder = path.join(modelRunFixtureRoot, 'Results', 'overwrite-case v1.0');
   fs.mkdirSync(preexistingRunFolder, { recursive: true });
   fs.writeFileSync(path.join(preexistingRunFolder, 'Output-run1.csv'), 'Model time;nRenting\n0;1\n', 'utf-8');
+  writeDashboardManagedRunMarker(preexistingRunFolder, {
+    jobId: 'job-overwrite-fixture',
+    runId: 'overwrite-case v1.0',
+    baseline: 'v1.0',
+    title: 'overwrite-case',
+    createdAt: new Date().toISOString()
+  });
 
   const overwriteWarning = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
@@ -2773,9 +3203,357 @@ try {
     /capacity reached/,
     'Expected queue cap guardrail to reject submissions above limit'
   );
+
+  __resetModelRunManagerForTests();
+  spawnedProcesses.length = 0;
+  const manualInjectedLaunches: ModelLaunchRequest[] = [];
+  const manualInjectedLauncher = createFakeLauncher('packaged', (request) => {
+    manualInjectedLaunches.push(request);
+    assert.ok(
+      fs.existsSync(path.join(request.outputPath, MANAGED_RUN_MARKER)),
+      'Expected dashboard-managed marker to exist before the manual launcher starts'
+    );
+    assert.ok(
+      isDashboardManagedRun(request.outputPath, 'injected-launcher v1.0'),
+      'Expected dashboard-managed marker to match the manual run id before launch'
+    );
+    fs.mkdirSync(request.outputPath, { recursive: true });
+    fs.writeFileSync(path.join(request.outputPath, 'Output-run1.csv'), 'Model time;nRenting\n0;1\n', 'utf-8');
+    const process = new FakeModelProcess();
+    spawnedProcesses.push(process);
+    return process;
+  });
+  const injectedManualSubmit = submitModelRun(
+    modelRunFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'injected-launcher',
+      overrides: { SEED: 123 },
+      confirmWarnings: true
+    },
+    { launcher: manualInjectedLauncher }
+  );
+  assert.equal(injectedManualSubmit.accepted, true, 'Expected manual submit to accept an injected launcher');
+  assert.equal(manualInjectedLaunches.length, 1, 'Expected injected manual launcher to run immediately');
+  assert.equal(
+    manualInjectedLaunches[0]?.configPath.endsWith('config.properties'),
+    true,
+    'Expected manual injected launcher to receive an explicit generated config path'
+  );
+  assert.equal(
+    manualInjectedLaunches[0]?.outputPath,
+    path.join(modelRunFixtureRoot, injectedManualSubmit.job?.outputPath ?? ''),
+    'Expected manual injected launcher to receive the explicit output folder'
+  );
+  spawnedProcesses[0]?.succeed();
+  await waitForAsyncTick();
+  const injectedManualJob = listModelRunJobs().find((job) => job.jobId === injectedManualSubmit.job?.jobId);
+  assert.equal(injectedManualJob?.status, 'succeeded', 'Expected injected manual launcher job to complete normally');
+  const injectedManualManifestPath = path.join(
+    modelRunFixtureRoot,
+    injectedManualJob?.outputPath ?? '',
+    RUN_MANIFEST_FILE_NAME
+  );
+  assert.ok(fs.existsSync(injectedManualManifestPath), 'Expected successful manual run to persist a run manifest');
+  const injectedManualManifest = JSON.parse(fs.readFileSync(injectedManualManifestPath, 'utf-8')) as ManualRunManifest;
+  assert.equal(injectedManualManifest.manifestType, 'manual-run', 'Expected manual manifest type');
+  assert.equal(injectedManualManifest.environment.appVersion, '0.1.0-test', 'Expected manifest to record app version');
+  assert.equal(injectedManualManifest.environment.releaseChannel, 'smoke-test', 'Expected manifest to record release channel');
+  assert.equal(
+    injectedManualManifest.environment.buildCommitSha,
+    '0123456789abcdef0123456789abcdef01234567',
+    'Expected manifest to record build commit SHA'
+  );
+  assert.equal(injectedManualManifest.launcher.mode, 'packaged', 'Expected manual manifest to record launcher mode');
+  assert.equal(injectedManualManifest.run.seed, 123, 'Expected manual manifest to record the run seed');
+  assert.equal(
+    injectedManualManifest.run.overriddenParameters.SEED,
+    123,
+    'Expected manual manifest to record overridden parameters'
+  );
+  assert.ok(
+    injectedManualManifest.run.generatedConfigHash?.value,
+    'Expected manual manifest to hash the generated config'
+  );
+  assert.ok(
+    injectedManualManifest.inputData.baselineSnapshotHash?.value,
+    'Expected manual manifest to hash the selected baseline snapshot'
+  );
+  assert.ok(
+    (injectedManualManifest.run.outputHash?.fileCount ?? 0) >= 1,
+    'Expected manual manifest to hash persisted run output files'
+  );
 } finally {
+  if (originalDashboardAppVersion === undefined) {
+    delete process.env.DASHBOARD_APP_VERSION;
+  } else {
+    process.env.DASHBOARD_APP_VERSION = originalDashboardAppVersion;
+  }
+  if (originalDashboardReleaseChannel === undefined) {
+    delete process.env.DASHBOARD_RELEASE_CHANNEL;
+  } else {
+    process.env.DASHBOARD_RELEASE_CHANNEL = originalDashboardReleaseChannel;
+  }
+  if (originalDashboardBuildCommitSha === undefined) {
+    delete process.env.DASHBOARD_BUILD_COMMIT_SHA;
+  } else {
+    process.env.DASHBOARD_BUILD_COMMIT_SHA = originalDashboardBuildCommitSha;
+  }
   __resetModelRunManagerForTests();
   fs.rmSync(modelRunFixtureRoot, { recursive: true, force: true });
+}
+
+const desktopManualFixture = createDesktopRuntimeFixture('dashboard-manual-runtime-smoke-');
+
+try {
+  __resetModelRunManagerForTests();
+  const desktopManualLaunches: ModelLaunchRequest[] = [];
+  let desktopGeneratedConfigText = '';
+  const desktopManualLauncher = createFakeLauncher('packaged', (request) => {
+    desktopManualLaunches.push(request);
+    desktopGeneratedConfigText = fs.readFileSync(request.configPath, 'utf-8');
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const desktopManualSubmit = submitModelRun(
+    desktopManualFixture.paths,
+    {
+      baseline: 'v1.0',
+      title: 'desktop-runtime-paths',
+      overrides: { SEED: 456 },
+      confirmWarnings: true
+    },
+    { launcher: desktopManualLauncher }
+  );
+  assert.equal(desktopManualSubmit.accepted, true, 'Expected desktop runtime manual run submit to be accepted');
+  assert.equal(desktopManualLaunches.length, 1, 'Expected desktop runtime manual run to launch once');
+  assert.ok(
+    desktopManualLaunches[0]?.configPath.startsWith(desktopManualFixture.paths.tempRoot),
+    'Expected desktop manual generated config to live under tempRoot'
+  );
+  assert.ok(
+    desktopManualLaunches[0]?.outputPath.startsWith(desktopManualFixture.paths.resultsRoot),
+    'Expected desktop manual output to live under resultsRoot'
+  );
+  assertGeneratedDataPathsAreWindowsSafe(
+    desktopGeneratedConfigText,
+    path.join(desktopManualFixture.paths.dataRoot, 'v1.0'),
+    'desktop manual run'
+  );
+  await waitUntil(() => {
+    const job = listModelRunJobs().find((item) => item.jobId === desktopManualSubmit.job?.jobId);
+    return job?.status === 'succeeded';
+  });
+  assert.equal(
+    fs.existsSync(path.join(desktopManualFixture.appResourcesRoot, 'Results')),
+    false,
+    'Expected desktop manual run not to write Results under app resources'
+  );
+  assert.equal(
+    fs.existsSync(path.join(desktopManualFixture.appResourcesRoot, 'tmp')),
+    false,
+    'Expected desktop manual run not to write tmp under app resources'
+  );
+} finally {
+  __resetModelRunManagerForTests();
+  fs.rmSync(desktopManualFixture.root, { recursive: true, force: true });
+}
+
+const windowsPathModelRunFixtureRoot = createModelRunFixtureRepo('dashboard model-runs modèle 用户-');
+
+try {
+  __resetModelRunManagerForTests();
+  const windowsPathLaunches: ModelLaunchRequest[] = [];
+  let generatedConfigText = '';
+  const windowsPathLauncher = createFakeLauncher('packaged', (request) => {
+    windowsPathLaunches.push(request);
+    generatedConfigText = fs.readFileSync(request.configPath, 'utf-8');
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const windowsPathSubmit = submitModelRun(
+    windowsPathModelRunFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'windows-safe-paths',
+      overrides: { SEED: 321 },
+      confirmWarnings: true
+    },
+    { launcher: windowsPathLauncher }
+  );
+  assert.equal(windowsPathSubmit.accepted, true, 'Expected path-safety manual run submit to be accepted');
+  assert.equal(windowsPathLaunches.length, 1, 'Expected path-safety manual run to launch once');
+  assert.ok(
+    windowsPathLaunches[0]?.configPath.includes('dashboard model-runs modèle 用户-'),
+    'Expected manual generated config path to include spaces and non-ASCII path segments'
+  );
+  assert.ok(
+    windowsPathLaunches[0]?.outputPath.includes('dashboard model-runs modèle 用户-'),
+    'Expected manual output path to include spaces and non-ASCII path segments'
+  );
+  assertGeneratedDataPathsAreWindowsSafe(
+    generatedConfigText,
+    path.join(windowsPathModelRunFixtureRoot, 'input-data-versions', 'v1.0'),
+    'manual run'
+  );
+  await waitUntil(() => {
+    const job = listModelRunJobs().find((item) => item.jobId === windowsPathSubmit.job?.jobId);
+    return job?.status === 'succeeded';
+  });
+} finally {
+  __resetModelRunManagerForTests();
+  fs.rmSync(windowsPathModelRunFixtureRoot, { recursive: true, force: true });
+}
+
+const windowsPathSensitivityFixtureRoot = createModelRunFixtureRepo('dashboard sensitivity modèle 用户-');
+
+try {
+  __resetModelRunManagerForTests();
+  __resetSensitivityRunsForTests();
+  const generatedConfigTexts: string[] = [];
+  const windowsPathSensitivityLauncher = createFakeLauncher('packaged', (request) => {
+    generatedConfigTexts.push(fs.readFileSync(request.configPath, 'utf-8'));
+    assert.ok(
+      request.configPath.includes('dashboard sensitivity modèle 用户-'),
+      'Expected sensitivity generated config path to include spaces and non-ASCII path segments'
+    );
+    assert.ok(
+      request.outputPath.includes('dashboard sensitivity modèle 用户-'),
+      'Expected sensitivity output path to include spaces and non-ASCII path segments'
+    );
+    const config = parseConfigFile(request.configPath);
+    const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
+    writeSensitivityCoreOutputs(request.outputPath, baseRate);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const windowsPathSensitivitySubmit = submitSensitivityExperiment(
+    windowsPathSensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'windows-safe-paths',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      confirmWarnings: true
+    },
+    { launcher: windowsPathSensitivityLauncher }
+  );
+  assert.equal(
+    windowsPathSensitivitySubmit.accepted,
+    true,
+    'Expected path-safety sensitivity submit to be accepted'
+  );
+  const windowsPathSensitivityExperimentId = windowsPathSensitivitySubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(
+      windowsPathSensitivityFixtureRoot,
+      windowsPathSensitivityExperimentId
+    ).experiment;
+    return detail.status === 'succeeded';
+  });
+  assert.equal(generatedConfigTexts.length, 5, 'Expected path-safety sensitivity run to generate one config per point');
+  for (const configText of generatedConfigTexts) {
+    assertGeneratedDataPathsAreWindowsSafe(
+      configText,
+      path.join(windowsPathSensitivityFixtureRoot, 'input-data-versions', 'v1.0'),
+      'sensitivity run'
+    );
+  }
+} finally {
+  __resetSensitivityRunsForTests();
+  __resetModelRunManagerForTests();
+  fs.rmSync(windowsPathSensitivityFixtureRoot, { recursive: true, force: true });
+}
+
+const desktopSensitivityFixture = createDesktopRuntimeFixture('dashboard-sensitivity-runtime-smoke-');
+
+try {
+  __resetModelRunManagerForTests();
+  __resetSensitivityRunsForTests();
+  const desktopSensitivityLaunches: ModelLaunchRequest[] = [];
+  const desktopSensitivityConfigs: string[] = [];
+  const desktopSensitivityLauncher = createFakeLauncher('packaged', (request) => {
+    desktopSensitivityLaunches.push(request);
+    desktopSensitivityConfigs.push(fs.readFileSync(request.configPath, 'utf-8'));
+    assert.ok(
+      request.configPath.startsWith(desktopSensitivityFixture.paths.tempRoot),
+      'Expected desktop sensitivity config path to live under tempRoot'
+    );
+    assert.ok(
+      request.outputPath.startsWith(path.join(desktopSensitivityFixture.paths.resultsRoot, 'experiments', 'sensitivity')),
+      'Expected retained desktop sensitivity output path to live under resultsRoot'
+    );
+    const config = parseConfigFile(request.configPath);
+    const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
+    writeSensitivityCoreOutputs(request.outputPath, baseRate);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const desktopSensitivitySubmit = submitSensitivityExperiment(
+    desktopSensitivityFixture.paths,
+    {
+      baseline: 'v1.0',
+      title: 'desktop-runtime-paths',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      retainFullOutput: true,
+      confirmWarnings: true
+    },
+    { launcher: desktopSensitivityLauncher }
+  );
+  assert.equal(desktopSensitivitySubmit.accepted, true, 'Expected desktop sensitivity submit to be accepted');
+  const desktopSensitivityExperimentId = desktopSensitivitySubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(
+      desktopSensitivityFixture.paths,
+      desktopSensitivityExperimentId
+    ).experiment;
+    return detail.status === 'succeeded';
+  });
+  assert.equal(desktopSensitivityLaunches.length, 5, 'Expected desktop sensitivity run to launch one process per point');
+  for (const configText of desktopSensitivityConfigs) {
+    assertGeneratedDataPathsAreWindowsSafe(
+      configText,
+      path.join(desktopSensitivityFixture.paths.dataRoot, 'v1.0'),
+      'desktop sensitivity run'
+    );
+  }
+  const desktopSensitivityResults = getSensitivityExperimentResults(
+    desktopSensitivityFixture.paths,
+    desktopSensitivityExperimentId
+  );
+  assert.ok(
+    desktopSensitivityResults.points.every((point) => point.outputPath?.startsWith('Results/experiments/sensitivity/')),
+    'Expected retained desktop sensitivity output paths to be reported under Results'
+  );
+  assert.equal(
+    fs.existsSync(path.join(desktopSensitivityFixture.appResourcesRoot, 'Results')),
+    false,
+    'Expected desktop sensitivity run not to write Results under app resources'
+  );
+  assert.equal(
+    fs.existsSync(path.join(desktopSensitivityFixture.appResourcesRoot, 'tmp')),
+    false,
+    'Expected desktop sensitivity run not to write tmp under app resources'
+  );
+} finally {
+  __resetSensitivityRunsForTests();
+  __resetModelRunManagerForTests();
+  fs.rmSync(desktopSensitivityFixture.root, { recursive: true, force: true });
 }
 
 const sensitivityFixtureRoot = createModelRunFixtureRepo();
@@ -2792,6 +3570,7 @@ try {
     sensitivityProcesses.push(process);
     setTimeout(() => {
       process.emitStdout(`running point ${baseRate}`);
+      process.emitStderr(`warn point ${baseRate}`);
       process.succeed();
     }, 0);
     return process as never;
@@ -2807,14 +3586,20 @@ try {
   assert.equal(warningSubmit.accepted, false, 'Expected sensitivity submit to require warning confirmation');
   assert.ok((warningSubmit.warnings.length ?? 0) > 0, 'Expected warning payload for high target population points');
 
-  const successSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
-    baseline: 'v1.0',
-    title: 'base-rate-sweep',
-    parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
-    min: 0.004,
-    max: 0.006,
-    confirmWarnings: true
-  });
+  const sensitivityPersistentLogPaths = createDevelopmentRuntimePaths(sensitivityFixtureRoot);
+  const sensitivityPersistentModelLog = createRotatingLogWriter(sensitivityPersistentLogPaths.logsRoot, 'model');
+  const successSubmit = submitSensitivityExperiment(
+    sensitivityPersistentLogPaths,
+    {
+      baseline: 'v1.0',
+      title: 'base-rate-sweep',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      confirmWarnings: true
+    },
+    { logSink: (line) => sensitivityPersistentModelLog.writeLine(line) }
+  );
   assert.equal(successSubmit.accepted, true, 'Expected sensitivity submit to start experiment');
   const successExperimentId = successSubmit.experiment?.experimentId ?? '';
   assert.ok(successExperimentId.length > 0, 'Expected started sensitivity experiment id');
@@ -2847,6 +3632,33 @@ try {
     !fs.existsSync(path.join(sensitivityFixtureRoot, 'Results', 'experiments', 'sensitivity', successExperimentId, 'points')),
     'Expected summary-only sensitivity run not to retain points folder'
   );
+  const successManifestPath = path.join(
+    sensitivityFixtureRoot,
+    'Results',
+    'experiments',
+    'sensitivity',
+    successExperimentId,
+    RUN_MANIFEST_FILE_NAME
+  );
+  assert.ok(fs.existsSync(successManifestPath), 'Expected sensitivity experiment to persist a run manifest');
+  const successManifest = JSON.parse(fs.readFileSync(successManifestPath, 'utf-8')) as SensitivityRunManifest;
+  assert.equal(successManifest.manifestType, 'sensitivity-experiment', 'Expected sensitivity manifest type');
+  assert.equal(successManifest.experiment.status, 'succeeded', 'Expected sensitivity manifest to record final status');
+  assert.equal(
+    successManifest.experiment.parameter.key,
+    'CENTRAL_BANK_INITIAL_BASE_RATE',
+    'Expected sensitivity manifest to record the swept parameter'
+  );
+  assert.equal(successManifest.experiment.points.length, 5, 'Expected sensitivity manifest to record every sampled point');
+  assert.ok(
+    successManifest.experiment.points.every((point) => point.generatedConfigHash?.value),
+    'Expected sensitivity manifest to preserve each temporary generated-config hash'
+  );
+  assert.ok(
+    successManifest.experiment.points.every((point) => point.outputHash?.value),
+    'Expected sensitivity manifest to hash each point output before summary-only cleanup'
+  );
+  assert.ok(successManifest.experiment.summaryHash?.value, 'Expected sensitivity manifest to hash the summary payload');
   const firstPointMetric = successResults.points[0]?.indicatorMetrics[0];
   assert.ok(firstPointMetric, 'Expected indicator KPI metrics to be present for sensitivity points');
   assert.equal(
@@ -2913,6 +3725,85 @@ try {
   assert.ok(
     logsPayload.lines.some((line) => line.includes('[stdout]')),
     'Expected sensitivity logs to include stdout output lines'
+  );
+  assert.ok(
+    logsPayload.lines.some((line) => line.includes('[stderr]')),
+    'Expected sensitivity logs to include stderr output lines'
+  );
+  const sensitivityPersistentModelLogText = fs.readFileSync(
+    path.join(sensitivityPersistentLogPaths.logsRoot, 'model.log'),
+    'utf-8'
+  );
+  assert.ok(
+    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [system]`),
+    'Expected sensitivity system lifecycle lines to be persisted under logsRoot/model.log'
+  );
+  assert.ok(
+    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [stdout] running point`),
+    'Expected sensitivity stdout lines to be persisted under logsRoot/model.log'
+  );
+  assert.ok(
+    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [stderr] warn point`),
+    'Expected sensitivity stderr lines to be persisted under logsRoot/model.log'
+  );
+
+  const injectedSensitivityLaunches: ModelLaunchRequest[] = [];
+  const injectedSensitivityLauncher = createFakeLauncher('packaged', (request) => {
+    injectedSensitivityLaunches.push(request);
+    const config = parseConfigFile(request.configPath);
+    const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
+    writeSensitivityCoreOutputs(request.outputPath, baseRate);
+    const process = new FakeModelProcess();
+    sensitivityProcesses.push(process);
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const injectedSensitivitySubmit = submitSensitivityExperiment(
+    sensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'injected-packaged-launcher',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      confirmWarnings: true
+    },
+    { launcher: injectedSensitivityLauncher }
+  );
+  assert.equal(
+    injectedSensitivitySubmit.accepted,
+    true,
+    'Expected sensitivity submit to accept an injected launcher'
+  );
+  const injectedSensitivityExperimentId = injectedSensitivitySubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, injectedSensitivityExperimentId).experiment;
+    return detail.status === 'succeeded';
+  });
+  const injectedSensitivityDetail = getSensitivityExperiment(
+    sensitivityFixtureRoot,
+    injectedSensitivityExperimentId
+  ).experiment;
+  assert.equal(
+    injectedSensitivityDetail.runCommand.mode,
+    'packaged',
+    'Expected injected sensitivity launcher mode to persist in metadata'
+  );
+  assert.equal(
+    injectedSensitivityDetail.runCommand.commandTemplate,
+    'fake packaged launcher',
+    'Expected injected sensitivity launcher command template to persist in metadata'
+  );
+  assert.equal(
+    injectedSensitivityLaunches.length,
+    5,
+    'Expected injected sensitivity launcher to run once per sampled point'
+  );
+  assert.ok(
+    injectedSensitivityLaunches.every((request) => request.configPath.endsWith('config.properties') && request.outputPath),
+    'Expected injected sensitivity launches to receive explicit config and output paths'
   );
 
   const fullOutputSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
@@ -3322,6 +4213,330 @@ writeAuthEnabled.logout(goodLogin.token ?? null);
 const afterLogoutStatus = writeAuthEnabled.resolveAccess(`Bearer ${goodLogin.token}`);
 assert.equal(afterLogoutStatus.canWrite, false, 'Expected logout to revoke write access token');
 
+assert.throws(
+  () => createDesktopWriteAuthController('   '),
+  /Desktop write auth token/,
+  'Expected desktop auth to fail closed when the startup token is empty'
+);
+const desktopWriteAuth = createDesktopWriteAuthController('desktop-session-token');
+assert.equal(desktopWriteAuth.login('writer', 'secret').ok, false, 'Expected desktop auth not to accept static credentials');
+assert.equal(desktopWriteAuth.resolveAccess(undefined).canWrite, false, 'Expected desktop auth to reject missing bearer token');
+assert.equal(
+  desktopWriteAuth.resolveAccess('Bearer wrong-token').canWrite,
+  false,
+  'Expected desktop auth to reject the wrong bearer token'
+);
+assert.equal(
+  desktopWriteAuth.resolveAccess('Bearer desktop-session-token').canWrite,
+  true,
+  'Expected desktop auth to accept the configured bearer token'
+);
+
+const sinkedLogLines: string[] = [];
+const sinkedLogBuffer: LogBufferState = {
+  logLines: [],
+  logStart: 0,
+  partialLine: '',
+  sink: (line) => sinkedLogLines.push(line)
+};
+appendLogLine(sinkedLogBuffer, 'first persisted line', 1);
+appendLogLine(sinkedLogBuffer, 'second persisted line', 1);
+assert.deepEqual(sinkedLogBuffer.logLines, ['second persisted line'], 'Expected memory log buffer to keep its line cap');
+assert.deepEqual(
+  sinkedLogLines,
+  ['first persisted line', 'second persisted line'],
+  'Expected persistent sink to receive all appended lines despite memory truncation'
+);
+
+const rotationFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-log-rotation-'));
+try {
+  const rotatingWriter = createRotatingLogWriter(rotationFixtureRoot, 'app', { maxBytes: 120, maxFiles: 3 });
+  for (let index = 0; index < 6; index += 1) {
+    rotatingWriter.writeLine(`rotation-line-${index} ${'x'.repeat(60)}`);
+  }
+  const rotatedFiles = fs
+    .readdirSync(rotationFixtureRoot)
+    .filter((fileName) => fileName.startsWith('app.log'))
+    .sort();
+  assert.ok(rotatedFiles.length <= 3, 'Expected rotating writer to keep file count bounded');
+  assert.ok(rotatedFiles.includes('app.log'), 'Expected rotating writer to keep an active log file');
+  assert.ok(!rotatedFiles.includes('app.log.3'), 'Expected rotating writer to remove files beyond maxFiles');
+  const combinedRotationText = rotatedFiles
+    .map((fileName) => fs.readFileSync(path.join(rotationFixtureRoot, fileName), 'utf-8'))
+    .join('\n');
+  assert.ok(combinedRotationText.includes('rotation-line-5'), 'Expected newest rotated log line to be retained');
+  assert.ok(!combinedRotationText.includes('rotation-line-0'), 'Expected oldest rotated log line to be removed');
+} finally {
+  fs.rmSync(rotationFixtureRoot, { recursive: true, force: true });
+}
+
+let lifecycleServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+try {
+  lifecycleServer = await startDashboardServer({
+    dashboardRoot: path.join(repoRoot, 'dashboard'),
+    repoRoot,
+    runtimePaths: createDevelopmentRuntimePaths(repoRoot),
+    host: '127.0.0.1',
+    port: 0,
+    modelRunsConfigured: false,
+    isDevRuntime: false,
+    staticServing: { enabled: false },
+    logStartup: false
+  });
+
+  assert.ok(lifecycleServer.port > 0, 'Constructible server should report the actual random local port');
+  assert.equal(lifecycleServer.host, '127.0.0.1', 'Constructible server should preserve the configured host');
+  assert.equal(
+    lifecycleServer.url,
+    `http://127.0.0.1:${lifecycleServer.port}`,
+    'Constructible server should expose a same-origin URL'
+  );
+  const healthResponse = await fetchText(`${lifecycleServer.url}/healthz`);
+  assert.equal(healthResponse.status, 200, 'Constructible server should serve /healthz');
+  assert.equal(healthResponse.text, '{"ok":true}', 'Constructible server should serve the public health payload');
+} finally {
+  if (lifecycleServer) {
+    await lifecycleServer.shutdown();
+    assert.equal(lifecycleServer.server.listening, false, 'Constructible shutdown handle should close the HTTP server');
+  }
+}
+
+const desktopAuthFailureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-desktop-auth-failure-'));
+try {
+  const authFailureRuntimePaths = createDesktopRuntimePaths({
+    appResourcesRoot: path.join(desktopAuthFailureRoot, 'resources'),
+    electronUserDataRoot: path.join(desktopAuthFailureRoot, 'userData'),
+    repoRoot
+  });
+  await assert.rejects(
+    () =>
+      startDashboardServer({
+        dashboardRoot: path.join(repoRoot, 'dashboard'),
+        repoRoot,
+        runtimePaths: authFailureRuntimePaths,
+        modelRunsConfigured: false,
+        staticServing: { enabled: false },
+        logStartup: false
+      }),
+    /Desktop write auth token/,
+    'Expected desktop server startup to reject a missing per-session auth token before listening'
+  );
+  await assert.rejects(
+    () =>
+      startDashboardServer({
+        dashboardRoot: path.join(repoRoot, 'dashboard'),
+        repoRoot,
+        runtimePaths: authFailureRuntimePaths,
+        desktopAuthToken: '   ',
+        modelRunsConfigured: false,
+        staticServing: { enabled: false },
+        logStartup: false
+      }),
+    /Desktop write auth token/,
+    'Expected desktop server startup to reject an empty per-session auth token before listening'
+  );
+} finally {
+  fs.rmSync(desktopAuthFailureRoot, { recursive: true, force: true });
+}
+
+const staticFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-static-fixture-'));
+const desktopResourcesRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-desktop-resources-'));
+const desktopUserDataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-desktop-user-data-'));
+let staticServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+try {
+  fs.mkdirSync(path.join(staticFixtureRoot, 'assets'), { recursive: true });
+  fs.writeFileSync(
+    path.join(staticFixtureRoot, 'index.html'),
+    '<!doctype html><html><body><main id="root">Desktop fixture shell</main><script src="/assets/app.js"></script></body></html>',
+    'utf-8'
+  );
+  fs.writeFileSync(path.join(staticFixtureRoot, 'assets', 'app.js'), 'window.__desktopFixture = true;', 'utf-8');
+
+  staticServer = await startDashboardServer({
+    dashboardRoot: path.join(repoRoot, 'dashboard'),
+    repoRoot,
+    runtimePaths: createDesktopRuntimePaths({
+      appResourcesRoot: desktopResourcesRoot,
+      electronUserDataRoot: desktopUserDataRoot,
+      repoRoot
+    }),
+    desktopAuthToken: 'desktop-session-token',
+    modelRunsConfigured: false,
+    isDevRuntime: true,
+    staticServing: {
+      enabled: true,
+      root: staticFixtureRoot
+    }
+  });
+  assert.equal(staticServer.host, '127.0.0.1', 'Desktop server should default to loopback-only binding');
+  assert.ok(staticServer.port > 0, 'Desktop server should default to a random available local port');
+
+  const rootStaticResponse = await fetchText(`${staticServer.url}/`);
+  assert.equal(rootStaticResponse.status, 200, 'Desktop static server should serve the built dashboard root');
+  assert.ok(
+    rootStaticResponse.text.includes('Desktop fixture shell'),
+    'Desktop static server should return index.html for the root path'
+  );
+
+  const assetResponse = await fetchText(`${staticServer.url}/assets/app.js`);
+  assert.equal(assetResponse.status, 200, 'Desktop static server should serve built asset paths');
+  assert.ok(assetResponse.text.includes('__desktopFixture'), 'Desktop static server should serve asset contents');
+
+  const spaFallbackResponse = await fetchText(`${staticServer.url}/experiments/manual/deep-link`, {
+    headers: { Accept: 'text/html' }
+  });
+  assert.equal(spaFallbackResponse.status, 200, 'Desktop static server should support deep SPA links');
+  assert.ok(
+    spaFallbackResponse.text.includes('Desktop fixture shell'),
+    'Desktop static server should fall back to index.html for non-API deep links'
+  );
+
+  const runtimeDepsResponse = await fetchText(`${staticServer.url}/api/runtime-deps`);
+  assert.equal(runtimeDepsResponse.status, 200, 'Desktop static server should preserve API routes');
+  assert.ok(
+    runtimeDepsResponse.contentType.includes('application/json'),
+    'Desktop API routes should remain JSON under same-origin static serving'
+  );
+  assert.ok(
+    runtimeDepsResponse.text.includes('"mode":"desktop"'),
+    'Desktop API routes should use the configured desktop runtime paths'
+  );
+  const appLogPath = path.join(desktopUserDataRoot, 'logs', 'app.log');
+  const serverLogPath = path.join(desktopUserDataRoot, 'logs', 'server.log');
+  assert.ok(fs.existsSync(appLogPath), 'Desktop server startup should create app.log under logsRoot');
+  assert.ok(fs.existsSync(serverLogPath), 'Desktop server startup should create server.log under logsRoot');
+  assert.ok(
+    fs.readFileSync(appLogPath, 'utf-8').includes('dashboard server listening'),
+    'Desktop app log should include lifecycle listening marker'
+  );
+  assert.ok(
+    fs.readFileSync(serverLogPath, 'utf-8').includes('[runtime-paths] mode=desktop'),
+    'Desktop server log should include startup runtime diagnostics'
+  );
+
+  const missingAuthStatusResponse = await fetchText(`${staticServer.url}/api/auth/status`);
+  assert.equal(missingAuthStatusResponse.status, 200, 'Desktop auth status should remain a read-only API route');
+  assert.equal(
+    JSON.parse(missingAuthStatusResponse.text).canWrite,
+    false,
+    'Desktop auth status should reject missing bearer tokens even when isDevRuntime is true'
+  );
+  const wrongAuthStatusResponse = await fetchText(`${staticServer.url}/api/auth/status`, {
+    headers: { Authorization: 'Bearer wrong-token' }
+  });
+  assert.equal(
+    JSON.parse(wrongAuthStatusResponse.text).canWrite,
+    false,
+    'Desktop auth status should reject wrong bearer tokens'
+  );
+  const goodAuthStatusResponse = await fetchText(`${staticServer.url}/api/auth/status`, {
+    headers: { Authorization: 'Bearer desktop-session-token' }
+  });
+  assert.equal(
+    JSON.parse(goodAuthStatusResponse.text).canWrite,
+    true,
+    'Desktop auth status should accept the configured bearer token'
+  );
+
+  const missingProtectedWriteResponse = await fetchText(`${staticServer.url}/api/results/runs/not-found`, {
+    method: 'DELETE'
+  });
+  assert.equal(missingProtectedWriteResponse.status, 403, 'Desktop write route should reject a missing bearer token');
+  const wrongProtectedWriteResponse = await fetchText(`${staticServer.url}/api/results/runs/not-found`, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer wrong-token' }
+  });
+  assert.equal(wrongProtectedWriteResponse.status, 403, 'Desktop write route should reject the wrong bearer token');
+  const goodProtectedWriteResponse = await fetchText(`${staticServer.url}/api/results/runs/not-found`, {
+    method: 'DELETE',
+    headers: { Authorization: 'Bearer desktop-session-token' }
+  });
+  assert.notEqual(
+    goodProtectedWriteResponse.status,
+    403,
+    'Desktop write route should reach route logic with the configured bearer token'
+  );
+
+  const missingApiResponse = await fetchText(`${staticServer.url}/api/not-a-static-route`, {
+    headers: { Accept: 'text/html' }
+  });
+  assert.equal(missingApiResponse.status, 404, 'Unknown API routes should not be served by the SPA fallback');
+  assert.ok(
+    !missingApiResponse.text.includes('Desktop fixture shell'),
+    'Unknown API routes should not fall through to index.html'
+  );
+} finally {
+  if (staticServer) {
+    await staticServer.shutdown();
+  }
+  fs.rmSync(staticFixtureRoot, { recursive: true, force: true });
+  fs.rmSync(desktopResourcesRoot, { recursive: true, force: true });
+  fs.rmSync(desktopUserDataRoot, { recursive: true, force: true });
+}
+
+const packagedRuntimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-packaged-runtime-policy-'));
+const previousMavenBin = process.env.DASHBOARD_MAVEN_BIN;
+let packagedPolicyServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+try {
+  const fakeJavaBin = path.join(packagedRuntimeRoot, 'java');
+  const fakeModelJar = path.join(packagedRuntimeRoot, 'housing-model-1.0-SNAPSHOT-windows-release.jar');
+  fs.writeFileSync(fakeJavaBin, '#!/usr/bin/env sh\necho "openjdk version \\"25.0.1\\"" >&2\n', 'utf-8');
+  fs.chmodSync(fakeJavaBin, 0o755);
+  fs.writeFileSync(fakeModelJar, 'fake packaged model jar for runtime policy smoke test', 'utf-8');
+  process.env.DASHBOARD_MAVEN_BIN = path.join(packagedRuntimeRoot, 'missing-mvn');
+
+  packagedPolicyServer = await startDashboardServer({
+    dashboardRoot: path.join(repoRoot, 'dashboard'),
+    repoRoot,
+    runtimePaths: createDesktopRuntimePaths({
+      appResourcesRoot: path.join(packagedRuntimeRoot, 'resources'),
+      electronUserDataRoot: path.join(packagedRuntimeRoot, 'userData'),
+      repoRoot
+    }),
+    desktopAuthToken: 'desktop-session-token',
+    launcher: createPackagedModelLauncher(fakeJavaBin, fakeModelJar),
+    modelRunsConfigured: true,
+    isDevRuntime: false,
+    staticServing: { enabled: false },
+    logStartup: false
+  });
+
+  const packagedAuthStatus = JSON.parse(
+    (
+      await fetchText(`${packagedPolicyServer.url}/api/auth/status`, {
+        headers: { Authorization: 'Bearer desktop-session-token' }
+      })
+    ).text
+  ) as { modelRunsEnabled: boolean; canWrite: boolean };
+  assert.equal(
+    packagedAuthStatus.modelRunsEnabled,
+    true,
+    'Packaged desktop launcher should enable model runs without requiring Maven'
+  );
+  assert.equal(packagedAuthStatus.canWrite, true, 'Packaged desktop auth should accept the Electron session token');
+
+  const packagedRuntimeDeps = JSON.parse((await fetchText(`${packagedPolicyServer.url}/api/runtime-deps`)).text) as {
+    maven: boolean;
+    modelRunsEnabled: boolean;
+  };
+  assert.equal(packagedRuntimeDeps.maven, false, 'Packaged runtime policy smoke fixture should simulate missing Maven');
+  assert.equal(
+    packagedRuntimeDeps.modelRunsEnabled,
+    true,
+    'Runtime diagnostics should report packaged model runs enabled when Java and the model jar are available'
+  );
+} finally {
+  if (packagedPolicyServer) {
+    await packagedPolicyServer.shutdown();
+  }
+  if (previousMavenBin === undefined) {
+    delete process.env.DASHBOARD_MAVEN_BIN;
+  } else {
+    process.env.DASHBOARD_MAVEN_BIN = previousMavenBin;
+  }
+  fs.rmSync(packagedRuntimeRoot, { recursive: true, force: true });
+}
+
 const compareCardSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/components/CompareCard.tsx'), 'utf-8');
 assert.ok(
   !compareCardSource.includes('Validation dataset'),
@@ -3369,6 +4584,23 @@ assert.ok(
 assert.ok(
   appSource.includes("{experimentsVisible && (\n              <Route\n                path=\"/experiments\""),
   'App should register the experiments route from the always-enabled experiments visibility flag'
+);
+assert.ok(
+  appSource.includes('await desktopApi.getApiAuthToken()') &&
+    appSource.includes('setApiAuthToken(token)') &&
+    appSource.includes('void refreshAuthStatus();'),
+  'App should initialise the Electron-provided auth token before refreshing auth status'
+);
+assert.ok(
+  appSource.includes('desktopApi.openResultsFolder') &&
+    appSource.includes('desktopApi.openLogsFolder') &&
+    appSource.includes('desktopApiInput.exportSupportBundle') &&
+    appSource.includes('Support Bundle'),
+  'App should expose desktop results, logs, and support-bundle actions when Electron preload is available'
+);
+assert.ok(
+  appSource.includes('!isDesktopRuntime && authStatus.authEnabled'),
+  'Desktop mode should not render browser login/logout controls for the Electron-owned session token'
 );
 
 const validationPageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/ValidationPage.tsx'), 'utf-8');
@@ -3618,32 +4850,51 @@ assert.ok(
 );
 
 const serverIndexSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/index.ts'), 'utf-8');
+const dashboardServerSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/dashboardServer.ts'), 'utf-8');
 assert.ok(
-  serverIndexSource.includes("const EXPERIMENTS_DISABLED_REASON =\n  'Experiments are not available in this environment.';"),
+  serverIndexSource.includes("import { runDashboardServerFromEnv } from './dashboardServer';") &&
+    serverIndexSource.includes('void runDashboardServerFromEnv().catch'),
+  'Server index should remain a thin compiled CLI entrypoint'
+);
+assert.ok(
+  !serverIndexSource.includes('express()') && !serverIndexSource.includes('.listen('),
+  'Server index should not construct or listen on the Express server directly'
+);
+assert.ok(
+  dashboardServerSource.includes('export async function startDashboardServer'),
+  'Constructible server module should export the Electron-owned startup API'
+);
+assert.ok(
+  dashboardServerSource.includes("const EXPERIMENTS_DISABLED_REASON =\n  'Experiments are not available in this environment.';"),
   'Server should define a stable experiments-disabled error message'
 );
 assert.ok(
-  serverIndexSource.includes('function requireExperimentsFeature(req: express.Request, res: express.Response): boolean {'),
+  dashboardServerSource.includes('const requireExperimentsFeature = (req: express.Request, res: express.Response): boolean => {'),
   'Server should centralize experiments feature gating'
 );
 assert.ok(
-  serverIndexSource.includes("import { registerPublicRoutes } from './routes/publicRoutes';"),
+  dashboardServerSource.includes("import { registerPublicRoutes } from './routes/publicRoutes';"),
   'Server should register public routes through a dedicated module'
 );
 assert.ok(
-  serverIndexSource.includes("const { registerDevRoutes } = await import('./routes/devRoutes');") &&
-    serverIndexSource.includes('registerDevRoutes(app, routeContext);') &&
-    !serverIndexSource.includes('if (isDevRuntime) {\n    const { registerDevRoutes } = await import'),
+  dashboardServerSource.includes("const { registerDevRoutes } = await import('./routes/devRoutes');") &&
+    dashboardServerSource.includes('registerDevRoutes(app, routeContext);') &&
+    !dashboardServerSource.includes('if (isDevRuntime) {\n    const { registerDevRoutes } = await import'),
   'Server should register experiment/model-run routes in every runtime'
 );
 assert.ok(
-  serverIndexSource.includes("const memoryLoggingEnabled = (process.env.DASHBOARD_LOG_MEMORY?.trim().toLowerCase() ?? '') === 'true';"),
+  dashboardServerSource.includes("envValue('DASHBOARD_LOG_MEMORY').toLowerCase() === 'true'"),
   'Server should support optional request-level memory logging'
 );
 assert.ok(
-  serverIndexSource.includes("const isDevRuntime = (process.env.NODE_ENV?.trim().toLowerCase() ?? '') !== 'production';") &&
-    serverIndexSource.includes('const devBypassActive = isDevRuntime && !isPreviewStrictRequest(req);'),
-  'Dev write bypass should remain limited to non-production requests outside Preview non-dev'
+  dashboardServerSource.includes('registerStaticServing(app, staticRoot);') &&
+    dashboardServerSource.includes("req.path.startsWith('/api/')"),
+  'Constructible server should keep desktop static serving behind API routes'
+);
+assert.ok(
+  dashboardServerSource.includes("const isDevRuntime = options.isDevRuntime ?? (envValue('NODE_ENV').toLowerCase() !== 'production');") &&
+    dashboardServerSource.includes("input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && !isPreviewStrictRequest(req)"),
+  'Dev write bypass should remain limited to non-production, non-desktop requests outside Preview non-dev'
 );
 
 assert.ok(
@@ -3655,11 +4906,12 @@ assert.ok(
   'Public routes should not expose git stats'
 );
 assert.ok(
-  publicRoutesSource.includes('getHomePreview(context.repoRoot, version, HOME_PREVIEW_PARAMETER_IDS)'),
+  publicRoutesSource.includes('getHomePreview(context.runtimePaths, version, HOME_PREVIEW_PARAMETER_IDS)'),
   'Public routes should serve the home preview from the lightweight service function'
 );
 
 const devRoutesSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/routes/devRoutes.ts'), 'utf-8');
+const routeContextSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/routes/routeContext.ts'), 'utf-8');
 assert.ok(
   devRoutesSource.includes("app.get('/api/model-runs/options'"),
   'Dev routes should contain model-run endpoints'
@@ -3671,6 +4923,11 @@ assert.ok(
 assert.ok(
   devRoutesSource.includes("if (!context.requireExperimentsFeature(req, res)) {"),
   'Experiment routes should still use the centralized experiments feature guard'
+);
+assert.ok(
+  routeContextSource.includes('launcher?: ModelLauncher') &&
+    devRoutesSource.includes('launcher: context.launcher'),
+  'Experiment routes should accept the configured constructible-server launcher'
 );
 
 assert.ok(
@@ -3689,9 +4946,253 @@ assert.ok(
 );
 
 const packageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/package.json'), 'utf-8');
+const packageJson = JSON.parse(packageSource) as {
+  scripts: Record<string, string>;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
 assert.ok(
   packageSource.includes("\"start:server\": \"node dist-server/server/index.js\""),
   'Production server should run compiled JavaScript instead of tsx'
+);
+assert.equal(
+  packageJson.devDependencies?.electron,
+  undefined,
+  'Root dashboard package should not install Electron in public API/static builds'
+);
+assert.equal(
+  packageJson.scripts.build,
+  'npm run typecheck && npm run build:client && npm run build:server',
+  'Root dashboard build should remain public-API safe and not build Electron by default'
+);
+assert.equal(
+  packageJson.scripts['build:desktop'],
+  'npm run typecheck && npm run build:client && npm --prefix electron run build',
+  'Desktop build should compile the renderer and isolated Electron package'
+);
+assert.equal(
+  packageJson.scripts['release:installer'],
+  'npm run release:resources && npm --prefix electron run release:installer && node ../scripts/windows/write-installer-release-manifest.mjs',
+  'Installer release script should assemble validated resources before building the unsigned Windows installer'
+);
+assert.equal(
+  packageJson.scripts['release:installer:check'],
+  'npm run release:resources:check && node ../scripts/windows/write-installer-release-manifest.mjs --check',
+  'Installer release check should validate resources and installer release artifacts'
+);
+
+const electronPackageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/electron/package.json'), 'utf-8');
+const electronPackageJson = JSON.parse(electronPackageSource) as {
+  main: string;
+  scripts: Record<string, string>;
+  devDependencies?: Record<string, string>;
+};
+assert.equal(electronPackageJson.main, 'dist/electron/main.js', 'Electron package should point to the compiled main process');
+assert.ok(electronPackageJson.devDependencies?.electron, 'Electron dependency should live in the isolated Electron package');
+assert.ok(
+  electronPackageJson.devDependencies?.['electron-builder'],
+  'Electron Builder dependency should live in the isolated Electron package'
+);
+assert.equal(
+  electronPackageJson.scripts['release:installer'],
+  'electron-builder --config electron-builder.yml --win nsis --x64 --publish never',
+  'Electron package should build only the offline NSIS Windows installer target'
+);
+
+const electronBuilderConfig = fs.readFileSync(path.resolve(repoRoot, 'dashboard/electron/electron-builder.yml'), 'utf-8');
+assert.ok(electronBuilderConfig.includes('appId: uk.housing.model.dashboard'), 'Installer should use a stable appId');
+assert.ok(electronBuilderConfig.includes('productName: UK Housing Model'), 'Installer should use the desktop product name');
+assert.ok(electronBuilderConfig.includes('asar: false'), 'Installer should keep app files unpacked for v1 path compatibility');
+assert.ok(electronBuilderConfig.includes('target: nsis'), 'Installer should use the offline NSIS target');
+assert.ok(!electronBuilderConfig.includes('nsis-web'), 'Installer should not use nsis-web for the offline v1 package');
+assert.ok(
+  electronBuilderConfig.includes('from: ../release/windows/resources/release-data'),
+  'Installer should package the validated Phase 10 release-data directory'
+);
+assert.ok(
+  electronBuilderConfig.includes('deleteAppDataOnUninstall: false'),
+  'Installer updates/uninstalls should not delete Electron userData by default'
+);
+
+function createDesktopMainFrame(origin: string, url: string): DesktopFrameLike {
+  const frame: {
+    detached: boolean;
+    origin: string;
+    parent: DesktopFrameLike | null;
+    top: DesktopFrameLike | null;
+    url: string;
+    isDestroyed: () => boolean;
+  } = {
+    detached: false,
+    origin,
+    parent: null,
+    top: null,
+    url,
+    isDestroyed: () => false
+  };
+  frame.top = frame;
+  return frame;
+}
+
+const desktopTrustedOrigin = deriveTrustedDashboardOrigin('http://127.0.0.1:49152/');
+const desktopTrustedMainFrame = createDesktopMainFrame(desktopTrustedOrigin, `${desktopTrustedOrigin}/experiments`);
+assert.equal(desktopTrustedOrigin, 'http://127.0.0.1:49152', 'Desktop origin helper should derive the exact origin');
+assert.equal(
+  validateTrustedDesktopIpcSender({
+    trustedOrigin: desktopTrustedOrigin,
+    mainWindowWebContentsId: 10,
+    senderWebContentsId: 10,
+    senderFrame: desktopTrustedMainFrame
+  }).ok,
+  true,
+  'Trusted desktop IPC sender should pass origin and main-frame validation'
+);
+assert.match(
+  validateTrustedDesktopIpcSender({
+    trustedOrigin: desktopTrustedOrigin,
+    mainWindowWebContentsId: 10,
+    senderWebContentsId: 10,
+    senderFrame: createDesktopMainFrame('https://example.com', 'https://example.com/')
+  }).reason ?? '',
+  /origin/,
+  'Wrong-origin desktop IPC sender should be rejected'
+);
+assert.match(
+  validateTrustedDesktopIpcSender({
+    trustedOrigin: desktopTrustedOrigin,
+    mainWindowWebContentsId: 10,
+    senderWebContentsId: 10,
+    senderFrame: {
+      detached: false,
+      origin: desktopTrustedOrigin,
+      parent: desktopTrustedMainFrame,
+      top: desktopTrustedMainFrame,
+      url: `${desktopTrustedOrigin}/embedded`,
+      isDestroyed: () => false
+    }
+  }).reason ?? '',
+  /main frame/,
+  'Child-frame desktop IPC sender should be rejected'
+);
+assert.match(
+  validateTrustedDesktopIpcSender({
+    trustedOrigin: desktopTrustedOrigin,
+    mainWindowWebContentsId: 10,
+    senderWebContentsId: 11,
+    senderFrame: desktopTrustedMainFrame
+  }).reason ?? '',
+  /main dashboard window/,
+  'Wrong-window desktop IPC sender should be rejected'
+);
+assert.equal(
+  shouldBlockDashboardNavigation({ url: `${desktopTrustedOrigin}/compare`, isMainFrame: true }, desktopTrustedOrigin),
+  false,
+  'Same-origin dashboard navigation should be allowed'
+);
+assert.equal(
+  shouldBlockDashboardNavigation({ url: 'https://example.com/', isMainFrame: true }, desktopTrustedOrigin),
+  true,
+  'Non-dashboard main-frame navigation should be blocked'
+);
+assert.equal(
+  shouldBlockDashboardNavigation({ url: 'https://example.com/frame', isMainFrame: false }, desktopTrustedOrigin),
+  false,
+  'Subframe navigation should not be blocked by the main-frame navigation guard'
+);
+assert.deepEqual(
+  classifyDesktopWindowOpenTarget('https://example.com/docs?q=1'),
+  { action: 'deny', openExternalUrl: 'https://example.com/docs?q=1' },
+  'HTTPS window-open targets should be denied in Electron and externalized'
+);
+assert.deepEqual(
+  classifyDesktopWindowOpenTarget(`${desktopTrustedOrigin}/compare`),
+  { action: 'deny' },
+  'Dashboard window-open targets should be denied instead of inheriting preload access'
+);
+assert.deepEqual(
+  classifyDesktopWindowOpenTarget('javascript:alert(1)'),
+  { action: 'deny' },
+  'Unsafe window-open targets should be denied without externalization'
+);
+assert.deepEqual(
+  classifyDesktopWindowOpenTarget('https://user:secret@example.com/docs'),
+  { action: 'deny' },
+  'Credential-bearing HTTPS window-open targets should be denied without externalization'
+);
+
+const electronMainSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/electron/main.ts'), 'utf-8');
+assert.ok(
+  electronMainSource.includes('randomBytes(32).toString') &&
+    electronMainSource.includes('desktopAuthToken') &&
+    electronMainSource.includes('startDashboardServer({'),
+  'Electron main should generate a per-session token and own server startup'
+);
+assert.ok(
+  electronMainSource.includes("const desktopProductName = 'UK Housing Model'") &&
+    electronMainSource.includes('app.setName(desktopProductName)') &&
+    electronMainSource.includes("app.setPath('userData', path.join(app.getPath('appData'), desktopProductName))"),
+  'Electron main should keep installed userData under the stable product name'
+);
+assert.ok(
+  electronMainSource.includes('createPackagedModelLauncher(javaExe, modelJar)') &&
+    electronMainSource.includes('modelRunsConfigured: true') &&
+    electronMainSource.includes('isDevRuntime: false'),
+  'Electron main should start the constructible server with packaged launcher configuration'
+);
+assert.ok(
+  electronMainSource.includes('openFolder(runtimePaths.resultsRoot)') &&
+    electronMainSource.includes('openFolder(runtimePaths.logsRoot)') &&
+    electronMainSource.includes('shell.openPath(folderPath)'),
+  'Electron main should expose safe results/logs folder actions'
+);
+assert.ok(
+  electronMainSource.includes('exportDesktopSupportBundle({') &&
+    electronMainSource.includes("new URL('/api/runtime-deps', serverHandle.url)") &&
+    electronMainSource.includes("ipcMain.handle('uk-housing-desktop:export-support-bundle'"),
+  'Electron main should expose a trusted support-bundle export action with runtime diagnostics'
+);
+assert.ok(
+  electronMainSource.includes('trustedDashboardOrigin = new URL(serverHandle.url).origin'),
+  'Electron main should derive and store the exact trusted dashboard origin after server startup'
+);
+assert.equal(
+  electronMainSource.match(/assertTrustedDesktopIpcEvent\(event\);/g)?.length,
+  4,
+  'Every desktop IPC handler should validate the trusted sender before returning data or opening folders'
+);
+assert.ok(
+  electronMainSource.includes("mainWindow.webContents.on('will-navigate'") &&
+    electronMainSource.includes('shouldBlockDashboardNavigation') &&
+    electronMainSource.includes('event.preventDefault()'),
+  'Electron main should block main-frame navigation away from the trusted dashboard origin'
+);
+assert.ok(
+  electronMainSource.includes('setWindowOpenHandler') &&
+    electronMainSource.includes('classifyDesktopWindowOpenTarget') &&
+    electronMainSource.includes('shell.openExternal') &&
+    electronMainSource.includes('return { action: decision.action }'),
+  'Electron main should deny child Electron windows and safely externalize allowed HTTPS targets'
+);
+assert.ok(
+  electronMainSource.includes('await serverHandle.shutdown()'),
+  'Electron shutdown should stop the owned dashboard server'
+);
+
+const electronPreloadSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/electron/preload.ts'), 'utf-8');
+assert.ok(
+  electronPreloadSource.includes("contextBridge.exposeInMainWorld('ukHousingDesktop'") &&
+    electronPreloadSource.includes('getApiAuthToken') &&
+    electronPreloadSource.includes('openResultsFolder') &&
+    electronPreloadSource.includes('openLogsFolder') &&
+    electronPreloadSource.includes('exportSupportBundle'),
+  'Electron preload should expose a narrow desktop API'
+);
+
+const viteEnvSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/vite-env.d.ts'), 'utf-8');
+assert.ok(
+  viteEnvSource.includes('exportSupportBundle') &&
+    viteEnvSource.includes('UkHousingDesktopSupportBundleExportResult'),
+  'Renderer desktop API typings should include support-bundle export'
 );
 
 const dashboardReadmeSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/README.md'), 'utf-8');
@@ -3699,7 +5200,7 @@ assert.ok(
   dashboardReadmeSource.includes('Runtime target compatibility:') &&
     dashboardReadmeSource.includes('| Dev mode | Repo-shaped local workflow') &&
     dashboardReadmeSource.includes('| Cloud mode | Lightweight public API/container path') &&
-    dashboardReadmeSource.includes('| Desktop mode | Planned Electron-owned local server'),
+    dashboardReadmeSource.includes('| Desktop mode | Electron-owned local server'),
   'Dashboard README should document dev, cloud, and desktop runtime targets together'
 );
 assert.ok(
@@ -3710,10 +5211,10 @@ assert.ok(
   'Runtime matrix should document cloud fail-closed model execution and read-route availability'
 );
 assert.ok(
-  dashboardReadmeSource.includes('current repo does not yet implement Electron, fat-jar launcher, or installer behavior') &&
-    dashboardReadmeSource.includes('Planned per-session bearer token') &&
+  dashboardReadmeSource.includes('Packaged launcher for dashboard-managed manual and sensitivity runs') &&
+    dashboardReadmeSource.includes('Per-session bearer token') &&
     dashboardReadmeSource.includes('release data stays allowlisted and separate from cloud credentials/resources'),
-  'Runtime matrix should describe desktop as planned rather than implemented'
+  'Runtime matrix should describe implemented desktop runtime boundaries'
 );
 
 const windowsReleaseDocSource = fs.readFileSync(
@@ -3722,9 +5223,10 @@ const windowsReleaseDocSource = fs.readFileSync(
 );
 assert.ok(
   windowsReleaseDocSource.includes('It is not a statement of current repo capability') &&
-    windowsReleaseDocSource.includes('does not yet contain an Electron shell') &&
+    windowsReleaseDocSource.includes('The original baseline was a developer-oriented runtime without an Electron shell') &&
+    windowsReleaseDocSource.includes('phase-by-phase capability changes as they land') &&
     windowsReleaseDocSource.includes('Public cloud compatibility'),
-  'Windows release docs should still avoid claiming current desktop implementation'
+  'Windows release docs should distinguish the original baseline from completed release phases'
 );
 
 const dockerignoreSource = fs.readFileSync(path.resolve(repoRoot, '.dockerignore'), 'utf-8');

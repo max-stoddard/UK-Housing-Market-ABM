@@ -8,6 +8,7 @@ import type {
   ValidationVersionSummary
 } from '../../shared/types';
 import { compareVersions } from './versioning';
+import { resolveRuntimePaths, type RuntimePathInput } from './runtimePaths';
 
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
@@ -288,8 +289,9 @@ function parseValidationSummary(
   };
 }
 
-export function listValidationSummaryVersions(repoRoot: string): string[] {
-  const validationDir = path.join(repoRoot, 'input-data-versions', 'validation');
+export function listValidationSummaryVersions(pathsInput: RuntimePathInput): string[] {
+  const paths = resolveRuntimePaths(pathsInput);
+  const validationDir = path.join(paths.dataRoot, 'validation');
   if (!fs.existsSync(validationDir)) {
     return [];
   }
@@ -301,16 +303,18 @@ export function listValidationSummaryVersions(repoRoot: string): string[] {
     .sort(compareVersions);
 }
 
-export function readValidationSummary(repoRoot: string, version: string): ValidationVersionSummary {
-  const filePath = path.join(repoRoot, 'input-data-versions', 'validation', `${version}.json`);
+export function readValidationSummary(pathsInput: RuntimePathInput, version: string): ValidationVersionSummary {
+  const paths = resolveRuntimePaths(pathsInput);
+  const filePath = path.join(paths.dataRoot, 'validation', `${version}.json`);
   if (!fs.existsSync(filePath)) {
     throw new Error(`Missing validation summary for ${version}`);
   }
   return parseValidationSummary(filePath, { normalizeTrackedTimeline: true });
 }
 
-function readValidationOverlay(repoRoot: string, overlayName: string): ValidationVersionSummary | null {
-  const filePath = path.join(repoRoot, 'input-data-versions', 'validation-overlays', `${overlayName}.json`);
+function readValidationOverlay(pathsInput: RuntimePathInput, overlayName: string): ValidationVersionSummary | null {
+  const paths = resolveRuntimePaths(pathsInput);
+  const filePath = path.join(paths.dataRoot, 'validation-overlays', `${overlayName}.json`);
   if (!fs.existsSync(filePath)) {
     return null;
   }
@@ -321,8 +325,8 @@ function referenceOverlayName(version: string): string {
   return `${version}-2011`;
 }
 
-function readValidationReferenceSummary(repoRoot: string): ValidationVersionSummary | null {
-  const summary = readValidationOverlay(repoRoot, V0_REFERENCE_OVERLAY_NAME);
+function readValidationReferenceSummary(pathsInput: RuntimePathInput): ValidationVersionSummary | null {
+  const summary = readValidationOverlay(pathsInput, V0_REFERENCE_OVERLAY_NAME);
   if (!summary) {
     return null;
   }
@@ -348,13 +352,13 @@ function readValidationReferenceSummary(repoRoot: string): ValidationVersionSumm
   };
 }
 
-function readV0FamilyReferencePoints(repoRoot: string, availableVersions: string[]): ValidationReferenceLine[] {
+function readV0FamilyReferencePoints(pathsInput: RuntimePathInput, availableVersions: string[]): ValidationReferenceLine[] {
   const availableVersionSet = new Set(availableVersions);
   return V0_FAMILY_REFERENCE_VERSIONS.flatMap((version) => {
     if (!availableVersionSet.has(version)) {
       return [];
     }
-    const summary = readValidationOverlay(repoRoot, referenceOverlayName(version));
+    const summary = readValidationOverlay(pathsInput, referenceOverlayName(version));
     if (!summary) {
       return [];
     }
@@ -401,11 +405,12 @@ function addLossDeltaVsReference2011(
 }
 
 export function getValidationOverview(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   requestedVersion?: string,
   viewMode: ValidationOverviewViewMode = 'tracked'
 ): ValidationOverviewPayload {
-  const availableVersions = listValidationSummaryVersions(repoRoot);
+  const paths = resolveRuntimePaths(pathsInput);
+  const availableVersions = listValidationSummaryVersions(paths);
   if (availableVersions.length === 0) {
     throw new Error('No tracked validation summaries are available');
   }
@@ -415,13 +420,13 @@ export function getValidationOverview(
     throw new Error(`Unknown validation summary version: ${requestedVersion ?? ''}`);
   }
 
-  const summaries = availableVersions.map((version) => readValidationSummary(repoRoot, version));
+  const summaries = availableVersions.map((version) => readValidationSummary(paths, version));
   const selectedSummary = summaries.find((summary) => summary.version === selectedVersion);
   if (!selectedSummary) {
     throw new Error(`Missing selected validation summary for ${selectedVersion}`);
   }
 
-  const referenceSummary = readValidationReferenceSummary(repoRoot);
+  const referenceSummary = readValidationReferenceSummary(paths);
   const referenceLine =
     (referenceSummary
         ? {
@@ -442,7 +447,7 @@ export function getValidationOverview(
       overallCompositeLoss: summary.overallCompositeLoss
     })),
     referenceLine,
-    referencePoints: readV0FamilyReferencePoints(repoRoot, availableVersions)
+    referencePoints: readV0FamilyReferencePoints(paths, availableVersions)
   };
   if (viewMode === 'reference_2011' && !referenceSummary) {
     throw new Error(`Missing validation summary for ${V0_REFERENCE_OVERLAY_NAME}`);

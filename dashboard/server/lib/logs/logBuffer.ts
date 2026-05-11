@@ -2,6 +2,7 @@ export interface LogBufferState {
   logLines: string[];
   logStart: number;
   partialLine: string;
+  sink?: LogLineSink;
 }
 
 export interface LogSlicePayload {
@@ -15,12 +16,21 @@ export interface LogSlicePayload {
 export const DEFAULT_LOG_LIMIT = 200;
 export const MAX_LOG_LIMIT = 1_000;
 
+export type LogLineSink = (line: string) => void;
+
 export function appendLogLine(state: LogBufferState, line: string, maxLines: number): void {
   state.logLines.push(line);
   if (state.logLines.length > maxLines) {
     const overflow = state.logLines.length - maxLines;
     state.logLines.splice(0, overflow);
     state.logStart += overflow;
+  }
+  if (state.sink) {
+    try {
+      state.sink(line);
+    } catch {
+      // Persistent logging must not break the live in-memory log stream.
+    }
   }
 }
 
@@ -90,4 +100,3 @@ export function readLogSlice(
     truncated: safeCursor < state.logStart
   };
 }
-

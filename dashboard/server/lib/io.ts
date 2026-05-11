@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { resolveRuntimePaths, type RuntimePathInput } from './runtimePaths';
 
 export function parseConfigFile(configPath: string): Map<string, string> {
   const out = new Map<string, string>();
@@ -25,21 +26,23 @@ export function parseConfigFile(configPath: string): Map<string, string> {
   return out;
 }
 
-export function resolveVersionPath(repoRoot: string, version: string): string {
-  return path.join(repoRoot, 'input-data-versions', version);
+export function resolveVersionPath(pathsInput: RuntimePathInput, version: string): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return path.join(paths.dataRoot, version);
 }
 
-export function getConfigPath(repoRoot: string, version: string): string {
-  return path.join(resolveVersionPath(repoRoot, version), 'config.properties');
+export function getConfigPath(pathsInput: RuntimePathInput, version: string): string {
+  return path.join(resolveVersionPath(pathsInput, version), 'config.properties');
 }
 
 export function resolveConfigDataFilePath(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   version: string,
   configValue: string
 ): string {
+  const paths = resolveRuntimePaths(pathsInput);
   const fileName = path.basename(configValue);
-  return path.join(repoRoot, 'input-data-versions', version, fileName);
+  return path.join(paths.dataRoot, version, fileName);
 }
 
 export function readNumericCsvRows(filePath: string): number[][] {

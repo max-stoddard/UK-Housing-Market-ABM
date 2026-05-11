@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,18 +23,36 @@ import {
   appendOutputChunk,
   flushPartialLine,
   readLogSlice,
-  type LogBufferState
+  type LogBufferState,
+  type LogLineSink
 } from './logs/logBuffer';
+import {
+  createMavenModelLauncher,
+  type ModelLauncher,
+  type ModelLauncherCommand
+} from './modelLauncher';
+import {
+  formatRuntimePath,
+  resolveRuntimePaths,
+  type RuntimePathInput,
+  type RuntimePaths
+} from './runtimePaths';
+import {
+  RUN_MANIFEST_FILE_NAME,
+  hashDirectory,
+  writeManualRunManifest
+} from './runManifest';
+import {
+  MANAGED_RUN_MARKER,
+  isDashboardManagedRun,
+  writeDashboardManagedRunMarker
+} from './runOwnership';
 
-const INPUT_DATA_VERSIONS_DIR = 'input-data-versions';
-const RESULTS_DIR = 'Results';
-const TMP_RUNS_DIR = path.join('tmp', 'dashboard-model-runs');
-const MANAGED_RUN_MARKER = '.dashboard-managed-run.json';
+const TMP_RUNS_DIR = 'dashboard-model-runs';
 const MAX_QUEUE_SIZE = 10;
 const MAX_LOG_LINES = 10_000;
 const CANCEL_KILL_TIMEOUT_MS = 10_000;
 const DEFAULT_RESULTS_CAP_MB = 400;
-const DEFAULT_MAVEN_BIN = process.env.DASHBOARD_MAVEN_BIN?.trim() || 'mvn';
 
 type ParameterDefinitionSeed = {
   key: string;
@@ -287,19 +305,25 @@ type ParsedOverride = {
 
 interface ModelRunJobInternal {
   job: ModelRunJob;
+  runtimePaths: RuntimePaths;
   warnings: ModelRunWarning[];
   logBuffer: LogBufferState;
   process?: ChildProcessWithoutNullStreams;
+  launcher: ModelLauncher;
   cancelRequested: boolean;
   killTimer?: NodeJS.Timeout;
   tempDirPath: string;
   configAbsolutePath: string;
   runAbsolutePath: string;
+  seed: number | null;
+  overriddenParameters: Record<string, number | boolean>;
   ignoreStorageCap: boolean;
 }
 
 interface SubmitModelRunOptions {
   ignoreStorageCap?: boolean;
+  launcher?: ModelLauncher;
+  logSink?: LogLineSink;
 }
 
 type SpawnModelRunFn = (
@@ -311,31 +335,54 @@ type SpawnModelRunFn = (
 const jobsById = new Map<string, ModelRunJobInternal>();
 const jobOrder: string[] = [];
 let runningJobId: string | null = null;
+let shutdownRequested = false;
+const defaultModelLauncher = createMavenModelLauncher();
+let modelRunLauncherOverrideForTests: ModelLauncher | null = null;
 
-function spawnModelRunWithMavenBin(
-  mavenBin: string,
-  repoRoot: string,
-  configPath: string,
-  outputPath: string
-): ChildProcessWithoutNullStreams {
-  const escapedConfigPath = configPath.replace(/"/g, '\\"');
-  const escapedOutputPath = outputPath.replace(/"/g, '\\"');
-  const execArgs = `-configFile "${escapedConfigPath}" -outputFolder "${escapedOutputPath}" -dev`;
-
-  return spawn(mavenBin, ['compile', 'exec:java', `-Dexec.args=${execArgs}`], {
-    cwd: repoRoot
-  });
+function createSpawnFunctionLauncher(spawnFn: SpawnModelRunFn): ModelLauncher {
+  return {
+    mode: 'maven',
+    metadata: {
+      mode: 'maven',
+      commandTemplate: 'test model launcher'
+    },
+    buildCommand: (request): ModelLauncherCommand => ({
+      command: 'test-model-launcher',
+      args: [request.configPath, request.outputPath],
+      options: {
+        cwd: request.repoRoot
+      },
+      commandTemplate: 'test model launcher'
+    }),
+    launch: (request) => spawnFn(request.repoRoot, request.configPath, request.outputPath)
+  };
 }
 
-let spawnModelRunProcess: SpawnModelRunFn = (repoRoot, configPath, outputPath) =>
-  spawnModelRunWithMavenBin(DEFAULT_MAVEN_BIN, repoRoot, configPath, outputPath);
+function resolveModelLauncher(launcher: ModelLauncher | undefined): ModelLauncher {
+  return launcher ?? modelRunLauncherOverrideForTests ?? defaultModelLauncher;
+}
+
+function formatLauncherProcessError(launcher: ModelLauncher, error: Error): string {
+  const spawnError = error as NodeJS.ErrnoException;
+  if (spawnError.code !== 'ENOENT') {
+    return error.message;
+  }
+
+  if (launcher.mode === 'maven') {
+    const mavenBin = launcher.metadata.mavenBin ?? 'mvn';
+    return `Maven executable "${mavenBin}" was not found. Configure DASHBOARD_MAVEN_BIN or run the API in an environment with Java+Maven (e.g. Docker runtime).`;
+  }
+
+  const javaExe = launcher.metadata.javaExe ?? 'java';
+  return `Java executable "${javaExe}" was not found for packaged model launcher.`;
+}
 
 function isTerminal(status: ModelRunJobStatus): boolean {
   return TERMINAL_STATUSES.has(status);
 }
 
-function toRelative(repoRoot: string, absolutePath: string): string {
-  return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
+function toRuntimePath(paths: RuntimePaths, absolutePath: string): string {
+  return formatRuntimePath(paths, absolutePath);
 }
 
 function parseConfigAssignments(configPath: string): Map<string, string> {
@@ -421,16 +468,17 @@ function normalizeOverrideValue(key: string, raw: unknown, type: ModelRunParamet
   return { typed: raw, serialized: String(raw) };
 }
 
-function buildSnapshotOptions(repoRoot: string): {
+function buildSnapshotOptions(pathsInput: RuntimePathInput): {
   snapshots: ModelRunSnapshotOption[];
   defaultBaseline: string;
 } {
-  const versions = getVersions(repoRoot);
+  const paths = resolveRuntimePaths(pathsInput);
+  const versions = getVersions(paths);
   if (versions.length === 0) {
     throw new Error('No input-data-versions snapshots are available.');
   }
 
-  const inProgressSet = new Set(getInProgressVersions(repoRoot));
+  const inProgressSet = new Set(getInProgressVersions(paths));
   const snapshots = versions
     .map((version) => ({
       version,
@@ -444,12 +492,12 @@ function buildSnapshotOptions(repoRoot: string): {
   return { snapshots, defaultBaseline };
 }
 
-function resolveBaseline(repoRoot: string, requestedBaseline: string | undefined): {
+function resolveBaseline(pathsInput: RuntimePathInput, requestedBaseline: string | undefined): {
   baseline: string;
   snapshots: ModelRunSnapshotOption[];
   defaultBaseline: string;
 } {
-  const { snapshots, defaultBaseline } = buildSnapshotOptions(repoRoot);
+  const { snapshots, defaultBaseline } = buildSnapshotOptions(pathsInput);
   if (!requestedBaseline) {
     return { baseline: defaultBaseline, snapshots, defaultBaseline };
   }
@@ -462,12 +510,13 @@ function resolveBaseline(repoRoot: string, requestedBaseline: string | undefined
   return { baseline: normalized, snapshots, defaultBaseline };
 }
 
-function getBaselineConfigPath(repoRoot: string, baseline: string): string {
-  return path.join(repoRoot, INPUT_DATA_VERSIONS_DIR, baseline, 'config.properties');
+function getBaselineConfigPath(pathsInput: RuntimePathInput, baseline: string): string {
+  const paths = resolveRuntimePaths(pathsInput);
+  return path.join(paths.dataRoot, baseline, 'config.properties');
 }
 
-function getParameterDefinitionsForBaseline(repoRoot: string, baseline: string): ModelRunParameterDefinition[] {
-  const configPath = getBaselineConfigPath(repoRoot, baseline);
+function getParameterDefinitionsForBaseline(pathsInput: RuntimePathInput, baseline: string): ModelRunParameterDefinition[] {
+  const configPath = getBaselineConfigPath(pathsInput, baseline);
   if (!fs.existsSync(configPath)) {
     throw new Error(`Missing config.properties for baseline ${baseline}`);
   }
@@ -689,8 +738,9 @@ function directorySizeBytes(directoryPath: string): number {
   return total;
 }
 
-function getResultsStorageUsageBytes(repoRoot: string): number {
-  const resultsRoot = path.join(repoRoot, RESULTS_DIR);
+function getResultsStorageUsageBytes(pathsInput: RuntimePathInput): number {
+  const paths = resolveRuntimePaths(pathsInput);
+  const resultsRoot = paths.resultsRoot;
   if (!fs.existsSync(resultsRoot)) {
     return 0;
   }
@@ -701,15 +751,15 @@ function getResultsStorageUsageBytes(repoRoot: string): number {
     .reduce((sum, entry) => sum + directorySizeBytes(path.join(resultsRoot, entry.name)), 0);
 }
 
-export function getResultsStorageSummary(repoRoot: string): ResultsStorageSummary {
+export function getResultsStorageSummary(pathsInput: RuntimePathInput): ResultsStorageSummary {
   return {
-    usedBytes: getResultsStorageUsageBytes(repoRoot),
+    usedBytes: getResultsStorageUsageBytes(pathsInput),
     capBytes: resolveResultsCapBytes()
   };
 }
 
-function assertResultsStorageHeadroom(repoRoot: string): void {
-  const summary = getResultsStorageSummary(repoRoot);
+function assertResultsStorageHeadroom(pathsInput: RuntimePathInput): void {
+  const summary = getResultsStorageSummary(pathsInput);
   if (summary.usedBytes >= summary.capBytes) {
     const usageMb = (summary.usedBytes / (1024 * 1024)).toFixed(1);
     const capMb = (summary.capBytes / (1024 * 1024)).toFixed(1);
@@ -719,7 +769,28 @@ function assertResultsStorageHeadroom(repoRoot: string): void {
   }
 }
 
-function startNextQueuedJob(repoRoot: string): void {
+function createUnmanagedRunPathError(runId: string): Error {
+  return new Error(
+    `Output folder "${runId}" already exists but is not marked as a dashboard-managed run. Refusing to overwrite it from the dashboard.`
+  );
+}
+
+function assertExistingRunPathIsDashboardManaged(runPath: string, runId: string): void {
+  if (!isDashboardManagedRun(runPath, runId)) {
+    throw createUnmanagedRunPathError(runId);
+  }
+}
+
+function removeRunDirectoryIfDashboardManaged(runPath: string, runId: string): void {
+  if (isDashboardManagedRun(runPath, runId)) {
+    fs.rmSync(runPath, { recursive: true, force: true });
+  }
+}
+
+function startNextQueuedJob(): void {
+  if (shutdownRequested) {
+    return;
+  }
   if (runningJobId !== null) {
     return;
   }
@@ -732,20 +803,39 @@ function startNextQueuedJob(repoRoot: string): void {
     return;
   }
 
+  const paths = queuedJob.runtimePaths;
   if (!queuedJob.ignoreStorageCap) {
     try {
-      assertResultsStorageHeadroom(repoRoot);
+      assertResultsStorageHeadroom(paths);
     } catch (error) {
       queuedJob.job.status = 'failed';
       queuedJob.job.endedAt = new Date().toISOString();
       queuedJob.job.exitCode = null;
       queuedJob.job.signal = null;
       appendLogLine(queuedJob.logBuffer, `[stderr] ${(error as Error).message}`, MAX_LOG_LINES);
-      fs.rmSync(queuedJob.runAbsolutePath, { recursive: true, force: true });
+      removeRunDirectoryIfDashboardManaged(queuedJob.runAbsolutePath, queuedJob.job.runId);
       fs.rmSync(queuedJob.tempDirPath, { recursive: true, force: true });
-      startNextQueuedJob(repoRoot);
+      startNextQueuedJob();
       return;
     }
+  }
+
+  if (
+    fs.existsSync(queuedJob.runAbsolutePath) &&
+    !isDashboardManagedRun(queuedJob.runAbsolutePath, queuedJob.job.runId)
+  ) {
+    queuedJob.job.status = 'failed';
+    queuedJob.job.endedAt = new Date().toISOString();
+    queuedJob.job.exitCode = null;
+    queuedJob.job.signal = null;
+    appendLogLine(
+      queuedJob.logBuffer,
+      `[stderr] ${createUnmanagedRunPathError(queuedJob.job.runId).message}`,
+      MAX_LOG_LINES
+    );
+    fs.rmSync(queuedJob.tempDirPath, { recursive: true, force: true });
+    startNextQueuedJob();
+    return;
   }
 
   queuedJob.job.status = 'running';
@@ -753,36 +843,45 @@ function startNextQueuedJob(repoRoot: string): void {
   runningJobId = queuedJob.job.jobId;
 
   fs.mkdirSync(queuedJob.runAbsolutePath, { recursive: true });
-  fs.writeFileSync(
-    path.join(queuedJob.runAbsolutePath, MANAGED_RUN_MARKER),
-    JSON.stringify(
-      {
-        managedBy: 'dashboard',
-        jobId: queuedJob.job.jobId,
-        runId: queuedJob.job.runId,
-        baseline: queuedJob.job.baseline,
-        title: queuedJob.job.title ?? null,
-        createdAt: queuedJob.job.createdAt
-      },
-      null,
-      2
-    ),
-    'utf-8'
-  );
+  writeDashboardManagedRunMarker(queuedJob.runAbsolutePath, {
+    jobId: queuedJob.job.jobId,
+    runId: queuedJob.job.runId,
+    baseline: queuedJob.job.baseline,
+    title: queuedJob.job.title ?? null,
+    createdAt: queuedJob.job.createdAt
+  });
+  writeManualRunManifest({
+    paths,
+    launcher: queuedJob.launcher,
+    job: queuedJob.job,
+    configPath: queuedJob.configAbsolutePath,
+    outputPath: queuedJob.runAbsolutePath,
+    seed: queuedJob.seed,
+    overriddenParameters: queuedJob.overriddenParameters,
+    outputHash: null
+  });
 
   let child: ChildProcessWithoutNullStreams;
   try {
-    child = spawnModelRunProcess(repoRoot, queuedJob.configAbsolutePath, queuedJob.runAbsolutePath);
+    child = queuedJob.launcher.launch({
+      repoRoot: paths.repoRoot,
+      configPath: queuedJob.configAbsolutePath,
+      outputPath: queuedJob.runAbsolutePath
+    });
   } catch (error) {
     queuedJob.job.status = 'failed';
     queuedJob.job.endedAt = new Date().toISOString();
     queuedJob.job.exitCode = null;
     queuedJob.job.signal = null;
-    appendLogLine(queuedJob.logBuffer, `[stderr] Failed to spawn model process: ${(error as Error).message}`, MAX_LOG_LINES);
+    appendLogLine(
+      queuedJob.logBuffer,
+      `[stderr] Failed to spawn model process: ${formatLauncherProcessError(queuedJob.launcher, error as Error)}`,
+      MAX_LOG_LINES
+    );
     runningJobId = null;
-    fs.rmSync(queuedJob.runAbsolutePath, { recursive: true, force: true });
+    removeRunDirectoryIfDashboardManaged(queuedJob.runAbsolutePath, queuedJob.job.runId);
     fs.rmSync(queuedJob.tempDirPath, { recursive: true, force: true });
-    startNextQueuedJob(repoRoot);
+    startNextQueuedJob();
     return;
   }
 
@@ -797,17 +896,11 @@ function startNextQueuedJob(repoRoot: string): void {
   });
 
   child.on('error', (error: Error) => {
-    const spawnError = error as NodeJS.ErrnoException;
-    if (spawnError.code === 'ENOENT') {
-      appendLogLine(
-        queuedJob.logBuffer,
-        `[stderr] Model process error: Maven executable "${DEFAULT_MAVEN_BIN}" was not found. Configure DASHBOARD_MAVEN_BIN or run the API in an environment with Java+Maven (e.g. Docker runtime).`
-        ,
-        MAX_LOG_LINES
-      );
-      return;
-    }
-    appendLogLine(queuedJob.logBuffer, `[stderr] Model process error: ${error.message}`, MAX_LOG_LINES);
+    appendLogLine(
+      queuedJob.logBuffer,
+      `[stderr] Model process error: ${formatLauncherProcessError(queuedJob.launcher, error)}`,
+      MAX_LOG_LINES
+    );
   });
 
   child.on('close', (code, signal) => {
@@ -830,13 +923,29 @@ function startNextQueuedJob(repoRoot: string): void {
       queuedJob.job.status = 'failed';
     }
 
+    if (queuedJob.job.status === 'succeeded') {
+      writeManualRunManifest({
+        paths,
+        launcher: queuedJob.launcher,
+        job: queuedJob.job,
+        configPath: queuedJob.configAbsolutePath,
+        outputPath: queuedJob.runAbsolutePath,
+        seed: queuedJob.seed,
+        overriddenParameters: queuedJob.overriddenParameters,
+        outputHash: hashDirectory(
+          queuedJob.runAbsolutePath,
+          new Set([RUN_MANIFEST_FILE_NAME, MANAGED_RUN_MARKER])
+        )
+      });
+    }
+
     if (queuedJob.job.status === 'failed' || queuedJob.job.status === 'canceled') {
-      fs.rmSync(queuedJob.runAbsolutePath, { recursive: true, force: true });
+      removeRunDirectoryIfDashboardManaged(queuedJob.runAbsolutePath, queuedJob.job.runId);
     }
 
     fs.rmSync(queuedJob.tempDirPath, { recursive: true, force: true });
     runningJobId = null;
-    startNextQueuedJob(repoRoot);
+    startNextQueuedJob();
   });
 }
 
@@ -845,18 +954,19 @@ function toPublicJob(job: ModelRunJobInternal): ModelRunJob {
 }
 
 export function getModelRunOptions(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   requestedBaseline: string | undefined,
   executionEnabled: boolean
 ): ModelRunOptionsPayload {
-  const { baseline, snapshots, defaultBaseline } = resolveBaseline(repoRoot, requestedBaseline);
+  const paths = resolveRuntimePaths(pathsInput);
+  const { baseline, snapshots, defaultBaseline } = resolveBaseline(paths, requestedBaseline);
 
   return {
     executionEnabled,
     snapshots,
     defaultBaseline,
     requestedBaseline: baseline,
-    parameters: getParameterDefinitionsForBaseline(repoRoot, baseline)
+    parameters: getParameterDefinitionsForBaseline(paths, baseline)
   };
 }
 
@@ -906,7 +1016,7 @@ export function getModelRunJobLogs(jobId: string, cursor: number | undefined, li
   };
 }
 
-export function cancelModelRunJob(repoRoot: string, jobId: string): ModelRunJob {
+export function cancelModelRunJob(_pathsInput: RuntimePathInput, jobId: string): ModelRunJob {
   const normalized = jobId.trim();
   if (!normalized) {
     throw new Error('jobId is required.');
@@ -925,7 +1035,7 @@ export function cancelModelRunJob(repoRoot: string, jobId: string): ModelRunJob 
     job.job.status = 'canceled';
     job.job.endedAt = new Date().toISOString();
     fs.rmSync(job.tempDirPath, { recursive: true, force: true });
-    startNextQueuedJob(repoRoot);
+    startNextQueuedJob();
     return toPublicJob(job);
   }
 
@@ -981,23 +1091,26 @@ export function clearModelRunJob(jobId: string): ModelRunJobClearResponse {
 }
 
 export function submitModelRun(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   payload: ModelRunSubmitRequest,
   options: SubmitModelRunOptions = {}
 ): ModelRunSubmitResponse {
+  const paths = resolveRuntimePaths(pathsInput);
   const ignoreStorageCap = options.ignoreStorageCap === true;
+  const launcher = resolveModelLauncher(options.launcher);
   const baselineRaw = payload.baseline?.trim();
   if (!baselineRaw) {
     throw new Error('baseline is required.');
   }
 
-  const { baseline } = resolveBaseline(repoRoot, baselineRaw);
-  const parameterDefinitions = getParameterDefinitionsForBaseline(repoRoot, baseline);
+  const { baseline } = resolveBaseline(paths, baselineRaw);
+  const parameterDefinitions = getParameterDefinitionsForBaseline(paths, baseline);
   const parameterDefMap = new Map(parameterDefinitions.map((item) => [item.key, item]));
 
   const overrides = payload.overrides ?? {};
   const overrideEntries = Object.entries(overrides);
   const normalizedOverrides = new Map<string, string>();
+  const overriddenParameters: Record<string, number | boolean> = {};
 
   const valuesByKey = new Map(parameterDefinitions.map((definition) => [definition.key, definition.defaultValue]));
 
@@ -1010,6 +1123,7 @@ export function submitModelRun(
     const parsedOverride = normalizeOverrideValue(key, rawValue, definition.type);
     normalizedOverrides.set(key, parsedOverride.serialized);
     valuesByKey.set(key, parsedOverride.typed);
+    overriddenParameters[key] = parsedOverride.typed;
   }
 
   const now = new Date();
@@ -1020,9 +1134,10 @@ export function submitModelRun(
     throw new Error(`A queued or running job is already targeting output folder "${runId}".`);
   }
 
-  const runAbsolutePath = path.join(repoRoot, RESULTS_DIR, runId);
+  const runAbsolutePath = path.join(paths.resultsRoot, runId);
   const warnings = createWarnings(valuesByKey);
   if (fs.existsSync(runAbsolutePath)) {
+    assertExistingRunPathIsDashboardManaged(runAbsolutePath, runId);
     warnings.push({
       code: 'output_folder_exists',
       message: `Output folder "${runId}" already exists and will be overwritten.`,
@@ -1039,22 +1154,23 @@ export function submitModelRun(
 
   ensureQueueCapacity();
   if (!ignoreStorageCap) {
-    assertResultsStorageHeadroom(repoRoot);
+    assertResultsStorageHeadroom(paths);
   }
 
   if (fs.existsSync(runAbsolutePath)) {
+    assertExistingRunPathIsDashboardManaged(runAbsolutePath, runId);
     fs.rmSync(runAbsolutePath, { recursive: true, force: true });
   }
 
   if (!ignoreStorageCap) {
-    assertResultsStorageHeadroom(repoRoot);
+    assertResultsStorageHeadroom(paths);
   }
 
   const jobId = `job-${formatRunTimestamp(now)}-${randomUUID().slice(0, 8)}`;
 
-  const tempDirPath = path.join(repoRoot, TMP_RUNS_DIR, jobId);
+  const tempDirPath = path.join(paths.tempRoot, TMP_RUNS_DIR, jobId);
   const configAbsolutePath = path.join(tempDirPath, 'config.properties');
-  const baselineDirPath = path.join(repoRoot, INPUT_DATA_VERSIONS_DIR, baseline);
+  const baselineDirPath = path.join(paths.dataRoot, baseline);
   const baselineConfigPath = path.join(baselineDirPath, 'config.properties');
 
   rewriteConfigForJob(baselineConfigPath, baselineDirPath, configAbsolutePath, normalizedOverrides);
@@ -1066,28 +1182,33 @@ export function submitModelRun(
     baseline,
     status: 'queued',
     createdAt: now.toISOString(),
-    outputPath: toRelative(repoRoot, runAbsolutePath),
-    configPath: toRelative(repoRoot, configAbsolutePath)
+    outputPath: toRuntimePath(paths, runAbsolutePath),
+    configPath: toRuntimePath(paths, configAbsolutePath)
   };
 
   const internalJob: ModelRunJobInternal = {
     job,
+    runtimePaths: paths,
     warnings,
     logBuffer: {
       logLines: [],
       logStart: 0,
-      partialLine: ''
+      partialLine: '',
+      ...(options.logSink ? { sink: (line) => options.logSink?.(`[manual:${jobId}] ${line}`) } : {})
     },
+    launcher,
     cancelRequested: false,
     tempDirPath,
     configAbsolutePath,
     runAbsolutePath,
+    seed: typeof valuesByKey.get('SEED') === 'number' ? Number(valuesByKey.get('SEED')) : null,
+    overriddenParameters,
     ignoreStorageCap
   };
 
   jobsById.set(job.jobId, internalJob);
   jobOrder.push(job.jobId);
-  startNextQueuedJob(repoRoot);
+  startNextQueuedJob();
 
   return {
     accepted: true,
@@ -1097,22 +1218,36 @@ export function submitModelRun(
 }
 
 export function __setModelRunSpawnForTests(spawnFn: SpawnModelRunFn | null): void {
-  spawnModelRunProcess =
-    spawnFn ??
-    ((repoRoot, configPath, outputPath) => spawnModelRunWithMavenBin(DEFAULT_MAVEN_BIN, repoRoot, configPath, outputPath));
+  modelRunLauncherOverrideForTests = spawnFn ? createSpawnFunctionLauncher(spawnFn) : null;
 }
 
-export function __resetModelRunManagerForTests(): void {
+export function shutdownModelRunProcesses(): void {
+  const now = new Date().toISOString();
+  shutdownRequested = true;
   for (const job of jobsById.values()) {
     if (job.killTimer) {
       clearTimeout(job.killTimer);
+      job.killTimer = undefined;
     }
     if (job.process && !isTerminal(job.job.status)) {
+      job.cancelRequested = true;
+      job.job.status = 'canceled';
+      job.job.endedAt = now;
       job.process.kill('SIGKILL');
+    } else if (job.job.status === 'queued') {
+      job.cancelRequested = true;
+      job.job.status = 'canceled';
+      job.job.endedAt = now;
+      fs.rmSync(job.tempDirPath, { recursive: true, force: true });
     }
   }
+}
+
+export function __resetModelRunManagerForTests(): void {
+  shutdownModelRunProcesses();
   jobsById.clear();
   jobOrder.length = 0;
   runningJobId = null;
+  shutdownRequested = false;
   __setModelRunSpawnForTests(null);
 }

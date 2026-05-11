@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { PARAMETER_CATALOG } from '../../shared/catalog';
 import type {
   AxisScaleType,
@@ -40,12 +39,18 @@ import {
   parseConfigWithComments,
   resolveDatasetAttributions
 } from './datasetAttribution';
+import {
+  formatRuntimePath,
+  resolveRuntimePaths,
+  type RuntimePathInput,
+  type RuntimePaths
+} from './runtimePaths';
 
 const EPSILON = 1e-12;
 export type ProvenanceScope = 'range' | 'through_right';
 
 interface CompareContext {
-  repoRoot: string;
+  runtimePaths: RuntimePaths;
   leftVersion: string;
   rightVersion: string;
   leftConfig: Map<string, string>;
@@ -58,15 +63,15 @@ interface CompareContext {
   provenanceScope: ProvenanceScope;
 }
 
-type VisualContext = Pick<CompareContext, 'repoRoot' | 'leftVersion' | 'rightVersion' | 'leftConfig' | 'rightConfig'>;
+type VisualContext = Pick<CompareContext, 'runtimePaths' | 'leftVersion' | 'rightVersion' | 'leftConfig' | 'rightConfig'>;
 
 interface StepRateRow {
   threshold: number;
   rate: number;
 }
 
-function asRelative(repoRoot: string, absolutePath: string): string {
-  return path.relative(repoRoot, absolutePath).replace(/\\/g, '/');
+function asRelative(paths: RuntimePaths, absolutePath: string): string {
+  return formatRuntimePath(paths, absolutePath);
 }
 
 function deltaStat(left: number, right: number) {
@@ -704,7 +709,7 @@ function deriveIncomeDomain(context: VisualContext): { min: number; max: number 
       continue;
     }
 
-    const absolute = resolveConfigDataFilePath(context.repoRoot, side.version, dataPath);
+    const absolute = resolveConfigDataFilePath(context.runtimePaths, side.version, dataPath);
     if (!fs.existsSync(absolute)) {
       continue;
     }
@@ -781,20 +786,20 @@ function createSourceInfo(context: CompareContext, meta: ParameterCardMeta) {
   const leftFiles = (meta.dataFileConfigKeys ?? [])
     .map((key) => context.leftConfig.get(key))
     .filter((value): value is string => Boolean(value))
-    .map((value) => resolveConfigDataFilePath(context.repoRoot, context.leftVersion, value))
+    .map((value) => resolveConfigDataFilePath(context.runtimePaths, context.leftVersion, value))
     .filter((absolutePath) => fs.existsSync(absolutePath))
-    .map((absolutePath) => asRelative(context.repoRoot, absolutePath));
+    .map((absolutePath) => asRelative(context.runtimePaths, absolutePath));
 
   const rightFiles = (meta.dataFileConfigKeys ?? [])
     .map((key) => context.rightConfig.get(key))
     .filter((value): value is string => Boolean(value))
-    .map((value) => resolveConfigDataFilePath(context.repoRoot, context.rightVersion, value))
+    .map((value) => resolveConfigDataFilePath(context.runtimePaths, context.rightVersion, value))
     .filter((absolutePath) => fs.existsSync(absolutePath))
-    .map((absolutePath) => asRelative(context.repoRoot, absolutePath));
+    .map((absolutePath) => asRelative(context.runtimePaths, absolutePath));
 
   return {
-    configPathLeft: asRelative(context.repoRoot, getConfigPath(context.repoRoot, context.leftVersion)),
-    configPathRight: asRelative(context.repoRoot, getConfigPath(context.repoRoot, context.rightVersion)),
+    configPathLeft: asRelative(context.runtimePaths, getConfigPath(context.runtimePaths, context.leftVersion)),
+    configPathRight: asRelative(context.runtimePaths, getConfigPath(context.runtimePaths, context.rightVersion)),
     configKeys: meta.configKeys,
     dataFilesLeft: leftFiles,
     dataFilesRight: rightFiles,
@@ -811,8 +816,8 @@ function createSourceInfo(context: CompareContext, meta: ParameterCardMeta) {
   };
 }
 
-function ensureVersionExists(repoRoot: string, version: string): void {
-  const versionPath = resolveVersionPath(repoRoot, version);
+function ensureVersionExists(paths: RuntimePaths, version: string): void {
+  const versionPath = resolveVersionPath(paths, version);
   if (!fs.existsSync(versionPath)) {
     throw new Error(`Unknown version: ${version}`);
   }
@@ -857,10 +862,10 @@ function buildVisualComparison(
       }
 
       const leftRows = readNumericCsvRows(
-        resolveConfigDataFilePath(context.repoRoot, context.leftVersion, leftFileConfig)
+        resolveConfigDataFilePath(context.runtimePaths, context.leftVersion, leftFileConfig)
       );
       const rightRows = readNumericCsvRows(
-        resolveConfigDataFilePath(context.repoRoot, context.rightVersion, rightFileConfig)
+        resolveConfigDataFilePath(context.runtimePaths, context.rightVersion, rightFileConfig)
       );
       if (useStepRateComparison(meta.id)) {
         const bins = buildStepRateComparison(leftRows, rightRows);
@@ -902,10 +907,10 @@ function buildVisualComparison(
       }
 
       const leftRows = readNumericCsvRows(
-        resolveConfigDataFilePath(context.repoRoot, context.leftVersion, leftFileConfig)
+        resolveConfigDataFilePath(context.runtimePaths, context.leftVersion, leftFileConfig)
       );
       const rightRows = readNumericCsvRows(
-        resolveConfigDataFilePath(context.repoRoot, context.rightVersion, rightFileConfig)
+        resolveConfigDataFilePath(context.runtimePaths, context.rightVersion, rightFileConfig)
       );
 
       const { xScaleType, yScaleType } = getJointAxisScaleTypes(meta.id);
@@ -1087,14 +1092,16 @@ function buildCompareItem(context: CompareContext, meta: ParameterCardMeta): Com
   };
 }
 
-export function getVersions(repoRoot: string): string[] {
-  return listVersions(path.join(repoRoot, 'input-data-versions'));
+export function getVersions(pathsInput: RuntimePathInput): string[] {
+  const paths = resolveRuntimePaths(pathsInput);
+  return listVersions(paths.dataRoot);
 }
 
-export function getInProgressVersions(repoRoot: string): string[] {
-  const versions = getVersions(repoRoot);
+export function getInProgressVersions(pathsInput: RuntimePathInput): string[] {
+  const paths = resolveRuntimePaths(pathsInput);
+  const versions = getVersions(paths);
   const versionSet = new Set(versions);
-  const dashboardInputVersionHistory = loadDashboardInputVersionHistory(repoRoot);
+  const dashboardInputVersionHistory = loadDashboardInputVersionHistory(paths);
   const inProgress = new Set<string>();
 
   for (const entry of dashboardInputVersionHistory) {
@@ -1107,21 +1114,22 @@ export function getInProgressVersions(repoRoot: string): string[] {
 }
 
 export function getValidationOverview(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   version?: string,
   viewMode: ValidationOverviewViewMode = 'tracked'
 ): ValidationOverviewPayload {
-  return getTrackedValidationOverview(repoRoot, version, viewMode);
+  return getTrackedValidationOverview(pathsInput, version, viewMode);
 }
 
 export function getParameterCatalog() {
   return PARAMETER_CATALOG;
 }
 
-export function getHomePreview(repoRoot: string, version: string, ids: string[]): HomePreviewPayload {
-  ensureVersionExists(repoRoot, version);
+export function getHomePreview(pathsInput: RuntimePathInput, version: string, ids: string[]): HomePreviewPayload {
+  const paths = resolveRuntimePaths(pathsInput);
+  ensureVersionExists(paths, version);
 
-  const config = parseConfigFile(getConfigPath(repoRoot, version));
+  const config = parseConfigFile(getConfigPath(paths, version));
   const catalogById = new Map(PARAMETER_CATALOG.map((meta) => [meta.id, meta]));
   const selected = ids.map((id) => {
     const meta = catalogById.get(id);
@@ -1132,7 +1140,7 @@ export function getHomePreview(repoRoot: string, version: string, ids: string[])
   });
 
   const context: VisualContext = {
-    repoRoot,
+    runtimePaths: paths,
     leftVersion: version,
     rightVersion: version,
     leftConfig: config,
@@ -1153,20 +1161,21 @@ export function getHomePreview(repoRoot: string, version: string, ids: string[])
 }
 
 export function compareParameters(
-  repoRoot: string,
+  pathsInput: RuntimePathInput,
   leftVersion: string,
   rightVersion: string,
   ids: string[],
   provenanceScope: ProvenanceScope = 'range'
 ): CompareResponse {
-  ensureVersionExists(repoRoot, leftVersion);
-  ensureVersionExists(repoRoot, rightVersion);
+  const paths = resolveRuntimePaths(pathsInput);
+  ensureVersionExists(paths, leftVersion);
+  ensureVersionExists(paths, rightVersion);
 
-  const leftConfig = parseConfigFile(getConfigPath(repoRoot, leftVersion));
-  const rightConfig = parseConfigFile(getConfigPath(repoRoot, rightVersion));
-  const dashboardInputVersionHistory = loadDashboardInputVersionHistory(repoRoot);
-  const leftConfigDetails = parseConfigWithComments(getConfigPath(repoRoot, leftVersion));
-  const rightConfigDetails = parseConfigWithComments(getConfigPath(repoRoot, rightVersion));
+  const leftConfig = parseConfigFile(getConfigPath(paths, leftVersion));
+  const rightConfig = parseConfigFile(getConfigPath(paths, rightVersion));
+  const dashboardInputVersionHistory = loadDashboardInputVersionHistory(paths);
+  const leftConfigDetails = parseConfigWithComments(getConfigPath(paths, leftVersion));
+  const rightConfigDetails = parseConfigWithComments(getConfigPath(paths, rightVersion));
   const leftFallbackTagsByKey = buildLatestSourceTagsByKey(dashboardInputVersionHistory, leftVersion);
   const rightFallbackTagsByKey = buildLatestSourceTagsByKey(dashboardInputVersionHistory, rightVersion);
 
@@ -1180,7 +1189,7 @@ export function compareParameters(
   });
 
   const context: CompareContext = {
-    repoRoot,
+    runtimePaths: paths,
     leftVersion,
     rightVersion,
     leftConfig,

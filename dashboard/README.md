@@ -49,7 +49,7 @@ Runtime target compatibility:
 | --- | --- | --- | --- |
 | Dev mode | Repo-shaped local workflow using the developer machine's Node, Java, and Maven. | Enabled by default in non-production when Java/Maven are available. | Dev bypass is active only when `NODE_ENV != production` and the request is not `Preview non-dev`; no cloud or desktop runtime should depend on it. |
 | Cloud mode | Lightweight public API/container path from `dashboard/Dockerfile.api`; no Electron requirement. | `DASHBOARD_ENABLE_MODEL_RUNS=false` by default; `/healthz`, `/api/runtime-deps`, and read routes remain usable without Java or Maven. | Public API image must not include Java, Maven, git, `private-datasets/`, or baseline `Results/`; public model execution fails closed. |
-| Desktop mode | Planned Electron-owned local server on `127.0.0.1` with random port, packaged Java runtime/fat jar, and Electron `userData` writable roots. | Planned packaged launcher only; current repo does not yet implement Electron, fat-jar launcher, or installer behavior. | Planned per-session bearer token and no packaged dev bypass; release data stays allowlisted and separate from cloud credentials/resources. |
+| Desktop mode | Electron-owned local server on `127.0.0.1` with random port, packaged Java 25 runtime/fat jar, and Electron `userData` writable roots. | Packaged launcher for dashboard-managed manual and sensitivity runs; release resources are assembled from allowlisted input data and the runnable model jar. | Per-session bearer token and no packaged dev bypass; release data stays allowlisted and separate from cloud credentials/resources. |
 
 Experiments availability:
 
