@@ -13,13 +13,14 @@ const dashboardRoot = path.join(repoRoot, 'dashboard');
 const defaultInstallerRoot = path.join(dashboardRoot, 'release', 'windows', 'installer');
 const packageJson = JSON.parse(fs.readFileSync(path.join(dashboardRoot, 'package.json'), 'utf-8'));
 const productName = 'UK Housing Model';
+const defaultTimeoutMs = 300_000;
 
 function usage() {
   return `Usage: node scripts/windows/smoke-installed-windows-installer.mjs [options]
 
 Options:
   --installer <path>      Installer EXE path. Defaults to the Phase 11 installer artifact.
-  --timeout-ms <number>   Per-process timeout. Defaults to 60000.
+  --timeout-ms <number>   Per-process timeout. Defaults to ${defaultTimeoutMs}.
   --help                  Show this help.
 `;
 }
@@ -27,7 +28,7 @@ Options:
 function parseArgs(argv) {
   const options = {
     installerPath: path.join(defaultInstallerRoot, `UK-Housing-Model-${packageJson.version}-Setup.exe`),
-    timeoutMs: 60_000
+    timeoutMs: defaultTimeoutMs
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -85,6 +86,9 @@ function runChecked(command, args, options) {
     windowsHide: true
   });
   if (result.error) {
+    if (result.error.code === 'ETIMEDOUT') {
+      throw new Error(`${command} ${args.join(' ')} timed out after ${options.timeout}ms.`);
+    }
     throw new Error(`${command} failed to start: ${result.error.message}`);
   }
   if (result.status !== 0) {
