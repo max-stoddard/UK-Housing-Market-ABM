@@ -40,6 +40,7 @@ const windowsBatchInvokerScript = [
   '& $command @commandArgs',
   'exit $LASTEXITCODE'
 ].join('; ');
+const windowsBatchInvokerEncodedScript = Buffer.from(windowsBatchInvokerScript, 'utf16le').toString('base64');
 
 function defaultMavenWrapperBin(repoRoot?: string): string {
   const wrapperName = process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw';
@@ -75,8 +76,8 @@ export function prepareCommandForSpawn(
       '-NonInteractive',
       '-ExecutionPolicy',
       'Bypass',
-      '-Command',
-      windowsBatchInvokerScript,
+      '-EncodedCommand',
+      windowsBatchInvokerEncodedScript,
       command,
       ...args
     ],
