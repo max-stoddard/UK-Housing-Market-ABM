@@ -14,10 +14,13 @@ export function SensitivityRunSetupPanel({ controller, runActionsDisabled }: Sen
       selectedBaseline={controller.selectedBaseline}
       onBaselineChange={controller.onBaselineChange}
       snapshots={controller.options?.snapshots ?? []}
-      numericParameters={controller.numericSensitivityParameters}
-      parameterKey={controller.sensitivityParameterKey}
-      onParameterKeyChange={(value) => {
-        controller.setSensitivityParameterKey(value);
+      basePolicies={controller.options?.basePolicies ?? []}
+      basePolicy={controller.sensitivityBasePolicy}
+      onBasePolicyChange={controller.setSensitivityBasePolicy}
+      policyPackages={controller.sensitivityPolicyPackages}
+      policyPackageId={controller.sensitivityPolicyPackageId}
+      onPolicyPackageChange={(value) => {
+        controller.setSensitivityPolicyPackageId(value);
       }}
       minValue={controller.sensitivityMin}
       maxValue={controller.sensitivityMax}
@@ -36,7 +39,7 @@ export function SensitivityRunSetupPanel({ controller, runActionsDisabled }: Sen
       onMaxWorkersChange={controller.setSensitivityMaxWorkers}
       title={controller.sensitivityTitle}
       onTitleChange={controller.setSensitivityTitle}
-      selectedParameter={controller.selectedSensitivityParameter}
+      selectedPackage={controller.selectedSensitivityPackage}
       warnings={controller.sensitivityWarnings}
       isSubmitting={controller.isSubmittingSensitivity}
       isCanceling={controller.isCancelingSensitivity}

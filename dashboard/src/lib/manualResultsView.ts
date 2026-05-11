@@ -32,7 +32,6 @@ export interface KpiDetailRow {
 export const KPI_DETAIL_ROWS: KpiDetailRow[] = [
   { key: 'mean', label: 'Mean (month)', units: 'dynamic' },
   { key: 'cv', label: 'CV (month)', units: 'ratio' },
-  { key: 'annualisedTrend', label: 'Trend (annual)', units: 'dynamic' },
   { key: 'range', label: 'Month Range (month)', units: 'dynamic' }
 ];
 

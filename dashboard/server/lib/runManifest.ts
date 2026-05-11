@@ -89,8 +89,9 @@ export interface ManualRunManifest {
 
 export interface SensitivityRunManifestPoint {
   pointId: string;
-  value: number;
+  value: number | null;
   label: string;
+  valuesByKey?: Record<string, number>;
   isBaseline: boolean;
   status: string | null;
   runId: string;
@@ -115,6 +116,7 @@ export interface SensitivityRunManifest {
     experimentId: string;
     title: string | null;
     baseline: string;
+    basePolicy: string | null;
     status: string;
     createdAt: string;
     startedAt: string | null;
@@ -126,7 +128,11 @@ export interface SensitivityRunManifest {
     parameter: {
       key: string;
       title: string;
-      baselineValue: number;
+      description: string;
+      packageId?: string;
+      parameterKeys?: string[];
+      baselineValue: number | null;
+      baselineValuesByKey?: Record<string, number>;
       min: number;
       max: number;
       sampleCount: number;
@@ -371,6 +377,7 @@ export function buildSensitivityRunManifest(input: {
     experimentId: string;
     title?: string;
     baseline: string;
+    basePolicy?: string | null;
     status: string;
     createdAt: string;
     startedAt?: string;
@@ -382,7 +389,11 @@ export function buildSensitivityRunManifest(input: {
     parameter: {
       key: string;
       title: string;
-      baselineValue: number;
+      description: string;
+      packageId?: string;
+      parameterKeys?: string[];
+      baselineValue: number | null;
+      baselineValuesByKey?: Record<string, number>;
       min: number;
       max: number;
       sampleCount: number;
@@ -406,6 +417,7 @@ export function buildSensitivityRunManifest(input: {
       experimentId: input.experiment.experimentId,
       title: input.experiment.title ?? null,
       baseline: input.experiment.baseline,
+      basePolicy: input.experiment.basePolicy ?? null,
       status: input.experiment.status,
       createdAt: input.experiment.createdAt,
       startedAt: input.experiment.startedAt ?? null,

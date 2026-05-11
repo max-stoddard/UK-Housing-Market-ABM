@@ -10,6 +10,7 @@ import type {
   SensitivityDeltaTrendSeries,
   SensitivityExperimentChartsPayload,
   SensitivityExperimentCreateRequest,
+  SensitivityExperimentDeleteResponse,
   SensitivityExperimentDetailPayload,
   SensitivityExperimentListPayload,
   SensitivityExperimentLogsPayload,
@@ -23,9 +24,18 @@ import type {
   SensitivitySeedRunResult,
   SensitivitySamplePoint,
   SensitivitySampleSlot,
-  SensitivityTornadoBar
+  SensitivityTornadoBar,
+  BasePolicyId,
+  SensitivityPolicyPackageDefinition
 } from '../../shared/types';
 import { getModelRunOptions, listModelRunJobs } from './modelRuns';
+import {
+  getBasePolicyOption,
+  getDefaultBasePolicyId,
+  getSensitivityPolicyPackageById,
+  getSingletonSensitivityPolicyPackage,
+  isBasePolicyId
+} from '../../shared/policyCatalogue';
 import {
   appendLogLine,
   appendOutputChunk,
@@ -68,6 +78,17 @@ const BASELINE_EPSILON = 1e-12;
 const FORCED_STARTING_SEED = 1;
 const DEFAULT_MAX_WORKERS_CAP = 20;
 
+interface PolicyBindingValues {
+  bankInitialRate: number | null;
+  bankLtvHardMaxFtb: number | null;
+  bankLtvHardMaxHm: number | null;
+  bankLtvHardMaxBtl: number | null;
+  bankLtiHardMaxFtb: number | null;
+  bankLtiHardMaxHm: number | null;
+  bankAffordabilityHardMax: number | null;
+  bankIcrHardMin: number | null;
+}
+
 interface PersistedSummary {
   results: SensitivityExperimentResultsPayload;
   charts: SensitivityExperimentChartsPayload;
@@ -83,6 +104,7 @@ interface SubmitSensitivityExperimentOptions {
   launcher?: ModelLauncher;
   logSink?: LogLineSink;
   now?: Date;
+  forcedExperimentId?: string;
 }
 
 interface ExperimentRecord {
@@ -336,6 +358,14 @@ function buildExperimentId(date: Date): string {
   return `sensitivity-${formatRunTimestamp(date)}-${randomUUID().slice(0, 8)}`;
 }
 
+function validateForcedExperimentId(experimentId: string): string {
+  const normalized = experimentId.trim();
+  if (!/^sensitivity-\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(normalized)) {
+    throw new Error('Forced sensitivity experiment id must match the generated sensitivity id format.');
+  }
+  return normalized;
+}
+
 function metadataPath(pathsInput: RuntimePathInput, experimentId: string): string {
   const paths = resolveRuntimePaths(pathsInput);
   return path.join(paths.resultsRoot, EXPERIMENTS_DIR, experimentId, METADATA_FILE_NAME);
@@ -510,13 +540,15 @@ function normalizeChartsPayload(
           const maybeNew = point as Partial<SensitivityDeltaTrendSeries['points'][number]>;
           if (maybeNew.deltaByKpi) {
             return {
-              parameterValue: Number.isFinite(point.parameterValue) ? Number(point.parameterValue) : 0,
+              parameterValue: typeof point.parameterValue === 'number' && Number.isFinite(point.parameterValue)
+                ? point.parameterValue
+                : null,
               deltaByKpi: parseKpiValues(maybeNew.deltaByKpi)
             };
           }
           const legacyPoint = point as LegacySensitivityDeltaTrendPoint;
           return {
-            parameterValue: Number.isFinite(legacyPoint.parameterValue) ? legacyPoint.parameterValue : 0,
+            parameterValue: Number.isFinite(legacyPoint.parameterValue) ? legacyPoint.parameterValue : null,
             deltaByKpi: {
               mean: typeof legacyPoint.delta === 'number' && Number.isFinite(legacyPoint.delta) ? legacyPoint.delta : null,
               cv: null,
@@ -610,6 +642,7 @@ function asSummary(metadata: SensitivityExperimentMetadata): SensitivityExperime
     experimentId: metadata.experimentId,
     title: metadata.title,
     baseline: metadata.baseline,
+    basePolicy: metadata.basePolicy,
     status: metadata.status,
     createdAt: metadata.createdAt,
     startedAt: metadata.startedAt,
@@ -620,6 +653,19 @@ function asSummary(metadata: SensitivityExperimentMetadata): SensitivityExperime
     generalOverrides: metadata.generalOverrides,
     parameter: metadata.parameter
   };
+}
+
+function getSelectedParameterKeys(parameter: SensitivityExperimentMetadata['parameter']): string[] {
+  return parameter.parameterKeys && parameter.parameterKeys.length > 0 ? parameter.parameterKeys : [parameter.key];
+}
+
+function formatPointValues(point: SensitivitySamplePoint, parameterKeys: readonly string[]): string {
+  const values = getPointValuesByKey(point, parameterKeys);
+  const commonValue = commonPointValue(values);
+  if (commonValue !== null) {
+    return String(commonValue);
+  }
+  return parameterKeys.map((key) => `${key}=${values[key]}`).join(', ');
 }
 
 function unquote(value: string): string {
@@ -635,6 +681,53 @@ function stripInlineComment(value: string): string {
     return value.slice(0, index);
   }
   return value;
+}
+
+function parseConfigAssignments(configPath: string): Map<string, string> {
+  const lines = fs.readFileSync(configPath, 'utf-8').split(/\r?\n/);
+  const values = new Map<string, string>();
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) {
+      continue;
+    }
+
+    const match = /^([A-Za-z0-9_]+)\s*=\s*(.+)$/.exec(trimmed);
+    if (!match) {
+      continue;
+    }
+
+    const rawValue = stripInlineComment(match[2]).trim();
+    values.set(match[1], unquote(rawValue));
+  }
+
+  return values;
+}
+
+function parseOptionalNumber(values: Map<string, string>, key: string): number | null {
+  const rawValue = values.get(key);
+  if (rawValue === undefined) {
+    return null;
+  }
+  const parsed = Number.parseFloat(rawValue);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readPolicyBindingValues(pathsInput: RuntimePathInput, baseline: string): PolicyBindingValues {
+  const paths = resolveRuntimePaths(pathsInput);
+  const configPath = path.join(paths.dataRoot, baseline, 'config.properties');
+  const values = parseConfigAssignments(configPath);
+  return {
+    bankInitialRate: parseOptionalNumber(values, 'BANK_INITIAL_RATE'),
+    bankLtvHardMaxFtb: parseOptionalNumber(values, 'BANK_LTV_HARD_MAX_FTB'),
+    bankLtvHardMaxHm: parseOptionalNumber(values, 'BANK_LTV_HARD_MAX_HM'),
+    bankLtvHardMaxBtl: parseOptionalNumber(values, 'BANK_LTV_HARD_MAX_BTL'),
+    bankLtiHardMaxFtb: parseOptionalNumber(values, 'BANK_LTI_HARD_MAX_FTB'),
+    bankLtiHardMaxHm: parseOptionalNumber(values, 'BANK_LTI_HARD_MAX_HM'),
+    bankAffordabilityHardMax: parseOptionalNumber(values, 'BANK_AFFORDABILITY_HARD_MAX'),
+    bankIcrHardMin: parseOptionalNumber(values, 'BANK_ICR_HARD_MIN')
+  };
 }
 
 function readConfigSeed(configPath: string): number | null {
@@ -702,7 +795,183 @@ function rewriteConfigForRun(
   fs.writeFileSync(outputConfigPath, `${rewritten.join('\n')}\n`, 'utf-8');
 }
 
-function createWarnings(valuesByKey: Map<string, number | boolean>): ModelRunWarning[] {
+function maybeNumber(value: number | boolean | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function addPolicyBindingWarnings(
+  warnings: ModelRunWarning[],
+  valuesByKey: Map<string, number | boolean>,
+  parameterKey: string,
+  policyBindingValues: PolicyBindingValues
+): void {
+  switch (parameterKey) {
+    case 'CENTRAL_BANK_INITIAL_BASE_RATE': {
+      const baseRate = maybeNumber(valuesByKey.get(parameterKey));
+      const bankInitialRate = policyBindingValues.bankInitialRate;
+      if (baseRate !== null && bankInitialRate !== null && baseRate < bankInitialRate) {
+        warnings.push({
+          code: 'central_bank_base_rate_below_bank_initial_rate',
+          message: `${parameterKey}=${baseRate} is below BANK_INITIAL_RATE=${bankInitialRate}; this usually changes interest-rate spread only unless the base-rate floor becomes binding.`,
+          severity: 'warning'
+        });
+      }
+      break;
+    }
+    case 'CENTRAL_BANK_LTV_HARD_MAX_FTB':
+      addUpperLimitWarning(warnings, valuesByKey, parameterKey, policyBindingValues.bankLtvHardMaxFtb, 'BANK_LTV_HARD_MAX_FTB');
+      break;
+    case 'CENTRAL_BANK_LTV_HARD_MAX_HM':
+      addUpperLimitWarning(warnings, valuesByKey, parameterKey, policyBindingValues.bankLtvHardMaxHm, 'BANK_LTV_HARD_MAX_HM');
+      break;
+    case 'CENTRAL_BANK_LTV_HARD_MAX_BTL':
+      addUpperLimitWarning(warnings, valuesByKey, parameterKey, policyBindingValues.bankLtvHardMaxBtl, 'BANK_LTV_HARD_MAX_BTL');
+      break;
+    case 'CENTRAL_BANK_AFFORDABILITY_HARD_MAX':
+      addUpperLimitWarning(
+        warnings,
+        valuesByKey,
+        parameterKey,
+        policyBindingValues.bankAffordabilityHardMax,
+        'BANK_AFFORDABILITY_HARD_MAX'
+      );
+      break;
+    case 'CENTRAL_BANK_ICR_HARD_MIN':
+      addLowerLimitWarning(warnings, valuesByKey, parameterKey, policyBindingValues.bankIcrHardMin, 'BANK_ICR_HARD_MIN');
+      break;
+    case 'CENTRAL_BANK_LTI_SOFT_MAX_FTB':
+      addLtiSoftLimitWarning(warnings, valuesByKey, parameterKey, policyBindingValues.bankLtiHardMaxFtb, 'BANK_LTI_HARD_MAX_FTB');
+      break;
+    case 'CENTRAL_BANK_LTI_SOFT_MAX_HM':
+      addLtiSoftLimitWarning(warnings, valuesByKey, parameterKey, policyBindingValues.bankLtiHardMaxHm, 'BANK_LTI_HARD_MAX_HM');
+      break;
+    case 'CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB':
+      addLtiQuotaWarning(
+        warnings,
+        valuesByKey,
+        'CENTRAL_BANK_LTI_SOFT_MAX_FTB',
+        policyBindingValues.bankLtiHardMaxFtb,
+        'BANK_LTI_HARD_MAX_FTB',
+        parameterKey
+      );
+      break;
+    case 'CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM':
+      addLtiQuotaWarning(
+        warnings,
+        valuesByKey,
+        'CENTRAL_BANK_LTI_SOFT_MAX_HM',
+        policyBindingValues.bankLtiHardMaxHm,
+        'BANK_LTI_HARD_MAX_HM',
+        parameterKey
+      );
+      break;
+    case 'CENTRAL_BANK_LTI_MONTHS_TO_CHECK':
+      addLtiMonthsWarning(warnings, valuesByKey, policyBindingValues);
+      break;
+    default:
+      break;
+  }
+}
+
+function addUpperLimitWarning(
+  warnings: ModelRunWarning[],
+  valuesByKey: Map<string, number | boolean>,
+  parameterKey: string,
+  bankLimit: number | null,
+  bankLimitKey: string
+): void {
+  const value = maybeNumber(valuesByKey.get(parameterKey));
+  if (value !== null && bankLimit !== null && value >= bankLimit) {
+    warnings.push({
+      code: 'central_bank_upper_limit_non_binding',
+      message: `${parameterKey}=${value} is not stricter than ${bankLimitKey}=${bankLimit}, so this point is likely non-binding one-at-a-time.`,
+      severity: 'warning'
+    });
+  }
+}
+
+function addLowerLimitWarning(
+  warnings: ModelRunWarning[],
+  valuesByKey: Map<string, number | boolean>,
+  parameterKey: string,
+  bankLimit: number | null,
+  bankLimitKey: string
+): void {
+  const value = maybeNumber(valuesByKey.get(parameterKey));
+  if (value !== null && bankLimit !== null && value <= bankLimit) {
+    warnings.push({
+      code: 'central_bank_lower_limit_non_binding',
+      message: `${parameterKey}=${value} is not stricter than ${bankLimitKey}=${bankLimit}, so this point is likely non-binding one-at-a-time.`,
+      severity: 'warning'
+    });
+  }
+}
+
+function addLtiSoftLimitWarning(
+  warnings: ModelRunWarning[],
+  valuesByKey: Map<string, number | boolean>,
+  parameterKey: string,
+  bankLimit: number | null,
+  bankLimitKey: string
+): void {
+  const value = maybeNumber(valuesByKey.get(parameterKey));
+  if (value !== null && bankLimit !== null && value >= bankLimit) {
+    warnings.push({
+      code: 'central_bank_lti_soft_limit_non_binding',
+      message: `${parameterKey}=${value} is at or above ${bankLimitKey}=${bankLimit}; points below the private hard LTI can still depend on quota use and mortgage demand.`,
+      severity: 'warning'
+    });
+  }
+}
+
+function addLtiQuotaWarning(
+  warnings: ModelRunWarning[],
+  valuesByKey: Map<string, number | boolean>,
+  softLimitKey: string,
+  bankLimit: number | null,
+  bankLimitKey: string,
+  parameterKey: string
+): void {
+  const softLimit = maybeNumber(valuesByKey.get(softLimitKey));
+  if (softLimit !== null && bankLimit !== null && softLimit >= bankLimit) {
+    warnings.push({
+      code: 'central_bank_lti_quota_inactive',
+      message: `${parameterKey} is unlikely to affect outputs one-at-a-time because ${softLimitKey}=${softLimit} is not stricter than ${bankLimitKey}=${bankLimit}.`,
+      severity: 'warning'
+    });
+  }
+}
+
+function addLtiMonthsWarning(
+  warnings: ModelRunWarning[],
+  valuesByKey: Map<string, number | boolean>,
+  policyBindingValues: PolicyBindingValues
+): void {
+  const ftbSoftLimit = maybeNumber(valuesByKey.get('CENTRAL_BANK_LTI_SOFT_MAX_FTB'));
+  const hmSoftLimit = maybeNumber(valuesByKey.get('CENTRAL_BANK_LTI_SOFT_MAX_HM'));
+  const ftbInactive =
+    ftbSoftLimit !== null &&
+    policyBindingValues.bankLtiHardMaxFtb !== null &&
+    ftbSoftLimit >= policyBindingValues.bankLtiHardMaxFtb;
+  const hmInactive =
+    hmSoftLimit !== null &&
+    policyBindingValues.bankLtiHardMaxHm !== null &&
+    hmSoftLimit >= policyBindingValues.bankLtiHardMaxHm;
+
+  if (ftbInactive && hmInactive) {
+    warnings.push({
+      code: 'central_bank_lti_window_inactive',
+      message: 'CENTRAL_BANK_LTI_MONTHS_TO_CHECK is unlikely to affect outputs one-at-a-time because both FTB and HM soft LTI limits are not stricter than private hard LTI limits.',
+      severity: 'warning'
+    });
+  }
+}
+
+function createWarnings(
+  valuesByKey: Map<string, number | boolean>,
+  parameterKeys: readonly string[],
+  policyBindingValues: PolicyBindingValues
+): ModelRunWarning[] {
   const warnings: ModelRunWarning[] = [];
   const nSteps = Number(valuesByKey.get('N_STEPS') ?? 0);
   if (nSteps > 4_000) {
@@ -769,6 +1038,10 @@ function createWarnings(valuesByKey: Map<string, number | boolean>): ModelRunWar
     });
   }
 
+  for (const parameterKey of parameterKeys) {
+    addPolicyBindingWarnings(warnings, valuesByKey, parameterKey, policyBindingValues);
+  }
+
   return warnings;
 }
 
@@ -808,39 +1081,109 @@ function getPointIndicatorKpis(outputPath: string): SensitivityIndicatorPointMet
   });
 }
 
+function commonPointValue(valuesByKey: Record<string, number>): number | null {
+  const values = Object.values(valuesByKey);
+  if (values.length === 0 || values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  const [first] = values;
+  return values.every((value) => Math.abs(value - first) < BASELINE_EPSILON) ? first : null;
+}
+
+function getPointValuesByKey(point: SensitivitySamplePoint, parameterKeys: readonly string[]): Record<string, number> {
+  if (point.valuesByKey) {
+    return Object.fromEntries(
+      parameterKeys.map((key) => {
+        const value = Number(point.valuesByKey?.[key]);
+        if (!Number.isFinite(value)) {
+          throw new Error(`Sensitivity point ${point.pointId} does not have a numeric value for ${key}.`);
+        }
+        return [key, value];
+      })
+    );
+  }
+  if (point.value === null) {
+    throw new Error(`Sensitivity point ${point.pointId} does not have key-specific values.`);
+  }
+  return Object.fromEntries(parameterKeys.map((key) => [key, point.value as number]));
+}
+
 function buildSamplePoints(
   min: number,
   max: number,
-  baseline: number,
-  parameterType: Extract<ModelRunParameterDefinition['type'], 'integer' | 'number'>,
+  baselineValuesByKey: Record<string, number>,
+  packageDefinition: SensitivityPolicyPackageDefinition,
   sampleCount: number
 ): {
   points: SensitivitySamplePoint[];
   collapsedSlots: Record<SensitivitySampleSlot, string>;
 } {
-  const rawSlots: Array<{ slot: SensitivitySampleSlot; value: number; isBaseline: boolean }> = [];
+  const parameterType = packageDefinition.type;
+  const parameterKeys = packageDefinition.parameterKeys;
+  const toSharedValues = (value: number): Record<string, number> => {
+    const normalized = normalizeSensitivitySampleValue(value, parameterType);
+    return Object.fromEntries(parameterKeys.map((key) => [key, normalized]));
+  };
+  const normalizedBaselineValues = Object.fromEntries(
+    parameterKeys.map((key) => [key, normalizeSensitivitySampleValue(baselineValuesByKey[key] ?? Number.NaN, parameterType)])
+  );
+  const baselineScalar = commonPointValue(normalizedBaselineValues);
+  const rawSlots: Array<{
+    slot: SensitivitySampleSlot;
+    value: number | null;
+    label: string;
+    valuesByKey: Record<string, number>;
+    isBaseline: boolean;
+  }> = [];
   const intervalCount = sampleCount - 1;
   for (let index = 0; index < sampleCount; index += 1) {
     const slot = `sample_${index + 1}`;
-    const value = index === sampleCount - 1 ? max : min + ((max - min) * index) / intervalCount;
-    rawSlots.push({ slot, value, isBaseline: false });
+    const rawValue = index === sampleCount - 1 ? max : min + ((max - min) * index) / intervalCount;
+    const value = normalizeSensitivitySampleValue(rawValue, parameterType);
+    rawSlots.push({
+      slot,
+      value,
+      label: formatSensitivitySampleLabel(value),
+      valuesByKey: toSharedValues(rawValue),
+      isBaseline: false
+    });
     if (index === 0) {
-      rawSlots.push({ slot: 'min', value, isBaseline: false });
+      rawSlots.push({
+        slot: 'min',
+        value,
+        label: formatSensitivitySampleLabel(value),
+        valuesByKey: toSharedValues(rawValue),
+        isBaseline: false
+      });
     }
     if (index === sampleCount - 1) {
-      rawSlots.push({ slot: 'max', value, isBaseline: false });
+      rawSlots.push({
+        slot: 'max',
+        value,
+        label: formatSensitivitySampleLabel(value),
+        valuesByKey: toSharedValues(rawValue),
+        isBaseline: false
+      });
     }
   }
-  rawSlots.push({ slot: 'baseline', value: baseline, isBaseline: true });
+  rawSlots.push({
+    slot: 'baseline',
+    value: baselineScalar,
+    label: baselineScalar === null ? 'base policy' : formatSensitivitySampleLabel(baselineScalar),
+    valuesByKey: normalizedBaselineValues,
+    isBaseline: true
+  });
 
   const byValue = new Map<string, SensitivitySamplePoint>();
   const usedPointIds = new Set<string>();
   const collapsedSlots = {} as Record<SensitivitySampleSlot, string>;
 
   for (const entry of rawSlots) {
-    const normalized = normalizeSensitivitySampleValue(entry.value, parameterType);
-    const label = formatSensitivitySampleLabel(normalized);
-    const existing = byValue.get(label);
+    const signature =
+      entry.value === null
+        ? `baseline:${parameterKeys.map((key) => `${key}=${entry.valuesByKey[key]}`).join('|')}`
+        : `value:${entry.label}`;
+    const existing = byValue.get(signature);
     if (existing) {
       if (!existing.slotLabels.includes(entry.slot)) {
         existing.slotLabels.push(entry.slot);
@@ -850,7 +1193,7 @@ function buildSamplePoints(
       continue;
     }
 
-    const safeLabel = label.replace(/[^A-Za-z0-9.-]/g, '_').replace(/^-+/, 'm');
+    const safeLabel = entry.label.replace(/[^A-Za-z0-9.-]/g, '_').replace(/^-+/, 'm');
     const basePointId = `point-${safeLabel || '0'}`;
     let pointId = basePointId;
     let suffix = 2;
@@ -862,12 +1205,13 @@ function buildSamplePoints(
 
     const point: SensitivitySamplePoint = {
       pointId,
-      value: normalized,
-      label,
+      value: entry.value,
+      label: entry.label,
+      valuesByKey: entry.valuesByKey,
       slotLabels: [entry.slot],
       isBaseline: entry.isBaseline
     };
-    byValue.set(label, point);
+    byValue.set(signature, point);
     collapsedSlots[entry.slot] = point.pointId;
   }
 
@@ -958,12 +1302,102 @@ function ensureLoaded(pathsInput: RuntimePathInput): void {
 function resolveParameterDefinitions(pathsInput: RuntimePathInput, baseline: string): {
   baseline: string;
   parameters: ModelRunParameterDefinition[];
+  sensitivityPolicyPackages: SensitivityPolicyPackageDefinition[];
 } {
   const options = getModelRunOptions(pathsInput, baseline, true);
   return {
     baseline: options.requestedBaseline,
-    parameters: options.parameters
+    parameters: options.parameters,
+    sensitivityPolicyPackages: options.sensitivityPolicyPackages
   };
+}
+
+function resolveBasePolicyId(baseline: string, rawBasePolicy: BasePolicyId | undefined): BasePolicyId {
+  if (rawBasePolicy === undefined) {
+    return getDefaultBasePolicyId(baseline);
+  }
+  if (!isBasePolicyId(rawBasePolicy)) {
+    throw new Error(`Unsupported base policy: ${rawBasePolicy}`);
+  }
+  return rawBasePolicy;
+}
+
+function applyBasePolicyValues(
+  basePolicy: BasePolicyId,
+  parameterDefMap: ReadonlyMap<string, ModelRunParameterDefinition>,
+  valuesByKey: Map<string, number | boolean>
+): void {
+  const policy = getBasePolicyOption(basePolicy);
+  for (const [key, value] of Object.entries(policy.values)) {
+    if (!parameterDefMap.has(key)) {
+      throw new Error(`Base policy ${basePolicy} references unsupported parameter ${key}.`);
+    }
+    valuesByKey.set(key, value);
+  }
+}
+
+function resolvePolicyPackage(
+  packages: SensitivityPolicyPackageDefinition[],
+  payload: SensitivityExperimentCreateRequest
+): SensitivityPolicyPackageDefinition {
+  const requestedPackageId = payload.policyPackageId?.trim();
+  const legacyParameterKey = payload.parameterKey?.trim();
+
+  if (requestedPackageId) {
+    const packageDefinition =
+      packages.find((item) => item.id === requestedPackageId) ?? getSensitivityPolicyPackageById(requestedPackageId);
+    if (!packageDefinition) {
+      throw new Error(`Unsupported sensitivity policy package: ${requestedPackageId}`);
+    }
+    if (legacyParameterKey && !packageDefinition.parameterKeys.includes(legacyParameterKey)) {
+      throw new Error(`parameterKey ${legacyParameterKey} is not part of policy package ${requestedPackageId}.`);
+    }
+    return packageDefinition;
+  }
+
+  if (!legacyParameterKey) {
+    throw new Error('policyPackageId or parameterKey is required.');
+  }
+
+  const singletonPackage =
+    packages.find((item) => item.parameterKeys.length === 1 && item.parameterKeys[0] === legacyParameterKey) ??
+    getSingletonSensitivityPolicyPackage(legacyParameterKey);
+  if (!singletonPackage) {
+    throw new Error(`Unsupported sensitivity parameter: ${legacyParameterKey}`);
+  }
+  return singletonPackage;
+}
+
+function buildPackageBaselineValues(
+  valuesByKey: ReadonlyMap<string, number | boolean>,
+  packageDefinition: SensitivityPolicyPackageDefinition
+): Record<string, number> {
+  return Object.fromEntries(
+    packageDefinition.parameterKeys.map((key) => {
+      const value = Number(valuesByKey.get(key));
+      if (!Number.isFinite(value)) {
+        throw new Error(`Baseline value for ${key} is not numeric.`);
+      }
+      return [key, value];
+    })
+  );
+}
+
+function assertPackageBaselineWithinRange(
+  baselineValuesByKey: Record<string, number>,
+  packageDefinition: SensitivityPolicyPackageDefinition,
+  min: number,
+  max: number
+): void {
+  const outOfRange = packageDefinition.parameterKeys.filter((key) => {
+    const value = baselineValuesByKey[key];
+    return value === undefined || value < min || value > max;
+  });
+  if (outOfRange.length > 0) {
+    throw new Error(
+      `Base policy values for ${packageDefinition.title} must be within [${min}, ${max}] for sensitivity.`
+    );
+  }
 }
 
 function validatePayload(
@@ -971,10 +1405,12 @@ function validatePayload(
   payload: SensitivityExperimentCreateRequest
 ): {
   baseline: string;
-  parameter: ModelRunParameterDefinition;
+  basePolicy: BasePolicyId;
+  policyPackage: SensitivityPolicyPackageDefinition;
   min: number;
   max: number;
-  baselineValue: number;
+  baselineValue: number | null;
+  baselineValuesByKey: Record<string, number>;
   sampleCount: number;
   samplePoints: SensitivitySamplePoint[];
   collapsedSlots: Record<SensitivitySampleSlot, string>;
@@ -983,6 +1419,7 @@ function validatePayload(
   generalOverrides: Record<string, number | boolean>;
   seeds: number[];
   maxWorkers: number;
+  policyBindingValues: PolicyBindingValues;
 } {
   const baseline = payload.baseline?.trim();
   if (!baseline) {
@@ -998,25 +1435,26 @@ function validatePayload(
     throw new Error('Sensitivity min must be strictly less than max.');
   }
 
-  const parameterKey = payload.parameterKey?.trim();
-  if (!parameterKey) {
-    throw new Error('parameterKey is required.');
-  }
-
-  const { parameters } = resolveParameterDefinitions(pathsInput, baseline);
-  const parameter = parameters.find((item) => item.key === parameterKey);
-  if (!parameter) {
-    throw new Error(`Unsupported sensitivity parameter: ${parameterKey}`);
-  }
-  if (parameter.group !== 'Central Bank policy') {
-    throw new Error(`Sensitivity parameter must be a Central Bank policy parameter: ${parameterKey}`);
-  }
-  if (parameter.type === 'boolean') {
-    throw new Error(`Sensitivity parameter must be numeric: ${parameterKey}`);
-  }
+  const { parameters, sensitivityPolicyPackages } = resolveParameterDefinitions(pathsInput, baseline);
+  const policyPackage = resolvePolicyPackage(sensitivityPolicyPackages, payload);
 
   const valuesByKey = new Map(parameters.map((item) => [item.key, item.defaultValue]));
   const parameterDefMap = new Map(parameters.map((item) => [item.key, item]));
+  for (const key of policyPackage.parameterKeys) {
+    const parameter = parameterDefMap.get(key);
+    if (!parameter) {
+      throw new Error(`Unsupported sensitivity parameter: ${key}`);
+    }
+    if (parameter.group !== 'Central Bank policy') {
+      throw new Error(`Sensitivity parameter must be a Central Bank policy parameter: ${key}`);
+    }
+    if (parameter.type === 'boolean') {
+      throw new Error(`Sensitivity parameter must be numeric: ${key}`);
+    }
+  }
+
+  const basePolicy = resolveBasePolicyId(baseline, payload.basePolicy);
+  applyBasePolicyValues(basePolicy, parameterDefMap, valuesByKey);
   const normalizedGeneralOverrides = new Map<string, string>();
   const generalOverrides: Record<string, number | boolean> = {};
 
@@ -1044,18 +1482,12 @@ function validatePayload(
     generalOverrides.N_SIMS = 5;
   }
 
-  const baselineValue = Number(parameter.defaultValue);
-  if (!Number.isFinite(baselineValue)) {
-    throw new Error(`Baseline value for ${parameter.key} is not numeric.`);
-  }
-  if (baselineValue < min || baselineValue > max) {
-    throw new Error(
-      `Baseline value ${baselineValue} for ${parameter.key} must be within [${min}, ${max}] for sensitivity.`
-    );
-  }
+  const baselineValuesByKey = buildPackageBaselineValues(valuesByKey, policyPackage);
+  assertPackageBaselineWithinRange(baselineValuesByKey, policyPackage, min, max);
+  const baselineValue = commonPointValue(baselineValuesByKey);
 
   const sampleCount = parseSampleCount(payload.sampleCount);
-  const { points, collapsedSlots } = buildSamplePoints(min, max, baselineValue, parameter.type, sampleCount);
+  const { points, collapsedSlots } = buildSamplePoints(min, max, baselineValuesByKey, policyPackage, sampleCount);
   if (points.length === 0) {
     throw new Error('No sampled points were produced for this sensitivity range.');
   }
@@ -1063,13 +1495,16 @@ function validatePayload(
   const seedCount = parseSeedCount(valuesByKey);
   const seeds = buildSeeds(seedCount);
   const maxWorkers = parseMaxWorkers(payload.maxWorkers, points.length * seeds.length);
+  const policyBindingValues = readPolicyBindingValues(pathsInput, baseline);
 
   return {
     baseline,
-    parameter,
+    basePolicy,
+    policyPackage,
     min,
     max,
     baselineValue,
+    baselineValuesByKey,
     sampleCount,
     samplePoints: points,
     collapsedSlots,
@@ -1077,7 +1512,8 @@ function validatePayload(
     normalizedGeneralOverrides,
     generalOverrides,
     seeds,
-    maxWorkers
+    maxWorkers,
+    policyBindingValues
   };
 }
 
@@ -1095,8 +1531,9 @@ function parseSampleCount(rawValue: unknown): number {
 
 function buildWarnings(
   baseValuesByKey: Map<string, number | boolean>,
-  parameterKey: string,
-  points: SensitivitySamplePoint[]
+  policyPackage: SensitivityPolicyPackageDefinition,
+  points: SensitivitySamplePoint[],
+  policyBindingValues: PolicyBindingValues
 ): {
   warnings: ModelRunWarning[];
   warningSummary: SensitivityExperimentMetadata['warningSummary'];
@@ -1106,8 +1543,10 @@ function buildWarnings(
 
   for (const point of points) {
     const values = new Map(baseValuesByKey);
-    values.set(parameterKey, point.value);
-    const pointWarnings = createWarnings(values);
+    for (const [key, value] of Object.entries(getPointValuesByKey(point, policyPackage.parameterKeys))) {
+      values.set(key, value);
+    }
+    const pointWarnings = createWarnings(values, policyPackage.parameterKeys, policyBindingValues);
     warningSummary.byPoint[point.pointId] = pointWarnings.map((warning) => warning.code);
 
     for (const warning of pointWarnings) {
@@ -1138,10 +1577,12 @@ export interface PreparedSensitivityExperimentSubmission {
   experimentId: string;
   title?: string;
   baseline: string;
-  parameter: ModelRunParameterDefinition;
+  basePolicy: BasePolicyId;
+  policyPackage: SensitivityPolicyPackageDefinition;
   min: number;
   max: number;
-  baselineValue: number;
+  baselineValue: number | null;
+  baselineValuesByKey: Record<string, number>;
   sampleCount: number;
   samplePoints: SensitivitySamplePoint[];
   collapsedSlots: Record<SensitivitySampleSlot, string>;
@@ -1149,6 +1590,7 @@ export interface PreparedSensitivityExperimentSubmission {
   generalOverrides: Record<string, number | boolean>;
   seeds: number[];
   maxWorkers: number;
+  policyBindingValues: PolicyBindingValues;
   warnings: ModelRunWarning[];
   warningSummary: SensitivityExperimentMetadata['warningSummary'];
 }
@@ -1156,16 +1598,18 @@ export interface PreparedSensitivityExperimentSubmission {
 export function prepareSensitivityExperimentSubmission(
   pathsInput: RuntimePathInput,
   payload: SensitivityExperimentCreateRequest,
-  options: { now?: Date } = {}
+  options: { now?: Date; forcedExperimentId?: string } = {}
 ):
   | { accepted: false; warnings: ModelRunWarning[]; warningSummary: SensitivityExperimentMetadata['warningSummary'] }
   | { accepted: true; prepared: PreparedSensitivityExperimentSubmission } {
   const {
     baseline,
-    parameter,
+    basePolicy,
+    policyPackage,
     min,
     max,
     baselineValue,
+    baselineValuesByKey,
     sampleCount,
     samplePoints,
     collapsedSlots,
@@ -1173,9 +1617,10 @@ export function prepareSensitivityExperimentSubmission(
     normalizedGeneralOverrides,
     generalOverrides,
     seeds,
-    maxWorkers
+    maxWorkers,
+    policyBindingValues
   } = validatePayload(pathsInput, payload);
-  const { warnings, warningSummary } = buildWarnings(valuesByKey, parameter.key, samplePoints);
+  const { warnings, warningSummary } = buildWarnings(valuesByKey, policyPackage, samplePoints, policyBindingValues);
 
   if (warnings.length > 0 && payload.confirmWarnings !== true) {
     return {
@@ -1186,19 +1631,24 @@ export function prepareSensitivityExperimentSubmission(
   }
 
   const now = options.now ?? new Date();
+  const experimentId = options.forcedExperimentId
+    ? validateForcedExperimentId(options.forcedExperimentId)
+    : buildExperimentId(now);
   const trimmedTitle = payload.title?.trim();
   const title = trimmedTitle ? sanitizeFragment(trimmedTitle).slice(0, 120) : undefined;
 
   return {
     accepted: true,
     prepared: {
-      experimentId: buildExperimentId(now),
+      experimentId,
       title,
       baseline,
-      parameter,
+      basePolicy,
+      policyPackage,
       min,
       max,
       baselineValue,
+      baselineValuesByKey,
       sampleCount,
       samplePoints,
       collapsedSlots,
@@ -1206,6 +1656,7 @@ export function prepareSensitivityExperimentSubmission(
       generalOverrides,
       seeds,
       maxWorkers,
+      policyBindingValues,
       warnings,
       warningSummary
     }
@@ -1351,6 +1802,7 @@ function buildPointResult(
     pointId: point.pointId,
     value: point.value,
     label: point.label,
+    valuesByKey: point.valuesByKey,
     slotLabels: [...point.slotLabels],
     isBaseline: point.isBaseline,
     status,
@@ -1380,9 +1832,17 @@ async function runSeed(
 
   fs.rmSync(seedTempRoot, { recursive: true, force: true });
 
-  const overrideValue = metadata.parameter.type === 'integer' ? String(Math.round(point.value)) : String(point.value);
+  const parameterKeys = getSelectedParameterKeys(metadata.parameter);
+  const pointValuesByKey = getPointValuesByKey(point, parameterKeys);
   const overrides = new Map(record.normalizedGeneralOverrides);
-  overrides.set(metadata.parameter.key, overrideValue);
+  const basePolicyValues = getBasePolicyOption(metadata.basePolicy ?? getDefaultBasePolicyId(metadata.baseline)).values;
+  for (const [key, value] of Object.entries(basePolicyValues)) {
+    overrides.set(key, String(value));
+  }
+  for (const [key, value] of Object.entries(pointValuesByKey)) {
+    const overrideValue = metadata.parameter.type === 'integer' ? String(Math.round(value)) : String(value);
+    overrides.set(key, overrideValue);
+  }
   overrides.set('SEED', String(seed));
   overrides.set('N_SIMS', '1');
 
@@ -1400,7 +1860,10 @@ async function runSeed(
   const runId = `${metadata.experimentId}-${point.pointId}-${seedLabel}`;
   appendLifecycle(
     record,
-    `Point ${point.label} (${point.pointId}) ${seedLabel} started with ${metadata.parameter.key}=${point.value}`
+    `Point ${point.label} (${point.pointId}) ${seedLabel} started with ${metadata.parameter.title}=${formatPointValues(
+      point,
+      parameterKeys
+    )}`
   );
 
   const executionResult = await new Promise<{
@@ -1487,6 +1950,7 @@ async function runSeed(
     pointId: point.pointId,
     value: point.value,
     label: point.label,
+    valuesByKey: pointValuesByKey,
     isBaseline: point.isBaseline,
     status: result.status,
     runId,
@@ -1495,7 +1959,8 @@ async function runSeed(
     seed: configSeed,
     overriddenParameters: {
       ...(metadata.generalOverrides ?? {}),
-      [metadata.parameter.key]: point.value,
+      ...basePolicyValues,
+      ...pointValuesByKey,
       SEED: seed,
       N_SIMS: 1
     },
@@ -1540,6 +2005,13 @@ function addDeltaAgainstBaseline(results: SensitivityExperimentResultsPayload): 
   }
 }
 
+function pointSortValue(point: SensitivityPointResult): number {
+  if (point.value !== null) {
+    return point.value;
+  }
+  return commonPointValue(point.valuesByKey ?? {}) ?? Number.NEGATIVE_INFINITY;
+}
+
 function buildChartsFromResults(
   experimentId: string,
   parameter: SensitivityExperimentMetadata['parameter'],
@@ -1548,7 +2020,7 @@ function buildChartsFromResults(
   const nonBaselinePoints = results.points.filter((point) => !point.isBaseline && point.status === 'succeeded');
   const succeededPointsSorted = [...results.points]
     .filter((point) => point.status === 'succeeded')
-    .sort((left, right) => left.value - right.value);
+    .sort((left, right) => pointSortValue(left) - pointSortValue(right));
 
   const tornado: SensitivityTornadoBar[] = POLICY_CORE_INDICATORS.map((indicator) => {
     const maxAbsDeltaByKpi = buildEmptyKpiValues();
@@ -1585,13 +2057,15 @@ function buildChartsFromResults(
     indicatorId: indicator.id,
     title: indicator.title,
     units: indicator.units,
-    points: succeededPointsSorted.map((point) => {
-      const metric = point.indicatorMetrics.find((item) => item.indicatorId === indicator.id);
-      return {
-        parameterValue: point.value,
-        deltaByKpi: metric?.deltaFromBaseline ?? buildEmptyKpiValues()
-      };
-    })
+    points: succeededPointsSorted
+      .filter((point) => point.value !== null)
+      .map((point) => {
+        const metric = point.indicatorMetrics.find((item) => item.indicatorId === indicator.id);
+        return {
+          parameterValue: point.value,
+          deltaByKpi: metric?.deltaFromBaseline ?? buildEmptyKpiValues()
+        };
+      })
   }));
 
   return {
@@ -1747,6 +2221,40 @@ export function getSensitivityExperiment(pathsInput: RuntimePathInput, experimen
   return { experiment: record.metadata };
 }
 
+export function deleteSensitivityExperiment(
+  pathsInput: RuntimePathInput,
+  experimentId: string
+): SensitivityExperimentDeleteResponse {
+  ensureLoaded(pathsInput);
+  const state = getRepoState(pathsInput);
+  const normalized = experimentId.trim();
+  if (!normalized) {
+    throw new Error('experimentId is required.');
+  }
+
+  const record = state.experimentsById.get(normalized);
+  if (!record) {
+    throw new Error(`Unknown sensitivity experiment: ${experimentId}`);
+  }
+
+  if (!isTerminal(record.metadata.status)) {
+    throw new Error('Only finished sensitivity experiments can be deleted.');
+  }
+
+  const outputDir = getExperimentOutputDir(record.runtimePaths, normalized);
+  fs.rmSync(outputDir, { recursive: true, force: true });
+  state.experimentsById.delete(normalized);
+  const orderIndex = state.order.indexOf(normalized);
+  if (orderIndex >= 0) {
+    state.order.splice(orderIndex, 1);
+  }
+
+  return {
+    experimentId: normalized,
+    deleted: true
+  };
+}
+
 export function getSensitivityExperimentResults(
   pathsInput: RuntimePathInput,
   experimentId: string
@@ -1824,7 +2332,10 @@ export function submitSensitivityExperiment(
   }
 
   const now = options.now ?? new Date();
-  const preparedResult = prepareSensitivityExperimentSubmission(paths, payload, { now });
+  const preparedResult = prepareSensitivityExperimentSubmission(paths, payload, {
+    now,
+    forcedExperimentId: options.forcedExperimentId
+  });
   if (!preparedResult.accepted) {
     return preparedResult;
   }
@@ -1832,10 +2343,12 @@ export function submitSensitivityExperiment(
     experimentId,
     title,
     baseline,
-    parameter,
+    basePolicy,
+    policyPackage,
     min,
     max,
     baselineValue,
+    baselineValuesByKey,
     sampleCount,
     samplePoints,
     collapsedSlots,
@@ -1851,6 +2364,7 @@ export function submitSensitivityExperiment(
     experimentId,
     title,
     baseline,
+    basePolicy,
     status: 'queued',
     createdAt: now.toISOString(),
     seedsPerPoint: seeds.length,
@@ -1858,11 +2372,14 @@ export function submitSensitivityExperiment(
     maxWorkers,
     generalOverrides,
     parameter: {
-      key: parameter.key,
-      title: parameter.title,
-      description: parameter.description,
-      type: parameter.type as Extract<ModelRunParameterDefinition['type'], 'integer' | 'number'>,
+      key: policyPackage.parameterKeys.length === 1 ? policyPackage.parameterKeys[0] : policyPackage.id,
+      packageId: policyPackage.id,
+      parameterKeys: [...policyPackage.parameterKeys],
+      title: policyPackage.title,
+      description: policyPackage.description,
+      type: policyPackage.type,
       baselineValue,
+      baselineValuesByKey,
       min,
       max,
       sampleCount

@@ -464,6 +464,7 @@ export interface ResultsStorageSummary {
 export interface AuthStatusPayload {
   authEnabled: boolean;
   canWrite: boolean;
+  canDownloadResults: boolean;
   authMisconfigured: boolean;
   modelRunsEnabled: boolean;
   modelRunsConfigured: boolean;
@@ -503,6 +504,7 @@ export type ModelRunSnapshotStatus = 'stable' | 'in_progress';
 export type ModelRunParameterType = 'integer' | 'number' | 'boolean';
 export type ModelRunParameterGroup = 'General model control' | 'Central Bank policy';
 export type ModelRunJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+export type BasePolicyId = '2011' | '2024';
 
 export interface ModelRunSnapshotOption {
   version: string;
@@ -516,6 +518,21 @@ export interface ModelRunParameterDefinition {
   group: ModelRunParameterGroup;
   type: ModelRunParameterType;
   defaultValue: number | boolean;
+}
+
+export interface BasePolicyOption {
+  id: BasePolicyId;
+  title: string;
+  summary: string;
+  values: Record<string, number>;
+}
+
+export interface SensitivityPolicyPackageDefinition {
+  id: string;
+  title: string;
+  description: string;
+  parameterKeys: string[];
+  type: Extract<ModelRunParameterType, 'integer' | 'number'>;
 }
 
 export interface ModelRunWarning {
@@ -549,10 +566,14 @@ export interface ModelRunOptionsPayload {
   defaultBaseline: string;
   requestedBaseline: string;
   parameters: ModelRunParameterDefinition[];
+  basePolicies: BasePolicyOption[];
+  defaultBasePolicy: BasePolicyId;
+  sensitivityPolicyPackages: SensitivityPolicyPackageDefinition[];
 }
 
 export interface ModelRunSubmitRequest {
   baseline: string;
+  basePolicy?: BasePolicyId;
   title?: string;
   overrides: Record<string, number | boolean>;
   confirmWarnings?: boolean;
@@ -593,8 +614,9 @@ export type SensitivitySampleSlot = string;
 
 export interface SensitivitySamplePoint {
   pointId: string;
-  value: number;
+  value: number | null;
   label: string;
+  valuesByKey?: Record<string, number>;
   slotLabels: SensitivitySampleSlot[];
   isBaseline: boolean;
 }
@@ -604,7 +626,10 @@ export interface SensitivityExperimentParameterSelection {
   title: string;
   description: string;
   type: Extract<ModelRunParameterType, 'integer' | 'number'>;
-  baselineValue: number;
+  packageId?: string;
+  parameterKeys?: string[];
+  baselineValue: number | null;
+  baselineValuesByKey?: Record<string, number>;
   min: number;
   max: number;
   sampleCount: number;
@@ -612,8 +637,10 @@ export interface SensitivityExperimentParameterSelection {
 
 export interface SensitivityExperimentCreateRequest {
   baseline: string;
+  basePolicy?: BasePolicyId;
   title?: string;
-  parameterKey: string;
+  parameterKey?: string;
+  policyPackageId?: string;
   min: number;
   max: number;
   sampleCount?: number;
@@ -626,6 +653,7 @@ export interface SensitivityExperimentSummary {
   experimentId: string;
   title?: string;
   baseline: string;
+  basePolicy?: BasePolicyId;
   status: SensitivityExperimentStatus;
   createdAt: string;
   startedAt?: string;
@@ -691,7 +719,7 @@ export interface SensitivityTornadoBar {
 }
 
 export interface SensitivityDeltaTrendPoint {
-  parameterValue: number;
+  parameterValue: number | null;
   deltaByKpi: KpiMetricValues;
 }
 
@@ -718,6 +746,11 @@ export interface SensitivityExperimentChartsPayload {
 
 export interface SensitivityExperimentDetailPayload {
   experiment: SensitivityExperimentMetadata;
+}
+
+export interface SensitivityExperimentDeleteResponse {
+  experimentId: string;
+  deleted: boolean;
 }
 
 export interface SensitivityExperimentListPayload {

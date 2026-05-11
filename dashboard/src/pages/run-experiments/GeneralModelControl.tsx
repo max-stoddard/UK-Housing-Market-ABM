@@ -1,9 +1,11 @@
 // Author: Max Stoddard
 import { CollapsibleSection } from '../../components/CollapsibleSection';
 import type { ModelRunParameterDefinition } from '../../../shared/types';
+import { InfoLabel } from './InfoLabel';
+import { getParameterHelp, SETTING_HELP, type ExperimentControlMode } from './settingHelp';
 
 type FormValue = string | boolean;
-type ControlMode = 'manual' | 'sensitivity';
+type ControlMode = ExperimentControlMode;
 const HIDDEN_GENERAL_MODEL_CONTROL_KEYS = new Set(['TARGET_POPULATION', 'CUMULATIVE_WEIGHT_BEYOND_YEAR']);
 
 interface GeneralModelControlProps {
@@ -42,8 +44,7 @@ function displayParameter(parameter: ModelRunParameterDefinition, mode: ControlM
   if (mode === 'sensitivity' && parameter.key === 'N_SIMS') {
     return {
       ...parameter,
-      title: 'Seeds per sampled point',
-      description: 'Independent seed runs to execute for every sampled parameter value.'
+      title: 'Seeds per sampled point'
     };
   }
 
@@ -54,14 +55,14 @@ interface ParameterInputProps {
   parameter: ModelRunParameterDefinition;
   value: FormValue | undefined;
   executionDisabled: boolean;
+  mode?: ControlMode;
   onChange: (parameter: ModelRunParameterDefinition, value: FormValue) => void;
 }
 
-export function ParameterInput({ parameter, value, executionDisabled, onChange }: ParameterInputProps) {
+export function ParameterInput({ parameter, value, executionDisabled, mode = 'manual', onChange }: ParameterInputProps) {
   return (
     <label className="run-param-item">
-      <span>{parameter.title}</span>
-      <small>{parameter.key}</small>
+      <InfoLabel label={parameter.title} info={getParameterHelp(parameter, mode)} />
       {parameter.type === 'boolean' ? (
         <input
           type="checkbox"
@@ -78,7 +79,6 @@ export function ParameterInput({ parameter, value, executionDisabled, onChange }
           onChange={(event) => onChange(parameter, event.target.value)}
         />
       )}
-      <small>{parameter.description}</small>
     </label>
   );
 }
@@ -115,14 +115,14 @@ export function GeneralModelControl({
             parameter={parameter}
             value={formValues[parameter.key]}
             executionDisabled={executionDisabled}
+            mode={mode}
             onChange={onFormValueChange}
           />
         ))}
 
         {onMaxWorkersChange && (
           <label className="run-param-item">
-            <span>Max workers</span>
-            <small>experiment max workers</small>
+            <InfoLabel label="Max workers" info={maxWorkersHint ?? SETTING_HELP.maxWorkers} />
             <input
               type="number"
               step={1}
@@ -131,7 +131,6 @@ export function GeneralModelControl({
               disabled={executionDisabled}
               onChange={(event) => onMaxWorkersChange(event.target.value)}
             />
-            <small>{maxWorkersHint ?? 'Maximum independent model runs to execute in parallel.'}</small>
           </label>
         )}
       </div>
@@ -179,6 +178,7 @@ export function RecordSettingsControl({
             parameter={parameter}
             value={formValues[parameter.key]}
             executionDisabled={executionDisabled}
+            mode="manual"
             onChange={onFormValueChange}
           />
         ))}

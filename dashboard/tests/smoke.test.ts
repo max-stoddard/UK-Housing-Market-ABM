@@ -5,8 +5,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { MemoryRouter } from 'react-router-dom';
 import {
   compareParameters,
   getHomePreview,
@@ -39,6 +41,7 @@ import {
   __resetSensitivityRunsForTests,
   __setSensitivityRunSpawnForTests,
   cancelSensitivityExperiment,
+  deleteSensitivityExperiment,
   getSensitivityExperiment,
   getSensitivityExperimentCharts,
   getSensitivityExperimentLogs,
@@ -107,6 +110,7 @@ import {
   validateTrustedDesktopIpcSender,
   type DesktopFrameLike
 } from '../shared/desktopSecurity.js';
+import { DEFAULT_SENSITIVITY_POLICY_PACKAGE_ID } from '../shared/policyCatalogue.js';
 import {
   KPI_DETAIL_ROWS,
   computeKpiDeltaValue,
@@ -133,6 +137,9 @@ import {
   formatExperimentModelOption,
   orderExperimentModelOptions
 } from '../src/lib/experimentVersionOptions.js';
+import { ManualRunSetupCard } from '../src/pages/run-experiments/ManualRunSetupCard.js';
+import { SensitivitySetupCard } from '../src/pages/run-experiments/SensitivitySetupCard.js';
+import { assertSettingHelpCopy } from '../src/pages/run-experiments/settingHelp.js';
 import { computeKpiFromValues } from '../server/lib/stats/kpi.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -149,6 +156,10 @@ function sumBinnedDensityMass(rows: number[][]): number {
 
 function assertClose(actual: number, expected: number, tolerance: number, message: string): void {
   assert.ok(Math.abs(actual - expected) <= tolerance, `${message}: expected ${expected}, got ${actual}`);
+}
+
+function visibleText(markup: string): string {
+  return markup.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function gaussianPercentDensity(percent: number, mu: number, sigma: number): number {
@@ -184,6 +195,56 @@ async function fetchText(url: string, init?: Parameters<typeof fetch>[1]): Promi
     contentType: response.headers.get('content-type') ?? '',
     text: await response.text()
   };
+}
+
+async function fetchBuffer(url: string, init?: Parameters<typeof fetch>[1]): Promise<{
+  status: number;
+  contentType: string;
+  contentDisposition: string;
+  buffer: Buffer;
+}> {
+  const response = await fetch(url, init);
+  return {
+    status: response.status,
+    contentType: response.headers.get('content-type') ?? '',
+    contentDisposition: response.headers.get('content-disposition') ?? '',
+    buffer: Buffer.from(await response.arrayBuffer())
+  };
+}
+
+async function readArchiveText(stream: AsyncIterable<Uint8Array>): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return zlib.gunzipSync(Buffer.concat(chunks)).toString('latin1');
+}
+
+async function readArchiveEntries(stream: AsyncIterable<Uint8Array>): Promise<Map<string, Buffer>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const tar = zlib.gunzipSync(Buffer.concat(chunks));
+  const entries = new Map<string, Buffer>();
+  let offset = 0;
+
+  while (offset + 512 <= tar.length) {
+    const header = tar.subarray(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) {
+      break;
+    }
+    const name = header.subarray(0, 100).toString('utf-8').replace(/\0.*$/, '');
+    const prefix = header.subarray(345, 500).toString('utf-8').replace(/\0.*$/, '');
+    const sizeText = header.subarray(124, 136).toString('ascii').replace(/\0/g, '').trim();
+    const size = Number.parseInt(sizeText || '0', 8);
+    const entryName = prefix ? `${prefix}/${name}` : name;
+    const contentStart = offset + 512;
+    entries.set(entryName, Buffer.from(tar.subarray(contentStart, contentStart + size)));
+    offset = contentStart + Math.ceil(size / 512) * 512;
+  }
+
+  return entries;
 }
 
 const kpiStats = computeKpiFromValues([1, 2, 3, 4, 5]);
@@ -642,8 +703,8 @@ assert.equal(
 
 assert.deepEqual(
   KPI_DETAIL_ROWS.map((row) => row.key),
-  ['mean', 'cv', 'annualisedTrend', 'range'],
-  'Expected manual results KPI detail tables to include mean first followed by the remaining aggregate metrics'
+  ['mean', 'cv', 'range'],
+  'Expected manual results KPI detail tables to omit trend while preserving supported aggregate metrics'
 );
 
 assert.equal(
@@ -1304,6 +1365,66 @@ function createResultsFixtureRepo(): ResultsFixtureContext {
   return { root, runIds };
 }
 
+function writeSensitivityDownloadFixture(root: string, experimentId: string): void {
+  const experimentRoot = path.join(root, 'Results', 'experiments', 'sensitivity', experimentId);
+  fs.mkdirSync(experimentRoot, { recursive: true });
+  const parameter = {
+    key: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+    title: 'Central bank base rate',
+    description: 'Fixture sensitivity parameter.',
+    type: 'number' as const,
+    baselineValue: 0.01,
+    min: 0,
+    max: 0.02,
+    sampleCount: 2
+  };
+  fs.writeFileSync(
+    path.join(experimentRoot, 'metadata.json'),
+    JSON.stringify({
+      experimentId,
+      title: 'download fixture',
+      baseline: 'v1.0',
+      status: 'succeeded',
+      createdAt: '2026-05-11T00:00:00.000Z',
+      startedAt: '2026-05-11T00:00:01.000Z',
+      endedAt: '2026-05-11T00:00:02.000Z',
+      seedsPerPoint: 1,
+      seeds: [1],
+      maxWorkers: 1,
+      generalOverrides: {},
+      parameter,
+      warnings: [],
+      warningSummary: { byPoint: {} },
+      sampledPoints: [],
+      collapsedSlots: {},
+      runCommand: {
+        mode: 'maven',
+        commandTemplate: 'fixture'
+      }
+    }, null, 2),
+    'utf-8'
+  );
+  fs.writeFileSync(
+    path.join(experimentRoot, 'summary.json'),
+    JSON.stringify({
+      results: {
+        experimentId,
+        baselinePointId: null,
+        points: []
+      },
+      charts: {
+        experimentId,
+        parameter,
+        windowType: 'tail_120',
+        tornado: [],
+        deltaTrend: []
+      }
+    }, null, 2),
+    'utf-8'
+  );
+  fs.writeFileSync(path.join(experimentRoot, 'download-fixture.csv'), 'value\n1\n', 'utf-8');
+}
+
 function buildModelRunConfigText(baseSeed: number): string {
   return `SEED = ${baseSeed}
 N_STEPS = 2000
@@ -1338,6 +1459,14 @@ CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM = 0.15
 CENTRAL_BANK_LTI_MONTHS_TO_CHECK = 12
 CENTRAL_BANK_AFFORDABILITY_HARD_MAX = 0.4
 CENTRAL_BANK_ICR_HARD_MIN = 1.2
+BANK_INITIAL_RATE = 0.035
+BANK_LTV_HARD_MAX_FTB = 0.9
+BANK_LTV_HARD_MAX_HM = 0.9
+BANK_LTV_HARD_MAX_BTL = 0.75
+BANK_LTI_HARD_MAX_FTB = 5.4
+BANK_LTI_HARD_MAX_HM = 5.6
+BANK_AFFORDABILITY_HARD_MAX = 0.4
+BANK_ICR_HARD_MIN = 1.2
 DATA_AGE_DISTRIBUTION = "src/main/resources/Age.csv"
 DATA_INCOME_GIVEN_AGE = "src/main/resources/Income.csv"
 `;
@@ -1398,14 +1527,14 @@ function createModelRunFixtureRepo(prefix = 'dashboard-model-runs-smoke-'): stri
 class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   runnerState = 'stopped';
   ssmPingStatus = 'Offline';
-  readonly objects = new Map<string, string>();
+  readonly objects = new Map<string, Buffer>();
   readonly commands: Array<{ commandId: string; script: string; requestKey: string; jobRef: string }> = [];
   readonly commandStatuses = new Map<string, string>();
 
   constructor(private readonly sourceManifest = { commit: 'remote-fixture-commit', bundleKey: 'tmp/github-actions/source/remote-fixture.bundle' }) {
     this.objects.set(
       'fixture-bucket/tmp/github-actions/source/current-deploy.json',
-      JSON.stringify(sourceManifest)
+      Buffer.from(JSON.stringify(sourceManifest), 'utf-8')
     );
   }
 
@@ -1428,16 +1557,22 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   }
 
   async putJson(bucket: string, key: string, value: unknown): Promise<void> {
-    this.objects.set(`${bucket}/${key}`, JSON.stringify(value));
+    this.objects.set(`${bucket}/${key}`, Buffer.from(JSON.stringify(value), 'utf-8'));
   }
 
   async getJson<T>(bucket: string, key: string): Promise<T | null> {
-    const value = this.objects.get(`${bucket}/${key}`);
+    const value = await this.getText(bucket, key);
     return value ? (JSON.parse(value) as T) : null;
   }
 
+  async getBytes(bucket: string, key: string): Promise<Buffer | null> {
+    const value = this.objects.get(`${bucket}/${key}`);
+    return value ? Buffer.from(value) : null;
+  }
+
   async getText(bucket: string, key: string): Promise<string | null> {
-    return this.objects.get(`${bucket}/${key}`) ?? null;
+    const value = await this.getBytes(bucket, key);
+    return value ? value.toString('utf-8') : null;
   }
 
   async listObjects(bucket: string, prefix: string): Promise<Array<{ key: string; sizeBytes: number; modifiedAt: string | null }>> {
@@ -1446,7 +1581,7 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
       .filter(([key]) => key.startsWith(bucketPrefix))
       .map(([key, value]) => ({
         key: key.slice(bucket.length + 1),
-        sizeBytes: Buffer.byteLength(value),
+        sizeBytes: value.length,
         modifiedAt: new Date('2026-05-11T00:00:00.000Z').toISOString()
       }));
   }
@@ -1552,8 +1687,13 @@ try {
   );
   remoteAdapter.commandStatuses.set(manualCommand?.commandId ?? '', 'Success');
   const remoteRunPrefix = manualSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
-  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/config.properties`, 'SEED=45\n');
-  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/Output-run1.csv`, 'Model time; nHomeless\n0; 1\n');
+  const remoteManualBinaryFixture = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x61, 0xc3, 0x28, 0x0a]);
+  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/config.properties`, Buffer.from('SEED=45\n', 'utf-8'));
+  remoteAdapter.objects.set(
+    `fixture-bucket/${remoteRunPrefix}/Output-run1.csv`,
+    Buffer.from('Model time; nHomeless\n0; 1\n', 'utf-8')
+  );
+  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/binary-output.bin`, remoteManualBinaryFixture);
   const manualJobs = await remoteManager.listModelRunJobs();
   assert.equal(manualJobs.jobs[0]?.status, 'succeeded', 'Expected SSM Success to refresh remote manual job status');
   const remoteManualResults = await remoteManager.listRemoteManualResultRuns();
@@ -1567,6 +1707,23 @@ try {
     remoteManualFiles.files.some((file) => file.fileName === 'Output-run1.csv' && file.filePath.startsWith('s3://fixture-bucket/')),
     true,
     'Expected remote manual result files endpoint to expose S3 object paths'
+  );
+  const remoteManualArchiveText = await readArchiveText(
+    (await remoteManager.getRemoteManualResultArchive(manualSubmit.job?.runId ?? '')).stream
+  );
+  assert.ok(
+    remoteManualArchiveText.includes('Output-run1.csv') && remoteManualArchiveText.includes('SEED=45'),
+    'Expected remote manual result archive to include S3 artifact files'
+  );
+  const remoteManualArchiveEntries = await readArchiveEntries(
+    (await remoteManager.getRemoteManualResultArchive(manualSubmit.job?.runId ?? '')).stream
+  );
+  const remoteManualBinaryArchiveEntry = [...remoteManualArchiveEntries.entries()]
+    .find(([name]) => name.endsWith('/binary-output.bin'));
+  assert.deepEqual(
+    remoteManualBinaryArchiveEntry?.[1],
+    remoteManualBinaryFixture,
+    'Expected remote manual result archive to preserve binary S3 artifact bytes'
   );
   const manualLogs = await remoteManager.getExperimentJobLogs(`manual:${manualSubmit.job?.jobId ?? ''}`, 0, 20);
   assert.ok(
@@ -1586,9 +1743,30 @@ try {
   });
   assert.equal(sensitivitySubmit.accepted, true, 'Expected remote sensitivity experiment to be accepted');
   assert.equal(remoteAdapter.commands.length, 2, 'Expected remote sensitivity submit to dispatch one SSM command');
+  const sensitivityExperimentId = sensitivitySubmit.experiment?.experimentId ?? '';
+  const sensitivityParameter = sensitivitySubmit.experiment?.parameter;
+  assert.ok(sensitivityParameter, 'Expected remote sensitivity submit response to include parameter metadata');
+  const sensitivityCommand = remoteAdapter.commands[1];
+  const sensitivityRequest = JSON.parse(
+    remoteAdapter.objects.get(`fixture-bucket/${sensitivityCommand?.requestKey ?? ''}`)?.toString('utf-8') ?? '{}'
+  ) as {
+    artifactS3Prefix?: string;
+    preparedSensitivity?: { experimentId?: string };
+    payload?: Record<string, unknown>;
+  };
+  assert.equal(
+    sensitivityRequest.preparedSensitivity?.experimentId,
+    sensitivityExperimentId,
+    'Expected remote sensitivity request to carry the API-prepared experiment id'
+  );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(sensitivityRequest.payload ?? {}, 'experimentId'),
+    false,
+    'Expected public sensitivity payload not to carry a client-supplied experiment id'
+  );
   const remoteJobs = await remoteManager.listExperimentJobs();
   assert.ok(
-    remoteJobs.jobs.some((job) => job.jobRef === `sensitivity:${sensitivitySubmit.experiment?.experimentId}`),
+    remoteJobs.jobs.some((job) => job.jobRef === `sensitivity:${sensitivityExperimentId}`),
     'Expected unified remote job list to include sensitivity jobs'
   );
   assert.equal(
@@ -1596,8 +1774,87 @@ try {
     true,
     'Expected active remote sensitivity job to lock manual submission'
   );
-  const canceled = await remoteManager.cancelExperimentJob(`sensitivity:${sensitivitySubmit.experiment?.experimentId ?? ''}`);
+  const canceled = await remoteManager.cancelExperimentJob(`sensitivity:${sensitivityExperimentId}`);
   assert.equal(canceled.job.status, 'canceled', 'Expected remote cancel to map to canceled job status');
+  const sensitivityArtifactPrefix = sensitivityRequest.artifactS3Prefix ?? '';
+  const sensitivityResultPrefix = `${sensitivityArtifactPrefix}Results/experiments/sensitivity/${sensitivityExperimentId}/`;
+  const remoteSensitivityMetadata = {
+    ...(sensitivitySubmit.experiment ?? {}),
+    experimentId: sensitivityExperimentId,
+    parameter: sensitivityParameter,
+    status: 'succeeded',
+    startedAt: '2026-05-11T00:00:01.000Z',
+    endedAt: '2026-05-11T00:00:02.000Z',
+    warnings: [],
+    warningSummary: { byPoint: {} },
+    sampledPoints: [],
+    collapsedSlots: {},
+    runCommand: {
+      mode: 'maven',
+      commandTemplate: 'remote fixture'
+    }
+  };
+  remoteAdapter.objects.set(
+    `fixture-bucket/${sensitivityResultPrefix}metadata.json`,
+    Buffer.from(JSON.stringify(remoteSensitivityMetadata), 'utf-8')
+  );
+  remoteAdapter.objects.set(
+    `fixture-bucket/${sensitivityResultPrefix}summary.json`,
+    Buffer.from(JSON.stringify({
+      results: {
+        experimentId: sensitivityExperimentId,
+        baselinePointId: null,
+        points: []
+      },
+      charts: {
+        experimentId: sensitivityExperimentId,
+        parameter: remoteSensitivityMetadata.parameter,
+        windowType: 'tail_120',
+        tornado: [],
+        deltaTrend: []
+      }
+    }), 'utf-8')
+  );
+  remoteAdapter.objects.set(
+    `fixture-bucket/${sensitivityResultPrefix}${RUN_MANIFEST_FILE_NAME}`,
+    Buffer.from(JSON.stringify({
+      schemaVersion: 1,
+      manifestType: 'sensitivity-experiment',
+      experiment: { experimentId: sensitivityExperimentId }
+    }), 'utf-8')
+  );
+  remoteAdapter.objects.set(
+    `fixture-bucket/${sensitivityResultPrefix}remote-sensitivity-fixture.csv`,
+    Buffer.from('value\n1\n', 'utf-8')
+  );
+  const remoteSensitivityDetail = await remoteManager.getSensitivityExperiment(sensitivityExperimentId);
+  assert.equal(
+    remoteSensitivityDetail.experiment.experimentId,
+    sensitivityExperimentId,
+    'Expected remote sensitivity detail to use the API-prepared experiment id'
+  );
+  const remoteSensitivityResults = await remoteManager.getSensitivityExperimentResults(sensitivityExperimentId);
+  assert.equal(
+    remoteSensitivityResults.experimentId,
+    sensitivityExperimentId,
+    'Expected remote sensitivity results to use the API-prepared experiment id'
+  );
+  const remoteSensitivityCharts = await remoteManager.getSensitivityExperimentCharts(sensitivityExperimentId);
+  assert.equal(
+    remoteSensitivityCharts.experimentId,
+    sensitivityExperimentId,
+    'Expected remote sensitivity charts to use the API-prepared experiment id'
+  );
+  const remoteSensitivityArchiveText = await readArchiveText(
+    (await remoteManager.getSensitivityExperimentArchive(sensitivityExperimentId)).stream
+  );
+  assert.ok(
+    remoteSensitivityArchiveText.includes('metadata.json')
+      && remoteSensitivityArchiveText.includes('summary.json')
+      && remoteSensitivityArchiveText.includes(RUN_MANIFEST_FILE_NAME)
+      && remoteSensitivityArchiveText.includes('remote-sensitivity-fixture.csv'),
+    'Expected remote sensitivity archive to read artifacts from the API-prepared experiment id prefix'
+  );
 } finally {
   fs.rmSync(remoteFixtureRoot, { recursive: true, force: true });
 }
@@ -1695,19 +1952,34 @@ assert.equal(latestStableVersion, expectedLatestStableVersion, 'Expected latest 
 assert.notEqual(latestStableVersion, '', 'Expected at least one stable version to exist');
 const originalVersionState = buildVersionLabelState('v0', latestStableVersion, new Set(inProgressVersions));
 assert.ok(originalVersionState.isOriginal, 'Expected v0 to be labelled as original');
-assert.equal(formatVersionOptionLabel('v0', originalVersionState), 'v0 (Original)', 'Expected v0 select label to include Original');
+assert.equal(formatVersionOptionLabel('v0', originalVersionState), '2011 model v0 (Original)', 'Expected v0 select label to include Original');
 const combinedLabelState = buildVersionLabelState('v0', 'v0', new Set<string>());
 assert.equal(
   formatVersionOptionLabel('v0', combinedLabelState),
-  'v0 (Latest, Original)',
+  '2011 model v0 (Latest, Original)',
   'Expected combined labels to preserve Latest then Original ordering'
+);
+assert.equal(
+  formatVersionOptionLabel('v0o', buildVersionLabelState('v0o', latestStableVersion, new Set(inProgressVersions))),
+  '2011 model v0o',
+  'Expected v0o select labels to identify the 2011 model family'
+);
+assert.equal(
+  formatVersionOptionLabel('v1.0', buildVersionLabelState('v1.0', latestStableVersion, new Set(inProgressVersions))),
+  '2024 model v1.0',
+  'Expected v1.0 select labels to identify the 2024 model family'
+);
+assert.equal(
+  formatVersionOptionLabel('v4.4', buildVersionLabelState('v4.4', latestStableVersion, new Set(inProgressVersions))),
+  'Best 2024 model v4.4',
+  'Expected v4.4 select labels to identify the best 2024 model'
 );
 const latestVersionState = buildVersionLabelState(latestStableVersion, latestStableVersion, new Set(inProgressVersions));
 assert.ok(latestVersionState.isLatest, 'Expected latest stable version to be labelled as latest');
 assert.ok(!latestVersionState.isInProgress, 'Expected latest stable version to exclude the in-progress label');
 assert.equal(
   formatVersionOptionLabel(latestStableVersion, latestVersionState),
-  `${latestStableVersion} (Latest)`,
+  `Latest 2024 model ${latestStableVersion} (Latest)`,
   'Expected latest stable select label to include Latest'
 );
 const inProgressVersion = inProgressVersions.find((version) => version !== 'v0');
@@ -1717,11 +1989,22 @@ if (inProgressVersion) {
   assert.ok(!inProgressState.isLatest, 'Expected in-progress snapshot not to be labelled latest');
   assert.equal(
     formatVersionOptionLabel(inProgressVersion, inProgressState),
-    `${inProgressVersion} (In progress)`,
+    `2024 model ${inProgressVersion} (In progress)`,
     'Expected in-progress select label to exclude Latest'
   );
 }
 const latestVersion = versions[versions.length - 1];
+const packagedVersionAllowlist = ['v0oo', 'v0', 'v4.19', 'v4.4'];
+const dockerIgnore = fs.readFileSync(path.join(repoRoot, '.dockerignore'), 'utf-8');
+const releaseResourceScript = fs.readFileSync(path.join(repoRoot, 'scripts/windows/assemble-release-resources.mjs'), 'utf-8');
+for (const version of packagedVersionAllowlist) {
+  assert.ok(dockerIgnore.includes(`!input-data-versions/${version}/**`), `Expected Docker context to include ${version}`);
+  assert.ok(releaseResourceScript.includes(`'${version}'`), `Expected desktop release resources to include ${version}`);
+}
+assert.ok(
+  dockerIgnore.includes('input-data-versions/v[0-9]*/') && !dockerIgnore.includes('!input-data-versions/v0o/**'),
+  'Expected Docker context to exclude non-allowlisted version folders by default'
+);
 
 const desktopDataFixture = createDesktopRuntimeFixture('dashboard-data-runtime-smoke-');
 try {
@@ -3058,6 +3341,199 @@ try {
       `Expected baseline run ${protectedRunId} to be protected from deletion`
     );
   }
+
+  const sensitivityDownloadExperimentId = 'sensitivity-download-fixture';
+  writeSensitivityDownloadFixture(fixture.root, sensitivityDownloadExperimentId);
+  __resetSensitivityRunsForTests();
+  let downloadServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    downloadServer = await startDashboardServer({
+      dashboardRoot: path.join(repoRoot, 'dashboard'),
+      repoRoot: fixture.root,
+      runtimePaths: createDevelopmentRuntimePaths(fixture.root),
+      host: '127.0.0.1',
+      port: 0,
+      modelRunsConfigured: false,
+      isDevRuntime: true,
+      staticServing: { enabled: false },
+      logStartup: false
+    });
+
+    const manualArchive = await fetchBuffer(
+      `${downloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`,
+      {
+        headers: {
+          'X-Dashboard-View-Mode': 'dev'
+        }
+      }
+    );
+    assert.equal(manualArchive.status, 200, 'Expected manual result download endpoint to return an archive');
+    assert.ok(manualArchive.contentType.includes('application/gzip'), 'Expected manual download to be gzip content');
+    assert.ok(
+      manualArchive.contentDisposition.includes(`${fixture.runIds.complete}.tar.gz`),
+      'Expected manual download to include an attachment filename'
+    );
+    const manualArchiveText = zlib.gunzipSync(manualArchive.buffer).toString('latin1');
+    assert.ok(
+      manualArchiveText.includes('Output-run1.csv') && manualArchiveText.includes('config.properties'),
+      'Expected manual result archive to include result files'
+    );
+
+    const sensitivityArchive = await fetchBuffer(
+      `${downloadServer.url}/api/experiments/sensitivity/${encodeURIComponent(sensitivityDownloadExperimentId)}/download`,
+      {
+        headers: {
+          'X-Dashboard-View-Mode': 'dev'
+        }
+      }
+    );
+    assert.equal(sensitivityArchive.status, 200, 'Expected sensitivity result download endpoint to return an archive');
+    const sensitivityArchiveText = zlib.gunzipSync(sensitivityArchive.buffer).toString('latin1');
+    assert.ok(
+      sensitivityArchiveText.includes('download-fixture.csv') && sensitivityArchiveText.includes('metadata.json'),
+      'Expected sensitivity result archive to include experiment files'
+    );
+
+    const desktopPreviewManualArchive = await fetchBuffer(
+      `${downloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`,
+      {
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_desktop'
+        }
+      }
+    );
+    assert.equal(
+      desktopPreviewManualArchive.status,
+      200,
+      'Expected local desktop preview to allow manual result downloads without credentials'
+    );
+
+    const desktopPreviewSensitivityArchive = await fetchBuffer(
+      `${downloadServer.url}/api/experiments/sensitivity/${encodeURIComponent(sensitivityDownloadExperimentId)}/download`,
+      {
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_desktop'
+        }
+      }
+    );
+    assert.equal(
+      desktopPreviewSensitivityArchive.status,
+      200,
+      'Expected local desktop preview to allow sensitivity result downloads without credentials'
+    );
+
+    const cloudPreviewDownload = await fetchText(
+      `${downloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`,
+      {
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_cloud'
+        }
+      }
+    );
+    assert.equal(
+      cloudPreviewDownload.status,
+      503,
+      'Expected cloud preview result downloads to require configured credentials'
+    );
+
+    const missingDownload = await fetchText(`${downloadServer.url}/api/results/runs/not-found/download`);
+    assert.equal(missingDownload.status, 400, 'Expected unknown run download to be rejected');
+    const traversalDownload = await fetchText(`${downloadServer.url}/api/results/runs/%2E%2E/download`);
+    assert.ok(
+      traversalDownload.status === 400 || traversalDownload.status === 404,
+      'Expected traversal-style run download to be rejected'
+    );
+  } finally {
+    if (downloadServer) {
+      await downloadServer.shutdown();
+    }
+  }
+
+  let missingCredentialDownloadServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    missingCredentialDownloadServer = await startDashboardServer({
+      dashboardRoot: path.join(repoRoot, 'dashboard'),
+      repoRoot: fixture.root,
+      runtimePaths: createDevelopmentRuntimePaths(fixture.root),
+      host: '127.0.0.1',
+      port: 0,
+      modelRunsConfigured: false,
+      isDevRuntime: false,
+      staticServing: { enabled: false },
+      logStartup: false
+    });
+    const missingCredentialDownload = await fetchText(
+      `${missingCredentialDownloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`
+    );
+    assert.equal(
+      missingCredentialDownload.status,
+      503,
+      'Expected cloud-style result download to fail closed when credentials are not configured'
+    );
+    const spoofedDesktopPreviewDownload = await fetchText(
+      `${missingCredentialDownloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`,
+      {
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_desktop'
+        }
+      }
+    );
+    assert.equal(
+      spoofedDesktopPreviewDownload.status,
+      503,
+      'Expected production cloud result downloads to ignore spoofed desktop preview headers'
+    );
+  } finally {
+    if (missingCredentialDownloadServer) {
+      await missingCredentialDownloadServer.shutdown();
+    }
+  }
+
+  let authenticatedDownloadServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    authenticatedDownloadServer = await startDashboardServer({
+      dashboardRoot: path.join(repoRoot, 'dashboard'),
+      repoRoot: fixture.root,
+      runtimePaths: createDevelopmentRuntimePaths(fixture.root),
+      host: '127.0.0.1',
+      port: 0,
+      writeAuth: createWriteAuthController('writer', 'secret'),
+      modelRunsConfigured: false,
+      isDevRuntime: false,
+      staticServing: { enabled: false },
+      logStartup: false
+    });
+    const unauthenticatedDownload = await fetchText(
+      `${authenticatedDownloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`
+    );
+    assert.equal(
+      unauthenticatedDownload.status,
+      403,
+      'Expected cloud-style result download to require login when credentials are configured'
+    );
+    const loginResponse = await fetchText(`${authenticatedDownloadServer.url}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username: 'writer', password: 'secret' })
+    });
+    const loginPayload = JSON.parse(loginResponse.text) as { token?: string };
+    assert.ok(loginPayload.token, 'Expected cloud-style login to issue a download-capable token');
+    const authenticatedDownload = await fetchBuffer(
+      `${authenticatedDownloadServer.url}/api/results/runs/${encodeURIComponent(fixture.runIds.complete)}/download`,
+      {
+        headers: {
+          Authorization: `Bearer ${loginPayload.token}`
+        }
+      }
+    );
+    assert.equal(authenticatedDownload.status, 200, 'Expected logged-in cloud-style result download to succeed');
+  } finally {
+    if (authenticatedDownloadServer) {
+      await authenticatedDownloadServer.shutdown();
+    }
+  }
 } finally {
   fs.rmSync(fixture.root, { recursive: true, force: true });
 }
@@ -3104,12 +3580,157 @@ try {
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 4).map((snapshot) => formatExperimentModelOption(snapshot, orderedExperimentSnapshots)),
     [
-      'Optimised 2011 model (v0oo, Stable)',
-      '2011 model (v0, Stable)',
-      'Latest 2024 model (v1.0, Beta)',
-      'v1.1 model (Beta, In progress)'
+      '2011 model v0oo (Stable)',
+      '2011 model v0 (Stable)',
+      'Latest 2024 model v1.0 (Beta)',
+      '2024 model v1.1 (Beta, In progress)'
     ],
     'Expected experiment model option labels to use user-facing model names and lifecycle badges'
+  );
+
+  assertSettingHelpCopy();
+  const runFormValues = Object.fromEntries(
+    runOptions.parameters.map((parameter) => [
+      parameter.key,
+      typeof parameter.defaultValue === 'boolean' ? parameter.defaultValue : String(parameter.defaultValue)
+    ])
+  );
+  const policyParameters = runOptions.parameters.filter((parameter) => parameter.group === 'Central Bank policy');
+  const centralBankPolicyKeys = policyParameters.map((parameter) => parameter.key);
+  assert.deepEqual(
+    runOptions.basePolicies.map((policy) => policy.id),
+    ['2011', '2024'],
+    'Expected run options to expose the supported base policies'
+  );
+  assert.equal(runOptions.defaultBasePolicy, '2011', 'Expected legacy calibration snapshots to default to 2011 policy');
+  assert.equal(
+    getModelRunOptions(modelRunFixtureRoot, 'v1.0', true).defaultBasePolicy,
+    '2024',
+    'Expected non-legacy calibration snapshots to default to 2024 policy'
+  );
+  assert.deepEqual(
+    runOptions.sensitivityPolicyPackages
+      .filter((policyPackage) => policyPackage.parameterKeys.length === 1)
+      .map((policyPackage) => policyPackage.parameterKeys[0])
+      .sort(),
+    [...centralBankPolicyKeys].sort(),
+    'Expected every old central-bank policy parameter to exist as a singleton sensitivity package'
+  );
+  assert.ok(
+    runOptions.sensitivityPolicyPackages.some(
+      (policyPackage) =>
+        policyPackage.id === 'owner_occupier_lti_soft_max' &&
+        policyPackage.parameterKeys.includes('CENTRAL_BANK_LTI_SOFT_MAX_FTB') &&
+        policyPackage.parameterKeys.includes('CENTRAL_BANK_LTI_SOFT_MAX_HM')
+    ),
+    'Expected paired FTB + HM soft LTI package to be available'
+  );
+  assert.ok(
+    runOptions.sensitivityPolicyPackages.some(
+      (policyPackage) =>
+        policyPackage.id === 'owner_occupier_lti_quota' &&
+        policyPackage.parameterKeys.includes('CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB') &&
+        policyPackage.parameterKeys.includes('CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM')
+    ),
+    'Expected paired FTB + HM LTI quota package to be available'
+  );
+  assert.ok(
+    runOptions.sensitivityPolicyPackages.some(
+      (policyPackage) =>
+        policyPackage.id === 'owner_occupier_ltv_hard_max' &&
+        policyPackage.parameterKeys.includes('CENTRAL_BANK_LTV_HARD_MAX_FTB') &&
+        policyPackage.parameterKeys.includes('CENTRAL_BANK_LTV_HARD_MAX_HM')
+    ),
+    'Expected paired FTB + HM hard LTV package to be available'
+  );
+  const selectedSensitivityPackage =
+    runOptions.sensitivityPolicyPackages.find((policyPackage) => policyPackage.id === DEFAULT_SENSITIVITY_POLICY_PACKAGE_ID) ?? null;
+  assert.deepEqual(
+    selectedSensitivityPackage?.parameterKeys,
+    ['CENTRAL_BANK_LTI_SOFT_MAX_FTB', 'CENTRAL_BANK_LTI_SOFT_MAX_HM'],
+    'Expected sensitivity setup to default to the paired FTB + HM soft LTI package'
+  );
+  const noop = () => {};
+  const manualSetupMarkup = renderToStaticMarkup(
+    createElement(
+      MemoryRouter,
+      null,
+      createElement(ManualRunSetupCard, {
+        executionDisabled: false,
+        isLoadingOptions: false,
+        selectedBaseline: runOptions.requestedBaseline,
+        onBaselineChange: noop,
+        basePolicies: runOptions.basePolicies,
+        basePolicy: runOptions.defaultBasePolicy,
+        onBasePolicyChange: noop,
+        snapshots: runOptions.snapshots,
+        title: '',
+        onTitleChange: noop,
+        parameters: runOptions.parameters,
+        policyParameters,
+        formValues: runFormValues,
+        onFormValueChange: noop,
+        warnings: [],
+        isSubmitting: false,
+        manualSubmissionLockedBySensitivity: false,
+        lockMessage: null,
+        onSubmit: noop
+      })
+    )
+  );
+  const sensitivitySetupMarkup = renderToStaticMarkup(
+    createElement(SensitivitySetupCard, {
+      executionDisabled: false,
+      isLoadingOptions: false,
+      selectedBaseline: runOptions.requestedBaseline,
+      onBaselineChange: noop,
+      snapshots: runOptions.snapshots,
+      basePolicies: runOptions.basePolicies,
+      basePolicy: runOptions.defaultBasePolicy,
+      onBasePolicyChange: noop,
+      policyPackages: runOptions.sensitivityPolicyPackages,
+      policyPackageId: selectedSensitivityPackage?.id ?? '',
+      onPolicyPackageChange: noop,
+      minValue: '0',
+      maxValue: '1',
+      onMinValueChange: noop,
+      onMaxValueChange: noop,
+      sampleCount: '5',
+      onSampleCountChange: noop,
+      parameters: runOptions.parameters,
+      formValues: runFormValues,
+      onFormValueChange: noop,
+      maxWorkers: '2',
+      onMaxWorkersChange: noop,
+      title: '',
+      onTitleChange: noop,
+      selectedPackage: selectedSensitivityPackage,
+      warnings: [],
+      isSubmitting: false,
+      isCanceling: false,
+      sensitivitySubmissionLockedByManual: false,
+      lockMessage: null,
+      hasActiveSensitivityJob: false,
+      onSubmit: noop,
+      onCancelActive: noop
+    })
+  );
+  assert.ok(
+    manualSetupMarkup.includes('setting-info-trigger') && sensitivitySetupMarkup.includes('setting-info-trigger'),
+    'Expected manual and sensitivity setup controls to render shared info indicators'
+  );
+  assert.ok(
+    visibleText(manualSetupMarkup).includes('Initial base rate') &&
+      visibleText(sensitivitySetupMarkup).includes('Sensitivity policy package') &&
+      visibleText(sensitivitySetupMarkup).includes('Base policy'),
+    'Expected experiment setup controls to keep user-facing labels visible'
+  );
+  assert.equal(
+    /CENTRAL_BANK_|<small>SEED<\/small>|<small>N_STEPS<\/small>/.test(
+      `${visibleText(manualSetupMarkup)} ${visibleText(sensitivitySetupMarkup)}`
+    ),
+    false,
+    'Expected experiment setup visible text to hide implementation parameter keys'
   );
 
   const optionsForInProgress = getModelRunOptions(modelRunFixtureRoot, 'v1.1', true);
@@ -3209,6 +3830,65 @@ try {
   assert.equal(warningResponse.accepted, false, 'Expected submit to request explicit warning confirmation');
   assert.ok((warningResponse.warnings?.length ?? 0) > 0, 'Expected warning payload when confirmation is missing');
   assert.equal(listModelRunJobs().length, 0, 'Expected warning-only submit not to enqueue a job');
+
+  __resetModelRunManagerForTests();
+  let crossEraManualConfig = new Map<string, string>();
+  const crossEraManualLauncher = createFakeLauncher('packaged', (request) => {
+    crossEraManualConfig = parseConfigFile(request.configPath);
+    fs.mkdirSync(request.outputPath, { recursive: true });
+    fs.writeFileSync(path.join(request.outputPath, 'Output-run1.csv'), 'Model time;nRenting\n0;1\n', 'utf-8');
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const crossEraManualSubmit = submitModelRun(
+    modelRunFixtureRoot,
+    {
+      baseline: 'v0',
+      basePolicy: '2024',
+      title: '2011-model-2024-policy',
+      overrides: { SEED: 444 },
+      confirmWarnings: true
+    },
+    { launcher: crossEraManualLauncher }
+  );
+  assert.equal(crossEraManualSubmit.accepted, true, 'Expected 2011 model with 2024 base policy to be accepted');
+  await waitUntil(() => {
+    const job = listModelRunJobs().find((item) => item.jobId === crossEraManualSubmit.job?.jobId);
+    return job?.status === 'succeeded';
+  });
+  const originalV0Config = parseConfigFile(path.join(modelRunFixtureRoot, 'input-data-versions', 'v0', 'config.properties'));
+  const policy2024 = runOptions.basePolicies.find((policy) => policy.id === '2024');
+  assert.ok(policy2024, 'Expected 2024 base policy option in run options');
+  for (const [key, value] of Object.entries(policy2024?.values ?? {})) {
+    assertClose(
+      Number.parseFloat(crossEraManualConfig.get(key) ?? 'NaN'),
+      value,
+      1e-12,
+      `Expected ${key} to use the 2024 base policy value`
+    );
+  }
+  for (const [key, value] of originalV0Config) {
+    if (key.startsWith('CENTRAL_BANK_') || key.startsWith('DATA_') || key === 'SEED') {
+      continue;
+    }
+    assert.equal(
+      crossEraManualConfig.get(key),
+      value,
+      `Expected non-policy key ${key} to stay on the selected 2011 calibration snapshot`
+    );
+  }
+  assert.equal(crossEraManualConfig.get('SEED'), '444', 'Expected manual edits to apply after base policy selection');
+
+  __resetModelRunManagerForTests();
+  spawnedProcesses.length = 0;
+  __setModelRunSpawnForTests(() => {
+    const fakeProcess = new FakeModelProcess();
+    spawnedProcesses.push(fakeProcess);
+    return fakeProcess as never;
+  });
 
   const manualPersistentLogPaths = createDevelopmentRuntimePaths(modelRunFixtureRoot);
   const manualPersistentModelLog = createRotatingLogWriter(manualPersistentLogPaths.logsRoot, 'model');
@@ -3555,6 +4235,7 @@ try {
     desktopManualFixture.paths,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'desktop-runtime-paths',
       overrides: { SEED: 456 },
       confirmWarnings: true
@@ -3673,6 +4354,7 @@ try {
     windowsPathSensitivityFixtureRoot,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'windows-safe-paths',
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.004,
@@ -3739,6 +4421,7 @@ try {
     desktopSensitivityFixture.paths,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'desktop-runtime-paths',
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.004,
@@ -3810,6 +4493,7 @@ try {
 
   const warningSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
     baseline: 'v1.0',
+    basePolicy: '2011',
     parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
     min: 0.004,
     max: 0.006,
@@ -3819,12 +4503,99 @@ try {
   assert.equal(warningSubmit.accepted, false, 'Expected sensitivity submit to require warning confirmation');
   assert.ok((warningSubmit.warnings.length ?? 0) > 0, 'Expected warning payload for high target population points');
 
+  const policyWarningCases = [
+    {
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      expectedCode: 'central_bank_base_rate_below_bank_initial_rate'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTV_HARD_MAX_FTB',
+      min: 0.9,
+      max: 1,
+      expectedCode: 'central_bank_upper_limit_non_binding'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTV_HARD_MAX_HM',
+      min: 0.85,
+      max: 0.95,
+      expectedCode: 'central_bank_upper_limit_non_binding'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTV_HARD_MAX_BTL',
+      min: 0.75,
+      max: 0.85,
+      expectedCode: 'central_bank_upper_limit_non_binding'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTI_SOFT_MAX_FTB',
+      min: 5,
+      max: 5.8,
+      expectedCode: 'central_bank_lti_soft_limit_non_binding'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTI_SOFT_MAX_HM',
+      min: 5.2,
+      max: 6,
+      expectedCode: 'central_bank_lti_soft_limit_non_binding'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_FTB',
+      min: 0.1,
+      max: 0.2,
+      expectedCode: 'central_bank_lti_quota_inactive'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTI_MAX_FRAC_OVER_SOFT_MAX_HM',
+      min: 0.1,
+      max: 0.2,
+      expectedCode: 'central_bank_lti_quota_inactive'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_LTI_MONTHS_TO_CHECK',
+      min: 11,
+      max: 13,
+      expectedCode: 'central_bank_lti_window_inactive'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_AFFORDABILITY_HARD_MAX',
+      min: 0.3,
+      max: 0.5,
+      expectedCode: 'central_bank_upper_limit_non_binding'
+    },
+    {
+      parameterKey: 'CENTRAL_BANK_ICR_HARD_MIN',
+      min: 1,
+      max: 1.4,
+      expectedCode: 'central_bank_lower_limit_non_binding'
+    }
+  ];
+
+  for (const testCase of policyWarningCases) {
+    const response = submitSensitivityExperiment(sensitivityFixtureRoot, {
+      baseline: 'v1.0',
+      basePolicy: '2011',
+      parameterKey: testCase.parameterKey,
+      min: testCase.min,
+      max: testCase.max,
+      overrides: { N_SIMS: 1 },
+      confirmWarnings: false
+    });
+    assert.equal(response.accepted, false, `Expected ${testCase.parameterKey} to require warning confirmation`);
+    assert.ok(
+      response.warnings.some((warning) => warning.code === testCase.expectedCode),
+      `Expected ${testCase.parameterKey} to emit ${testCase.expectedCode}`
+    );
+  }
+
   const sensitivityPersistentLogPaths = createDevelopmentRuntimePaths(sensitivityFixtureRoot);
   const sensitivityPersistentModelLog = createRotatingLogWriter(sensitivityPersistentLogPaths.logsRoot, 'model');
   const successSubmit = submitSensitivityExperiment(
     sensitivityPersistentLogPaths,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'base-rate-sweep',
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.004,
@@ -3836,6 +4607,11 @@ try {
   assert.equal(successSubmit.accepted, true, 'Expected sensitivity submit to start experiment');
   const successExperimentId = successSubmit.experiment?.experimentId ?? '';
   assert.ok(successExperimentId.length > 0, 'Expected started sensitivity experiment id');
+  assert.match(
+    successExperimentId,
+    /^sensitivity-\d{8}T\d{6}Z-[0-9a-f]{8}$/,
+    'Expected default local sensitivity submissions to keep generating experiment ids'
+  );
 
   await waitUntil(() => {
     const detail = getSensitivityExperiment(sensitivityFixtureRoot, successExperimentId).experiment;
@@ -3880,10 +4656,21 @@ try {
   const successManifest = JSON.parse(fs.readFileSync(successManifestPath, 'utf-8')) as SensitivityRunManifest;
   assert.equal(successManifest.manifestType, 'sensitivity-experiment', 'Expected sensitivity manifest type');
   assert.equal(successManifest.experiment.status, 'succeeded', 'Expected sensitivity manifest to record final status');
+  assert.equal(successManifest.experiment.basePolicy, '2011', 'Expected sensitivity manifest to record base policy');
   assert.equal(
     successManifest.experiment.parameter.key,
     'CENTRAL_BANK_INITIAL_BASE_RATE',
-    'Expected sensitivity manifest to record the swept parameter'
+    'Expected singleton-package sensitivity manifest to keep the legacy parameter key'
+  );
+  assert.equal(
+    successManifest.experiment.parameter.packageId,
+    'central_bank_initial_base_rate',
+    'Expected sensitivity manifest to preserve package metadata'
+  );
+  assert.deepEqual(
+    successManifest.experiment.parameter.parameterKeys,
+    ['CENTRAL_BANK_INITIAL_BASE_RATE'],
+    'Expected sensitivity manifest to preserve package parameter keys'
   );
   assert.equal(successManifest.experiment.parameter.sampleCount, 5, 'Expected sensitivity manifest to record sample count');
   assert.equal(successManifest.experiment.points.length, 25, 'Expected sensitivity manifest to record every sampled point/seed run');
@@ -3899,6 +4686,12 @@ try {
   assert.ok(
     successManifest.experiment.points.every((point) => point.overriddenParameters.N_SIMS === 1),
     'Expected sensitivity manifest to record one Java simulation per independent seed run'
+  );
+  assert.ok(
+    successManifest.experiment.points.every(
+      (point) => typeof point.valuesByKey?.CENTRAL_BANK_INITIAL_BASE_RATE === 'number'
+    ),
+    'Expected sensitivity manifest to record key-specific point overrides'
   );
   assert.ok(
     successManifest.experiment.points.every((point) => point.outputHash?.value),
@@ -3993,6 +4786,56 @@ try {
     'Expected sensitivity stderr lines to be persisted under logsRoot/model.log'
   );
 
+  const forcedExperimentId = 'sensitivity-20260511T000000Z-abcdef12';
+  const forcedSubmit = submitSensitivityExperiment(
+    sensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      basePolicy: '2011',
+      title: 'forced-id-sweep',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      overrides: { N_SIMS: 1 },
+      sampleCount: 2,
+      confirmWarnings: true
+    },
+    { forcedExperimentId }
+  );
+  assert.equal(forcedSubmit.accepted, true, 'Expected forced-id sensitivity submit to start experiment');
+  assert.equal(
+    forcedSubmit.experiment?.experimentId,
+    forcedExperimentId,
+    'Expected internal forced sensitivity id to be used for the submitted experiment'
+  );
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, forcedExperimentId).experiment;
+    return detail.status === 'succeeded';
+  });
+  const forcedExperimentRoot = path.join(
+    sensitivityFixtureRoot,
+    'Results',
+    'experiments',
+    'sensitivity',
+    forcedExperimentId
+  );
+  const forcedMetadata = JSON.parse(
+    fs.readFileSync(path.join(forcedExperimentRoot, 'metadata.json'), 'utf-8')
+  );
+  const forcedSummary = JSON.parse(
+    fs.readFileSync(path.join(forcedExperimentRoot, 'summary.json'), 'utf-8')
+  );
+  const forcedManifest = JSON.parse(
+    fs.readFileSync(path.join(forcedExperimentRoot, RUN_MANIFEST_FILE_NAME), 'utf-8')
+  ) as SensitivityRunManifest;
+  assert.equal(forcedMetadata.experimentId, forcedExperimentId, 'Expected metadata.json to use forced experiment id');
+  assert.equal(forcedSummary.results.experimentId, forcedExperimentId, 'Expected summary.json to use forced experiment id');
+  assert.equal(
+    forcedManifest.experiment.experimentId,
+    forcedExperimentId,
+    'Expected run manifest to use forced experiment id'
+  );
+
   const midpointRaceLaunches: ModelLaunchRequest[] = [];
   const midpointRaceConfigPaths = new Set<string>();
   const midpointRaceOutputPaths = new Set<string>();
@@ -4023,6 +4866,7 @@ try {
     sensitivityFixtureRoot,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'midpoint-dedup-race',
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.0045,
@@ -4077,6 +4921,7 @@ try {
 
   const twoPointSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
     baseline: 'v1.0',
+    basePolicy: '2011',
     title: 'two-point-grid-with-baseline',
     parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
     min: 0.004,
@@ -4118,6 +4963,7 @@ try {
     sensitivityFixtureRoot,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'injected-packaged-launcher',
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.004,
@@ -4197,6 +5043,7 @@ try {
     sensitivityFixtureRoot,
     {
       baseline: 'v1.0',
+      basePolicy: '2011',
       title: 'multi-seed-workers',
       parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
       min: 0.004,
@@ -4234,6 +5081,39 @@ try {
     multiSeedResults.points.every((point) => point.seedResults?.length === 3),
     'Expected per-point results to retain per-seed run metadata'
   );
+  for (const point of multiSeedResults.points) {
+    const aggregatedMetric = point.indicatorMetrics.find((metric) => metric.indicatorId === 'core_interestRateSpread');
+    if (!aggregatedMetric) {
+      throw new Error(`Expected aggregated interest-rate spread metric for ${point.pointId}`);
+    }
+    const seedMetrics = (point.seedResults ?? []).map((seedResult) => {
+      const seedMetric = seedResult.indicatorMetrics.find((metric) => metric.indicatorId === 'core_interestRateSpread');
+      if (!seedMetric) {
+        throw new Error(`Expected seed interest-rate spread metric for ${point.pointId} seed ${seedResult.seed}`);
+      }
+      return seedMetric;
+    });
+    assert.equal(seedMetrics.length, 3, `Expected three seed metrics for ${point.pointId}`);
+    assert.ok(
+      point.seedResults?.every((seedResult) => seedResult.outputPath === null),
+      `Expected summary-only seed metadata for ${point.pointId}`
+    );
+    for (const key of ['mean', 'cv', 'range'] as const) {
+      const values = seedMetrics
+        .map((metric) => metric.kpi[key])
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      const observed = aggregatedMetric.kpi[key];
+      if (observed === null) {
+        throw new Error(`Expected aggregated ${key} KPI for ${point.pointId}`);
+      }
+      assertClose(
+        observed,
+        sum(values) / values.length,
+        1e-12,
+        `Expected ${key} KPI for ${point.pointId} to average across successful seeds`
+      );
+    }
+  }
   const multiSeedManifest = JSON.parse(
     fs.readFileSync(
       path.join(
@@ -4271,6 +5151,85 @@ try {
     'Expected collapsed slot mapping to point at a single sampled point'
   );
 
+  const pairedPackageConfigs: Array<Map<string, string>> = [];
+  const pairedPackageLauncher = createFakeLauncher('packaged', (request) => {
+    const config = parseConfigFile(request.configPath);
+    pairedPackageConfigs.push(config);
+    const softMaxFtb = Number.parseFloat(config.get('CENTRAL_BANK_LTI_SOFT_MAX_FTB') ?? '0');
+    writeSensitivityCoreOutputs(request.outputPath, softMaxFtb);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const pairedPackageSubmit = submitSensitivityExperiment(
+    sensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      basePolicy: '2011',
+      policyPackageId: 'owner_occupier_lti_soft_max',
+      min: 5,
+      max: 5.8,
+      sampleCount: 2,
+      overrides: { N_SIMS: 1 },
+      confirmWarnings: true
+    },
+    { launcher: pairedPackageLauncher }
+  );
+  assert.equal(pairedPackageSubmit.accepted, true, 'Expected paired soft-LTI package sweep to be accepted');
+  const pairedPackageExperimentId = pairedPackageSubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, pairedPackageExperimentId).experiment;
+    return detail.status === 'succeeded';
+  });
+  const pairedPackageDetail = getSensitivityExperiment(sensitivityFixtureRoot, pairedPackageExperimentId).experiment;
+  assert.equal(pairedPackageDetail.parameter.key, 'owner_occupier_lti_soft_max', 'Expected package id in metadata key');
+  assert.equal(
+    pairedPackageDetail.parameter.baselineValue,
+    null,
+    'Expected paired package baseline scalar to be null when true base values differ'
+  );
+  assert.deepEqual(
+    pairedPackageDetail.parameter.parameterKeys,
+    ['CENTRAL_BANK_LTI_SOFT_MAX_FTB', 'CENTRAL_BANK_LTI_SOFT_MAX_HM'],
+    'Expected paired package metadata to include both policy keys'
+  );
+  assert.deepEqual(
+    pairedPackageDetail.parameter.baselineValuesByKey,
+    {
+      CENTRAL_BANK_LTI_SOFT_MAX_FTB: 5.4,
+      CENTRAL_BANK_LTI_SOFT_MAX_HM: 5.6
+    },
+    'Expected paired package baseline to preserve key-specific 2011 values'
+  );
+  const pairedBaselinePoint = pairedPackageDetail.sampledPoints.find((point) => point.isBaseline);
+  assert.equal(pairedBaselinePoint?.value, null, 'Expected paired baseline point scalar value to be null');
+  assert.deepEqual(
+    pairedBaselinePoint?.valuesByKey,
+    {
+      CENTRAL_BANK_LTI_SOFT_MAX_FTB: 5.4,
+      CENTRAL_BANK_LTI_SOFT_MAX_HM: 5.6
+    },
+    'Expected paired baseline point to keep true key-specific values'
+  );
+  assert.ok(
+    pairedPackageConfigs.some(
+      (config) =>
+        config.get('CENTRAL_BANK_LTI_SOFT_MAX_FTB') === '5.4' &&
+        config.get('CENTRAL_BANK_LTI_SOFT_MAX_HM') === '5.6'
+    ),
+    'Expected paired baseline child config to keep distinct base values'
+  );
+  assert.deepEqual(
+    pairedPackageConfigs
+      .filter((config) => config.get('CENTRAL_BANK_LTI_SOFT_MAX_FTB') === config.get('CENTRAL_BANK_LTI_SOFT_MAX_HM'))
+      .map((config) => config.get('CENTRAL_BANK_LTI_SOFT_MAX_FTB'))
+      .sort(),
+    ['5', '5.8'],
+    'Expected paired sampled points to apply the shared sampled value to both keys'
+  );
+
   assert.throws(
     () =>
       submitSensitivityExperiment(sensitivityFixtureRoot, {
@@ -4280,7 +5239,7 @@ try {
         max: 20_000,
         confirmWarnings: true
       }),
-    /Central Bank policy/,
+    /Unsupported sensitivity parameter|Central Bank policy/,
     'Expected non-policy sensitivity parameter to be rejected'
   );
 
@@ -4288,6 +5247,7 @@ try {
     () =>
       submitSensitivityExperiment(sensitivityFixtureRoot, {
         baseline: 'v1.0',
+        basePolicy: '2011',
         parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
         min: 0.004,
         max: 0.006,
@@ -4323,6 +5283,7 @@ try {
 
   const cancelSubmit = submitSensitivityExperiment(sensitivityFixtureRoot, {
     baseline: 'v1.0',
+    basePolicy: '2011',
     parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
     min: 0.004,
     max: 0.006,
@@ -4331,6 +5292,11 @@ try {
   assert.equal(cancelSubmit.accepted, true, 'Expected cancel target sensitivity submit to be accepted');
   const cancelExperimentId = cancelSubmit.experiment?.experimentId ?? '';
   await waitUntil(() => sensitivityProcesses.length > 0);
+  assert.throws(
+    () => deleteSensitivityExperiment(sensitivityFixtureRoot, cancelExperimentId),
+    /Only finished sensitivity experiments can be deleted/,
+    'Expected active sensitivity experiments to be protected from deletion'
+  );
   cancelSensitivityExperiment(sensitivityFixtureRoot, cancelExperimentId);
   await waitUntil(() => {
     const detail = getSensitivityExperiment(sensitivityFixtureRoot, cancelExperimentId).experiment;
@@ -4397,6 +5363,43 @@ try {
   assert.ok(
     experimentsAfterReload.some((experiment) => experiment.experimentId === successExperimentId),
     'Expected persisted completed sensitivity experiment to reload from disk'
+  );
+  const deletedSensitivityExperiment = deleteSensitivityExperiment(sensitivityFixtureRoot, duplicateExperimentId);
+  assert.equal(deletedSensitivityExperiment.deleted, true, 'Expected sensitivity delete API to report success');
+  assert.equal(
+    deletedSensitivityExperiment.experimentId,
+    duplicateExperimentId,
+    'Expected sensitivity delete payload to return the deleted experiment id'
+  );
+  assert.ok(
+    !listSensitivityExperiments(sensitivityFixtureRoot).experiments.some(
+      (experiment) => experiment.experimentId === duplicateExperimentId
+    ),
+    'Expected deleted sensitivity experiment to be removed from experiment history'
+  );
+  assert.ok(
+    !fs.existsSync(path.join(sensitivityFixtureRoot, 'Results', 'experiments', 'sensitivity', duplicateExperimentId)),
+    'Expected deleted sensitivity experiment artifacts to be removed from Results'
+  );
+  assert.throws(
+    () => getSensitivityExperiment(sensitivityFixtureRoot, duplicateExperimentId),
+    /Unknown sensitivity experiment/,
+    'Expected deleted sensitivity experiment detail to be unavailable'
+  );
+  assert.throws(
+    () => getSensitivityExperimentResults(sensitivityFixtureRoot, duplicateExperimentId),
+    /Unknown sensitivity experiment/,
+    'Expected deleted sensitivity experiment results to be unavailable'
+  );
+  assert.throws(
+    () => getSensitivityExperimentCharts(sensitivityFixtureRoot, duplicateExperimentId),
+    /Unknown sensitivity experiment/,
+    'Expected deleted sensitivity experiment charts to be unavailable'
+  );
+  assert.throws(
+    () => deleteSensitivityExperiment(sensitivityFixtureRoot, 'missing-sensitivity-experiment'),
+    /Unknown sensitivity experiment/,
+    'Expected deleting an unknown sensitivity experiment to fail'
   );
 
   const legacyExperimentId = 'sensitivity-legacy-schema-fixture';
@@ -4992,18 +5995,35 @@ assert.ok(
   'Manual results overlay help copy should explain the dotted mean reference lines'
 );
 
+const sensitivityResultsViewSource = fs.readFileSync(
+  path.resolve(repoRoot, 'dashboard/src/pages/experiments/view/SensitivityResultsView.tsx'),
+  'utf-8'
+);
+assert.ok(
+  sensitivityResultsViewSource.includes('window.confirm') &&
+    sensitivityResultsViewSource.includes('deleteSensitivityExperiment'),
+  'Sensitivity results deletion should require confirmation before calling the delete API'
+);
+
 const appSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/App.tsx'), 'utf-8');
 assert.ok(
   appSource.includes('const experimentsVisible = true;'),
-  'App should expose experiments in dev, production, and non-dev preview views'
+  'App should expose experiments in dev, production, and preview views'
 );
 assert.ok(
   appSource.includes("from './pages/ValidationPage'"),
   'App should import the validation page when dev-only validation is available'
 );
 assert.ok(
-  appSource.includes('const validationVisible = isDevEnv && !isProdPreviewEnabled;'),
-  'App should gate validation behind the same true-dev visibility condition'
+  appSource.includes("const validationVisible = isDevEnv && viewMode === 'dev';"),
+  'App should gate validation behind the selected true-dev view'
+);
+assert.ok(
+  appSource.includes('VIEW_MODE_OPTIONS') &&
+    appSource.includes('Preview desktop') &&
+    appSource.includes('Preview cloud') &&
+    appSource.includes('dashboard.viewMode'),
+  'App should expose a persisted dev-only runtime view selector'
 );
 assert.ok(
   appSource.includes('<NavLink to="/compare">Calibration</NavLink>'),
@@ -5039,8 +6059,9 @@ assert.ok(
   'App should expose desktop results, logs, and support-bundle actions when Electron preload is available'
 );
 assert.ok(
-  appSource.includes('!isDesktopRuntime && authStatus.authEnabled'),
-  'Desktop mode should not render browser login/logout controls for the Electron-owned session token'
+  appSource.includes("const browserAuthControlsVisible = !isDesktopRuntime && viewMode !== 'preview_desktop';") &&
+    appSource.includes('browserAuthControlsVisible && authStatus.authEnabled'),
+  'Desktop mode and desktop preview should not render browser login/logout controls'
 );
 
 const validationPageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/ValidationPage.tsx'), 'utf-8');
@@ -5333,8 +6354,9 @@ assert.ok(
 );
 assert.ok(
   dashboardServerSource.includes("const isDevRuntime = options.isDevRuntime ?? (envValue('NODE_ENV').toLowerCase() !== 'production');") &&
-    dashboardServerSource.includes("input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && !isPreviewStrictRequest(req)"),
-  'Dev write bypass should remain limited to non-production, non-desktop requests outside Preview non-dev'
+    dashboardServerSource.includes("input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && viewMode === 'dev'") &&
+    dashboardServerSource.includes("viewMode === 'dev' || viewMode === 'preview_desktop'"),
+  'Dev write bypass should stay dev-only while local desktop preview can bypass download credentials'
 );
 
 assert.ok(

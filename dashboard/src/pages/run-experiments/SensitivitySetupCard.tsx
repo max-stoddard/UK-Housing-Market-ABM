@@ -1,4 +1,11 @@
-import type { ModelRunParameterDefinition, ModelRunSnapshotOption, ModelRunWarning } from '../../../shared/types';
+import type {
+  BasePolicyId,
+  BasePolicyOption,
+  ModelRunParameterDefinition,
+  ModelRunSnapshotOption,
+  ModelRunWarning,
+  SensitivityPolicyPackageDefinition
+} from '../../../shared/types';
 import {
   formatExperimentModelOption,
   orderExperimentModelOptions
@@ -8,8 +15,8 @@ import {
   isRecordSetting,
   RecordSettingsControl
 } from './GeneralModelControl';
-
-type NumericParameter = ModelRunParameterDefinition & { type: 'integer' | 'number' };
+import { InfoLabel } from './InfoLabel';
+import { SETTING_HELP } from './settingHelp';
 
 interface SensitivitySetupCardProps {
   executionDisabled: boolean;
@@ -17,9 +24,12 @@ interface SensitivitySetupCardProps {
   selectedBaseline: string;
   onBaselineChange: (baseline: string) => void;
   snapshots: ModelRunSnapshotOption[];
-  numericParameters: NumericParameter[];
-  parameterKey: string;
-  onParameterKeyChange: (value: string) => void;
+  basePolicies: BasePolicyOption[];
+  basePolicy: BasePolicyId;
+  onBasePolicyChange: (basePolicy: BasePolicyId) => void;
+  policyPackages: SensitivityPolicyPackageDefinition[];
+  policyPackageId: string;
+  onPolicyPackageChange: (value: string) => void;
   minValue: string;
   maxValue: string;
   onMinValueChange: (value: string) => void;
@@ -33,7 +43,7 @@ interface SensitivitySetupCardProps {
   onMaxWorkersChange: (value: string) => void;
   title: string;
   onTitleChange: (value: string) => void;
-  selectedParameter: NumericParameter | null;
+  selectedPackage: SensitivityPolicyPackageDefinition | null;
   warnings: ModelRunWarning[];
   isSubmitting: boolean;
   isCanceling: boolean;
@@ -50,9 +60,12 @@ export function SensitivitySetupCard({
   selectedBaseline,
   onBaselineChange,
   snapshots,
-  numericParameters,
-  parameterKey,
-  onParameterKeyChange,
+  basePolicies,
+  basePolicy,
+  onBasePolicyChange,
+  policyPackages,
+  policyPackageId,
+  onPolicyPackageChange,
   minValue,
   maxValue,
   onMinValueChange,
@@ -66,7 +79,7 @@ export function SensitivitySetupCard({
   onMaxWorkersChange,
   title,
   onTitleChange,
-  selectedParameter,
+  selectedPackage,
   warnings,
   isSubmitting,
   isCanceling,
@@ -78,8 +91,10 @@ export function SensitivitySetupCard({
 }: SensitivitySetupCardProps) {
   const orderedSnapshots = orderExperimentModelOptions(snapshots);
   const selectedSnapshot = orderedSnapshots.find((snapshot) => snapshot.version === selectedBaseline) ?? null;
+  const selectedBasePolicy = basePolicies.find((policy) => policy.id === basePolicy) ?? null;
   const recordParameters = parameters.filter((parameter) => parameter.group === 'General model control' && isRecordSetting(parameter));
-  const sampleValues = buildSensitivitySampleValues(selectedParameter, minValue, maxValue, sampleCount);
+  const sampleValues = buildSensitivitySampleValues(selectedPackage, selectedBasePolicy, minValue, maxValue, sampleCount);
+  const basePolicyValues = selectedPackage && selectedBasePolicy ? formatPackageBaseValues(selectedPackage, selectedBasePolicy) : null;
   const simulationDuration = String(formValues.N_STEPS ?? '');
   const monteCarloRuns = String(formValues.N_SIMS ?? '');
 
@@ -95,22 +110,22 @@ export function SensitivitySetupCard({
         <>
           <div className="run-form-head sensitivity-run-form-head">
             <label className="sensitivity-policy-field">
-              Sensitivity policy parameter
+              <InfoLabel label="Sensitivity policy package" info={SETTING_HELP.sensitivityPolicyPackage} />
               <select
-                value={parameterKey}
+                value={policyPackageId}
                 disabled={executionDisabled}
-                onChange={(event) => onParameterKeyChange(event.target.value)}
+                onChange={(event) => onPolicyPackageChange(event.target.value)}
               >
-                {numericParameters.map((parameter) => (
-                  <option key={parameter.key} value={parameter.key}>
-                    {parameter.title} ({parameter.key})
+                {policyPackages.map((policyPackage) => (
+                  <option key={policyPackage.id} value={policyPackage.id}>
+                    {policyPackage.title}
                   </option>
                 ))}
               </select>
             </label>
 
             <label className="sensitivity-title-field">
-              Optional experiment title
+              <InfoLabel label="Optional experiment title" info={SETTING_HELP.optionalExperimentTitle} />
               <input
                 type="text"
                 value={title}
@@ -122,7 +137,7 @@ export function SensitivitySetupCard({
             </label>
 
             <label className="sensitivity-version-field">
-              Calibration Parameter Version
+              <InfoLabel label="Calibration Parameter Version" info={SETTING_HELP.calibrationParameterVersion} />
               <select
                 value={selectedBaseline}
                 disabled={executionDisabled}
@@ -136,11 +151,26 @@ export function SensitivitySetupCard({
               </select>
             </label>
 
+            <label className="sensitivity-base-policy-field">
+              <InfoLabel label="Base policy" info={SETTING_HELP.basePolicy} />
+              <select
+                value={basePolicy}
+                disabled={executionDisabled}
+                onChange={(event) => onBasePolicyChange(event.target.value as BasePolicyId)}
+              >
+                {basePolicies.map((policy) => (
+                  <option key={policy.id} value={policy.id}>
+                    {policy.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <label className="sensitivity-min-field">
-              Min value
+              <InfoLabel label="Min value" info={SETTING_HELP.minValue} />
               <input
                 type="number"
-                step={selectedParameter?.type === 'integer' ? 1 : 'any'}
+                step={selectedPackage?.type === 'integer' ? 1 : 'any'}
                 value={minValue}
                 disabled={executionDisabled}
                 onChange={(event) => onMinValueChange(event.target.value)}
@@ -148,10 +178,10 @@ export function SensitivitySetupCard({
             </label>
 
             <label className="sensitivity-max-field">
-              Max value
+              <InfoLabel label="Max value" info={SETTING_HELP.maxValue} />
               <input
                 type="number"
-                step={selectedParameter?.type === 'integer' ? 1 : 'any'}
+                step={selectedPackage?.type === 'integer' ? 1 : 'any'}
                 value={maxValue}
                 disabled={executionDisabled}
                 onChange={(event) => onMaxValueChange(event.target.value)}
@@ -159,18 +189,7 @@ export function SensitivitySetupCard({
             </label>
 
             <label className="sensitivity-sample-field">
-              <span className="sensitivity-field-label">
-                Sample count
-                <span className="sensitivity-info-trigger" tabIndex={0} aria-label="Sample count information">
-                  <span aria-hidden="true" className="sensitivity-info-icon">
-                    i
-                  </span>
-                  <span role="tooltip" className="sensitivity-info-tooltip">
-                    Sampled parameter values include min and max. The baseline point is added when it is not already on the
-                    uniform grid.
-                  </span>
-                </span>
-              </span>
+              <InfoLabel label="Sample count" info={SETTING_HELP.sampleCount} />
               <input
                 type="number"
                 step={1}
@@ -182,6 +201,23 @@ export function SensitivitySetupCard({
             </label>
           </div>
 
+          <section className="policy-summary-panel sensitivity-policy-summary" aria-label="Sensitivity policy summaries">
+            {selectedBasePolicy ? (
+              <div className="policy-summary-item">
+                <span>Base policy</span>
+                <h4>{selectedBasePolicy.title}</h4>
+                <p>{selectedBasePolicy.summary}</p>
+              </div>
+            ) : null}
+            {selectedPackage ? (
+              <div className="policy-summary-item">
+                <span>Sensitivity package</span>
+                <h4>{selectedPackage.title}</h4>
+                <p>{selectedPackage.description}</p>
+              </div>
+            ) : null}
+          </section>
+
           <div className="run-param-groups">
             <GeneralModelControl
               mode="sensitivity"
@@ -191,7 +227,7 @@ export function SensitivitySetupCard({
               onFormValueChange={onFormValueChange}
               maxWorkers={maxWorkers}
               onMaxWorkersChange={onMaxWorkersChange}
-              maxWorkersHint="Maximum independent point/seed model runs to execute in parallel."
+              maxWorkersHint={SETTING_HELP.maxWorkers}
               showRecordSettings={false}
             />
 
@@ -220,12 +256,16 @@ export function SensitivitySetupCard({
               <h4>Experiment summary</h4>
               <dl>
                 <div>
-                  <dt>Parameter varied</dt>
-                  <dd>{selectedParameter ? `${selectedParameter.title} (${selectedParameter.key})` : 'No parameter selected'}</dd>
+                  <dt>Package varied</dt>
+                  <dd>{selectedPackage ? selectedPackage.title : 'No package selected'}</dd>
                 </div>
                 <div>
-                  <dt>Baseline value</dt>
-                  <dd>{selectedParameter ? String(selectedParameter.defaultValue) : 'Not set'}</dd>
+                  <dt>Base policy</dt>
+                  <dd>{selectedBasePolicy ? selectedBasePolicy.title : 'Not set'}</dd>
+                </div>
+                <div>
+                  <dt>Base policy values</dt>
+                  <dd>{basePolicyValues ?? 'Not set'}</dd>
                 </div>
                 <div>
                   <dt>Points tested</dt>
@@ -288,23 +328,24 @@ export function SensitivitySetupCard({
 }
 
 function buildSensitivitySampleValues(
-  parameter: NumericParameter | null,
+  policyPackage: SensitivityPolicyPackageDefinition | null,
+  basePolicy: BasePolicyOption | null,
   minRaw: string,
   maxRaw: string,
   sampleCountRaw: string
 ): string[] {
-  if (!parameter) {
+  if (!policyPackage || !basePolicy) {
     return [];
   }
 
   const min = Number.parseFloat(minRaw);
   const max = Number.parseFloat(maxRaw);
-  const baseline = Number(parameter.defaultValue);
+  const baseValues = getPackageBaseValues(policyPackage, basePolicy);
+  const baseline = getCommonValue(baseValues);
   const sampleCount = Number.parseFloat(sampleCountRaw);
   if (
     !Number.isFinite(min) ||
     !Number.isFinite(max) ||
-    !Number.isFinite(baseline) ||
     !Number.isFinite(sampleCount) ||
     !Number.isInteger(sampleCount) ||
     sampleCount < 2 ||
@@ -314,7 +355,7 @@ function buildSensitivitySampleValues(
   }
 
   const normalize = (value: number) => {
-    const rounded = parameter.type === 'integer' ? Math.round(value) : value;
+    const rounded = policyPackage.type === 'integer' ? Math.round(value) : value;
     return Object.is(rounded, -0) ? 0 : rounded;
   };
   const values = new Set<number>();
@@ -322,9 +363,44 @@ function buildSensitivitySampleValues(
     const value = index === sampleCount - 1 ? max : min + ((max - min) * index) / (sampleCount - 1);
     values.add(normalize(value));
   }
-  if (baseline >= min && baseline <= max) {
+  if (baseline !== null && baseline >= min && baseline <= max) {
     values.add(normalize(baseline));
   }
 
-  return [...values].sort((left, right) => left - right).map((value) => (Number.isInteger(value) ? String(value) : String(Number(value.toFixed(6)))));
+  const formattedValues = [...values]
+    .sort((left, right) => left - right)
+    .map((value) => formatPolicyValue(value, policyPackage.type));
+  const usesDistinctBaseValues = baseline === null && baseValues.every((value) => value >= min && value <= max);
+  return usesDistinctBaseValues ? [`base policy values (${formatPackageBaseValues(policyPackage, basePolicy)})`, ...formattedValues] : formattedValues;
+}
+
+function getPackageBaseValues(policyPackage: SensitivityPolicyPackageDefinition, basePolicy: BasePolicyOption): number[] {
+  return policyPackage.parameterKeys
+    .map((parameterKey) => Number(basePolicy.values[parameterKey]))
+    .filter((value) => Number.isFinite(value));
+}
+
+function getCommonValue(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  const [firstValue] = values;
+  return values.every((value) => value === firstValue) ? firstValue : null;
+}
+
+function formatPackageBaseValues(policyPackage: SensitivityPolicyPackageDefinition, basePolicy: BasePolicyOption): string {
+  const values = getPackageBaseValues(policyPackage, basePolicy);
+  if (values.length === 0) {
+    return 'Not set';
+  }
+  const commonValue = getCommonValue(values);
+  if (commonValue !== null) {
+    return formatPolicyValue(commonValue, policyPackage.type);
+  }
+  return values.map((value) => formatPolicyValue(value, policyPackage.type)).join(', ');
+}
+
+function formatPolicyValue(value: number, type: SensitivityPolicyPackageDefinition['type']): string {
+  const normalized = type === 'integer' ? Math.round(value) : value;
+  return Number.isInteger(normalized) ? String(normalized) : String(Number(normalized.toFixed(6)));
 }

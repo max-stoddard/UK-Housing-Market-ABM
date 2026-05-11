@@ -10,6 +10,45 @@ export interface VersionLabelState {
 }
 
 const RESULTS_RUN_VERSION_PATTERN = /^(v\d+(?:\.\d+)*)-output$/;
+const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo']);
+const BEST_2024_VERSION = 'v4.4';
+const FIRST_2024_VERSION = 'v1.0';
+const LAST_PREFIXED_2024_VERSION = 'v4.18';
+
+function parseVersionParts(version: string): number[] {
+  const normalized = version.replace(/^v/i, '').toLowerCase();
+  const suffixMatch = normalized.match(/o+$/u);
+  const suffixRank = suffixMatch?.[0].length ?? 0;
+  const numeric = suffixRank > 0 ? normalized.slice(0, -suffixRank) : normalized;
+  return numeric
+    .split('.')
+    .map((part) => Number.parseInt(part, 10))
+    .concat(suffixRank);
+}
+
+function compareVersionIds(left: string, right: string): number {
+  const leftParts = parseVersionParts(left);
+  const rightParts = parseVersionParts(right);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftPart = leftParts[index] ?? 0;
+    const rightPart = rightParts[index] ?? 0;
+    if (leftPart !== rightPart) {
+      return leftPart - rightPart;
+    }
+  }
+
+  if (leftParts.length !== rightParts.length) {
+    return leftParts.length - rightParts.length;
+  }
+
+  return left.localeCompare(right);
+}
+
+function is2024PrefixedVersion(version: string): boolean {
+  return compareVersionIds(version, FIRST_2024_VERSION) >= 0 && compareVersionIds(version, LAST_PREFIXED_2024_VERSION) <= 0;
+}
 
 export function getLatestStableVersion(versions: readonly string[], inProgressVersions: readonly string[]): string {
   const inProgressSet = new Set(inProgressVersions);
@@ -69,6 +108,26 @@ export function buildResultsRunVersionLabelState(
   return buildVersionLabelState(version, getLatestStableVersion(versions, inProgressVersions), new Set(inProgressVersions));
 }
 
+export function formatModelVersionBaseLabel(version: string, state?: Pick<VersionLabelState, 'isLatest'>): string {
+  if (LEGACY_2011_VERSIONS.has(version)) {
+    return `2011 model ${version}`;
+  }
+
+  if (version === BEST_2024_VERSION) {
+    return `Best 2024 model ${version}`;
+  }
+
+  if (state?.isLatest) {
+    return `Latest 2024 model ${version}`;
+  }
+
+  if (is2024PrefixedVersion(version)) {
+    return `2024 model ${version}`;
+  }
+
+  return version;
+}
+
 function formatKind(kind: VersionLabelKind): string {
   switch (kind) {
     case 'in_progress':
@@ -81,8 +140,9 @@ function formatKind(kind: VersionLabelKind): string {
 }
 
 export function formatVersionOptionLabel(version: string, state: VersionLabelState): string {
+  const baseLabel = formatModelVersionBaseLabel(version, state);
   if (state.kinds.length === 0) {
-    return version;
+    return baseLabel;
   }
-  return `${version} (${state.kinds.map(formatKind).join(', ')})`;
+  return `${baseLabel} (${state.kinds.map(formatKind).join(', ')})`;
 }

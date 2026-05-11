@@ -28,6 +28,9 @@ type RemoteRunRequest = {
   sourceBundleKey: string;
   artifactS3Prefix: string;
   payload: ModelRunSubmitRequest | SensitivityExperimentCreateRequest;
+  preparedSensitivity?: {
+    experimentId: string;
+  };
 };
 
 type CliArgs = {
@@ -82,6 +85,33 @@ function sleep(ms: number): Promise<void> {
 function appendLog(logPath: string, line: string): void {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
   fs.appendFileSync(logPath, `${line}\n`, 'utf-8');
+}
+
+function validateRemoteSensitivityExperimentId(experimentId: string): string {
+  const normalized = experimentId.trim();
+  if (!/^sensitivity-\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(normalized)) {
+    throw new Error(`Invalid remote sensitivity experiment id: ${experimentId}`);
+  }
+  return normalized;
+}
+
+function resolveRemoteSensitivityExperimentId(request: RemoteRunRequest): string {
+  if (request.preparedSensitivity?.experimentId) {
+    return validateRemoteSensitivityExperimentId(request.preparedSensitivity.experimentId);
+  }
+  const legacyPrefix = 'sensitivity:';
+  if (request.jobRef.startsWith(legacyPrefix)) {
+    return validateRemoteSensitivityExperimentId(request.jobRef.slice(legacyPrefix.length));
+  }
+  throw new Error(`Remote sensitivity request is missing prepared experiment identity: ${request.jobRef}`);
+}
+
+function parseRemoteCreatedAt(createdAt: string): Date {
+  const date = new Date(createdAt);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error(`Invalid remote request createdAt timestamp: ${createdAt}`);
+  }
+  return date;
 }
 
 function handleTermination(signal: NodeJS.Signals): void {
@@ -181,7 +211,10 @@ async function runManual(request: RemoteRunRequest, paths: ReturnType<typeof cre
 }
 
 async function runSensitivity(request: RemoteRunRequest, paths: ReturnType<typeof createDevelopmentRuntimePaths>, artifactRoot: string, logPath: string): Promise<void> {
+  const experimentId = resolveRemoteSensitivityExperimentId(request);
   const submit = submitSensitivityExperiment(paths, request.payload as SensitivityExperimentCreateRequest, {
+    now: parseRemoteCreatedAt(request.createdAt),
+    forcedExperimentId: experimentId,
     logSink: (line) => appendLog(logPath, line)
   });
   if (!submit.accepted || !submit.experiment) {

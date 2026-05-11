@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
+  BasePolicyId,
+  BasePolicyOption,
   ExperimentJobSummary,
   ModelRunOptionsPayload,
   ModelRunParameterDefinition,
   ModelRunSubmitRequest,
-  ModelRunWarning
+  ModelRunWarning,
+  SensitivityPolicyPackageDefinition
 } from '../../../../shared/types';
 import { normalizeSensitivitySampleValue } from '../../../../shared/sensitivitySampling';
+import { DEFAULT_SENSITIVITY_POLICY_PACKAGE_ID } from '../../../../shared/policyCatalogue';
 import {
   API_RETRY_DELAY_MS,
   cancelExperimentJob,
@@ -19,19 +23,22 @@ import {
 import { useExperimentLogs } from '../../run-experiments/useExperimentLogs';
 
 export type FormValue = string | boolean;
-export type NumericParameter = ModelRunParameterDefinition & { type: 'integer' | 'number' };
 
 export interface ExperimentRunController {
   options: ModelRunOptionsPayload | null;
   selectedBaseline: string;
+  basePolicy: BasePolicyId;
+  setBasePolicy: (value: BasePolicyId) => void;
   title: string;
   setTitle: (value: string) => void;
   formValues: Record<string, FormValue>;
   warnings: ModelRunWarning[];
   sensitivityTitle: string;
   setSensitivityTitle: (value: string) => void;
-  sensitivityParameterKey: string;
-  setSensitivityParameterKey: (value: string) => void;
+  sensitivityBasePolicy: BasePolicyId;
+  setSensitivityBasePolicy: (value: BasePolicyId) => void;
+  sensitivityPolicyPackageId: string;
+  setSensitivityPolicyPackageId: (value: string) => void;
   sensitivityMin: string;
   setSensitivityMin: (value: string) => void;
   sensitivityMax: string;
@@ -48,8 +55,8 @@ export interface ExperimentRunController {
   logLines: string[];
   logError: string;
   policyParameters: ModelRunParameterDefinition[];
-  numericSensitivityParameters: NumericParameter[];
-  selectedSensitivityParameter: NumericParameter | null;
+  sensitivityPolicyPackages: SensitivityPolicyPackageDefinition[];
+  selectedSensitivityPackage: SensitivityPolicyPackageDefinition | null;
   isLoadingOptions: boolean;
   isLoadingJobs: boolean;
   isSubmitting: boolean;
@@ -89,16 +96,37 @@ function parseJobRefId(jobRef: string | null): string {
   return match?.[2] ?? jobRef;
 }
 
-function toInitialFormValues(parameters: ModelRunParameterDefinition[]): Record<string, FormValue> {
+function toInitialFormValues(
+  parameters: ModelRunParameterDefinition[],
+  basePolicy: BasePolicyOption | null
+): Record<string, FormValue> {
   const values: Record<string, FormValue> = {};
   for (const parameter of parameters) {
-    if (parameter.type === 'boolean') {
+    const basePolicyValue = basePolicy?.values[parameter.key];
+    if (typeof basePolicyValue === 'number') {
+      values[parameter.key] = String(basePolicyValue);
+    } else if (parameter.type === 'boolean') {
       values[parameter.key] = Boolean(parameter.defaultValue);
     } else {
       values[parameter.key] = String(parameter.defaultValue);
     }
   }
   return values;
+}
+
+function applyBasePolicyToFormValues(
+  parameters: ModelRunParameterDefinition[],
+  basePolicy: BasePolicyOption,
+  currentValues: Record<string, FormValue>
+): Record<string, FormValue> {
+  const knownKeys = new Set(parameters.map((parameter) => parameter.key));
+  const nextValues = { ...currentValues };
+  for (const [key, value] of Object.entries(basePolicy.values)) {
+    if (knownKeys.has(key)) {
+      nextValues[key] = String(value);
+    }
+  }
+  return nextValues;
 }
 
 function parseFormValue(parameter: ModelRunParameterDefinition, value: FormValue): number | boolean {
@@ -132,13 +160,39 @@ function isSameValue(left: number | boolean, right: number | boolean): boolean {
   return Math.abs(left - right) < 1e-12;
 }
 
-function buildDefaultSensitivityRange(parameter: NumericParameter): { min: string; max: string } {
-  const baseline = Number(parameter.defaultValue);
+function getPackageBaselineValues(
+  policyPackage: SensitivityPolicyPackageDefinition,
+  basePolicy: BasePolicyOption | null
+): number[] {
+  if (!basePolicy) {
+    return [];
+  }
+  return policyPackage.parameterKeys
+    .map((key) => basePolicy.values[key])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+}
+
+function getRepresentativePackageBaseline(
+  policyPackage: SensitivityPolicyPackageDefinition,
+  basePolicy: BasePolicyOption | null
+): number {
+  const values = getPackageBaselineValues(policyPackage, basePolicy);
+  if (values.length === 0) {
+    return Number.NaN;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function buildDefaultSensitivityRange(
+  policyPackage: SensitivityPolicyPackageDefinition,
+  basePolicy: BasePolicyOption | null
+): { min: string; max: string } {
+  const baseline = getRepresentativePackageBaseline(policyPackage, basePolicy);
   if (!Number.isFinite(baseline)) {
     return { min: '', max: '' };
   }
 
-  if (parameter.type === 'integer') {
+  if (policyPackage.type === 'integer') {
     if (baseline === 0) {
       return { min: '-1', max: '1' };
     }
@@ -160,23 +214,25 @@ function buildDefaultSensitivityRange(parameter: NumericParameter): { min: strin
 }
 
 function estimateSensitivityPointCount(
-  parameter: NumericParameter | null,
+  policyPackage: SensitivityPolicyPackageDefinition | null,
+  basePolicy: BasePolicyOption | null,
   minRaw: string,
   maxRaw: string,
   sampleCountRaw: string
 ): number {
-  if (!parameter) {
+  if (!policyPackage || !basePolicy) {
     return 0;
   }
 
   const min = Number.parseFloat(minRaw);
   const max = Number.parseFloat(maxRaw);
-  const baseline = Number(parameter.defaultValue);
   const sampleCount = Number.parseFloat(sampleCountRaw);
+  const baselineValues = getPackageBaselineValues(policyPackage, basePolicy);
   if (
     !Number.isFinite(min) ||
     !Number.isFinite(max) ||
-    !Number.isFinite(baseline) ||
+    baselineValues.length !== policyPackage.parameterKeys.length ||
+    baselineValues.some((value) => value < min || value > max) ||
     !Number.isFinite(sampleCount) ||
     !Number.isInteger(sampleCount) ||
     sampleCount < 2 ||
@@ -188,13 +244,19 @@ function estimateSensitivityPointCount(
   const values = Array.from({ length: sampleCount }, (_, index) =>
     normalizeSensitivitySampleValue(
       index === sampleCount - 1 ? max : min + ((max - min) * index) / (sampleCount - 1),
-      parameter.type
+      policyPackage.type
     )
   );
-  if (baseline >= min && baseline <= max) {
-    values.push(normalizeSensitivitySampleValue(baseline, parameter.type));
+  const normalizedBaselineValues = baselineValues.map((value) => normalizeSensitivitySampleValue(value, policyPackage.type));
+  const [firstBaseline] = normalizedBaselineValues;
+  const hasSharedBaseline =
+    firstBaseline !== undefined && normalizedBaselineValues.every((value) => Math.abs(value - firstBaseline) < 1e-12);
+  if (hasSharedBaseline && firstBaseline !== undefined) {
+    values.push(firstBaseline);
+  } else {
+    values.push(Number.NaN);
   }
-  return new Set(values).size;
+  return new Set(values.map((value) => (Number.isNaN(value) ? 'base-policy' : String(value)))).size;
 }
 
 function parsePositiveInteger(rawValue: FormValue | undefined): number {
@@ -222,13 +284,15 @@ export function useExperimentRunController({
 }: UseExperimentRunControllerOptions): ExperimentRunController {
   const [options, setOptions] = useState<ModelRunOptionsPayload | null>(null);
   const [selectedBaseline, setSelectedBaseline] = useState<string>('');
+  const [basePolicy, setBasePolicyState] = useState<BasePolicyId>('2011');
 
   const [title, setTitle] = useState<string>('');
   const [formValues, setFormValues] = useState<Record<string, FormValue>>({});
   const [warnings, setWarnings] = useState<ModelRunWarning[]>([]);
 
   const [sensitivityTitle, setSensitivityTitle] = useState<string>('');
-  const [sensitivityParameterKey, setSensitivityParameterKey] = useState<string>('');
+  const [sensitivityBasePolicy, setSensitivityBasePolicyState] = useState<BasePolicyId>('2011');
+  const [sensitivityPolicyPackageId, setSensitivityPolicyPackageId] = useState<string>('');
   const [sensitivityMin, setSensitivityMin] = useState<string>('');
   const [sensitivityMax, setSensitivityMax] = useState<string>('');
   const [sensitivitySampleCount, setSensitivitySampleCount] = useState<string>('5');
@@ -265,18 +329,16 @@ export function useExperimentRunController({
     [options]
   );
 
-  const numericSensitivityParameters = useMemo(
-    () =>
-      (options?.parameters ?? []).filter(
-        (parameter): parameter is NumericParameter =>
-          parameter.group === 'Central Bank policy' && (parameter.type === 'integer' || parameter.type === 'number')
-      ),
-    [options]
+  const selectedSensitivityBasePolicy = useMemo(
+    () => options?.basePolicies.find((item) => item.id === sensitivityBasePolicy) ?? null,
+    [options, sensitivityBasePolicy]
   );
 
-  const selectedSensitivityParameter = useMemo(
-    () => numericSensitivityParameters.find((parameter) => parameter.key === sensitivityParameterKey) ?? null,
-    [numericSensitivityParameters, sensitivityParameterKey]
+  const sensitivityPolicyPackages = useMemo(() => options?.sensitivityPolicyPackages ?? [], [options]);
+
+  const selectedSensitivityPackage = useMemo(
+    () => sensitivityPolicyPackages.find((policyPackage) => policyPackage.id === sensitivityPolicyPackageId) ?? null,
+    [sensitivityPolicyPackageId, sensitivityPolicyPackages]
   );
 
   const activeSensitivityJob = useMemo(
@@ -298,10 +360,14 @@ export function useExperimentRunController({
 
     try {
       const payload = await fetchModelRunOptions(requestedBaseline);
-      const initialValues = toInitialFormValues(payload.parameters);
+      const defaultBasePolicy = payload.defaultBasePolicy;
+      const defaultBasePolicyOption = payload.basePolicies.find((item) => item.id === defaultBasePolicy) ?? null;
+      const initialValues = toInitialFormValues(payload.parameters, defaultBasePolicyOption);
       const initialSensitivityValues = { ...initialValues, N_SIMS: '5' };
       setOptions(payload);
       setSelectedBaseline(payload.requestedBaseline);
+      setBasePolicyState(defaultBasePolicy);
+      setSensitivityBasePolicyState(defaultBasePolicy);
       setFormValues(initialValues);
       setSensitivityFormValues(initialSensitivityValues);
       setWarnings([]);
@@ -398,38 +464,41 @@ export function useExperimentRunController({
   }, [options?.executionEnabled, selectedJobRef]);
 
   useEffect(() => {
-    const firstNumeric = numericSensitivityParameters[0];
-    if (!firstNumeric) {
-      setSensitivityParameterKey('');
+    const firstPackage = sensitivityPolicyPackages[0];
+    if (!firstPackage) {
+      setSensitivityPolicyPackageId('');
       return;
     }
 
-    setSensitivityParameterKey((current) => {
-      if (current && numericSensitivityParameters.some((item) => item.key === current)) {
+    setSensitivityPolicyPackageId((current) => {
+      if (current && sensitivityPolicyPackages.some((item) => item.id === current)) {
         return current;
       }
-      return firstNumeric.key;
+      return (
+        sensitivityPolicyPackages.find((item) => item.id === DEFAULT_SENSITIVITY_POLICY_PACKAGE_ID)?.id ?? firstPackage.id
+      );
     });
-  }, [numericSensitivityParameters]);
+  }, [sensitivityPolicyPackages]);
 
   useEffect(() => {
-    if (!selectedSensitivityParameter) {
+    if (!selectedSensitivityPackage) {
       setSensitivityMin('');
       setSensitivityMax('');
       return;
     }
 
-    const defaults = buildDefaultSensitivityRange(selectedSensitivityParameter);
+    const defaults = buildDefaultSensitivityRange(selectedSensitivityPackage, selectedSensitivityBasePolicy);
     setSensitivityMin(defaults.min);
     setSensitivityMax(defaults.max);
-  }, [selectedSensitivityParameter?.key, selectedBaseline]);
+  }, [selectedSensitivityBasePolicy, selectedSensitivityPackage?.id, selectedBaseline]);
 
   useEffect(() => {
     if (sensitivityMaxWorkersTouched) {
       return;
     }
     const pointCount = estimateSensitivityPointCount(
-      selectedSensitivityParameter,
+      selectedSensitivityPackage,
+      selectedSensitivityBasePolicy,
       sensitivityMin,
       sensitivityMax,
       sensitivitySampleCount
@@ -437,7 +506,8 @@ export function useExperimentRunController({
     const seedCount = parsePositiveInteger(sensitivityFormValues.N_SIMS);
     setSensitivityMaxWorkers(defaultMaxWorkers(pointCount * seedCount));
   }, [
-    selectedSensitivityParameter,
+    selectedSensitivityBasePolicy,
+    selectedSensitivityPackage,
     sensitivityFormValues.N_SIMS,
     sensitivityMax,
     sensitivityMaxWorkersTouched,
@@ -524,6 +594,32 @@ export function useExperimentRunController({
     void refreshOptions(nextBaseline);
   };
 
+  const onBasePolicyChange = (nextBasePolicy: BasePolicyId) => {
+    if (!options || nextBasePolicy === basePolicy) {
+      return;
+    }
+    const option = options.basePolicies.find((item) => item.id === nextBasePolicy);
+    if (!option) {
+      return;
+    }
+    setBasePolicyState(nextBasePolicy);
+    setFormValues((current) => applyBasePolicyToFormValues(options.parameters, option, current));
+    setWarnings([]);
+  };
+
+  const onSensitivityBasePolicyChange = (nextBasePolicy: BasePolicyId) => {
+    if (!options || nextBasePolicy === sensitivityBasePolicy) {
+      return;
+    }
+    const option = options.basePolicies.find((item) => item.id === nextBasePolicy);
+    if (!option) {
+      return;
+    }
+    setSensitivityBasePolicyState(nextBasePolicy);
+    setSensitivityFormValues((current) => applyBasePolicyToFormValues(options.parameters, option, current));
+    setSensitivityWarnings([]);
+  };
+
   const onFormValueChange = (parameter: ModelRunParameterDefinition, value: FormValue) => {
     setFormValues((current) => ({
       ...current,
@@ -549,6 +645,10 @@ export function useExperimentRunController({
     for (const parameter of options.parameters) {
       const rawValue = formValues[parameter.key];
       const parsedValue = parseFormValue(parameter, rawValue);
+      if (parameter.group === 'Central Bank policy') {
+        overrides[parameter.key] = parsedValue;
+        continue;
+      }
       if (!isSameValue(parsedValue, parameter.defaultValue)) {
         overrides[parameter.key] = parsedValue;
       }
@@ -556,6 +656,7 @@ export function useExperimentRunController({
 
     return {
       baseline: selectedBaseline,
+      basePolicy,
       title,
       overrides,
       confirmWarnings
@@ -612,8 +713,8 @@ export function useExperimentRunController({
   };
 
   const onSubmitSensitivity = async (confirmWarnings: boolean) => {
-    if (!selectedSensitivityParameter) {
-      setPageError('Select a numeric parameter for sensitivity.');
+    if (!selectedSensitivityPackage) {
+      setPageError('Select a policy package for sensitivity.');
       return;
     }
 
@@ -633,8 +734,9 @@ export function useExperimentRunController({
       }
       const response = await submitSensitivityExperiment({
         baseline: selectedBaseline,
+        basePolicy: sensitivityBasePolicy,
         title: sensitivityTitle,
-        parameterKey: selectedSensitivityParameter.key,
+        policyPackageId: selectedSensitivityPackage.id,
         min,
         max,
         sampleCount,
@@ -691,8 +793,8 @@ export function useExperimentRunController({
     }
   };
 
-  const onSensitivityParameterKeyChange = (value: string) => {
-    setSensitivityParameterKey(value);
+  const onSensitivityPolicyPackageChange = (value: string) => {
+    setSensitivityPolicyPackageId(value);
     setSensitivityWarnings([]);
   };
 
@@ -720,14 +822,18 @@ export function useExperimentRunController({
   return {
     options,
     selectedBaseline,
+    basePolicy,
+    setBasePolicy: onBasePolicyChange,
     title,
     setTitle,
     formValues,
     warnings,
     sensitivityTitle,
     setSensitivityTitle,
-    sensitivityParameterKey,
-    setSensitivityParameterKey: onSensitivityParameterKeyChange,
+    sensitivityBasePolicy,
+    setSensitivityBasePolicy: onSensitivityBasePolicyChange,
+    sensitivityPolicyPackageId,
+    setSensitivityPolicyPackageId: onSensitivityPolicyPackageChange,
     sensitivityMin,
     setSensitivityMin: onSensitivityMinChange,
     sensitivityMax,
@@ -744,8 +850,8 @@ export function useExperimentRunController({
     logLines,
     logError,
     policyParameters,
-    numericSensitivityParameters,
-    selectedSensitivityParameter,
+    sensitivityPolicyPackages,
+    selectedSensitivityPackage,
     isLoadingOptions,
     isLoadingJobs,
     isSubmitting,

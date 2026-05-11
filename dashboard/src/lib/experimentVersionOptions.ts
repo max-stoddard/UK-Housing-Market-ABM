@@ -1,5 +1,6 @@
 // Author: Max Stoddard
 import type { ModelRunSnapshotOption } from '../../shared/types';
+import { formatModelVersionBaseLabel } from './versionLabels';
 
 const OPTIMISED_2011_VERSION = 'v0oo';
 const ORIGINAL_2011_VERSION = 'v0';
@@ -26,19 +27,11 @@ export function orderExperimentModelOptions(snapshots: readonly ModelRunSnapshot
 }
 
 export function formatExperimentModelOption(snapshot: ModelRunSnapshotOption, snapshots: readonly ModelRunSnapshotOption[]): string {
-  if (snapshot.version === OPTIMISED_2011_VERSION) {
-    return 'Optimised 2011 model (v0oo, Stable)';
-  }
-  if (snapshot.version === ORIGINAL_2011_VERSION) {
-    return '2011 model (v0, Stable)';
-  }
-
   const latest2024 =
     snapshots.find((item) => !LEGACY_2011_VERSIONS.has(item.version) && item.status !== 'in_progress') ??
     snapshots.find((item) => !LEGACY_2011_VERSIONS.has(item.version));
-  if (latest2024?.version === snapshot.version) {
-    return `Latest 2024 model (${snapshot.version}, Beta${statusSuffix(snapshot)})`;
-  }
+  const baseLabel = formatModelVersionBaseLabel(snapshot.version, { isLatest: latest2024?.version === snapshot.version });
+  const releaseState = LEGACY_2011_VERSIONS.has(snapshot.version) ? 'Stable' : `Beta${statusSuffix(snapshot)}`;
 
-  return `${snapshot.version} model (Beta${statusSuffix(snapshot)})`;
+  return `${baseLabel} (${releaseState})`;
 }

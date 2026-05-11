@@ -1,10 +1,18 @@
 import { Link } from 'react-router-dom';
-import type { ModelRunParameterDefinition, ModelRunSnapshotOption, ModelRunWarning } from '../../../shared/types';
+import type {
+  BasePolicyId,
+  BasePolicyOption,
+  ModelRunParameterDefinition,
+  ModelRunSnapshotOption,
+  ModelRunWarning
+} from '../../../shared/types';
 import {
   formatExperimentModelOption,
   orderExperimentModelOptions
 } from '../../lib/experimentVersionOptions';
-import { GeneralModelControl } from './GeneralModelControl';
+import { GeneralModelControl, ParameterInput } from './GeneralModelControl';
+import { InfoLabel } from './InfoLabel';
+import { SETTING_HELP } from './settingHelp';
 
 type FormValue = string | boolean;
 
@@ -13,6 +21,9 @@ interface ManualRunSetupCardProps {
   isLoadingOptions: boolean;
   selectedBaseline: string;
   onBaselineChange: (baseline: string) => void;
+  basePolicies: BasePolicyOption[];
+  basePolicy: BasePolicyId;
+  onBasePolicyChange: (basePolicy: BasePolicyId) => void;
   snapshots: ModelRunSnapshotOption[];
   title: string;
   onTitleChange: (value: string) => void;
@@ -32,6 +43,9 @@ export function ManualRunSetupCard({
   isLoadingOptions,
   selectedBaseline,
   onBaselineChange,
+  basePolicies,
+  basePolicy,
+  onBasePolicyChange,
   snapshots,
   title,
   onTitleChange,
@@ -46,6 +60,7 @@ export function ManualRunSetupCard({
   onSubmit
 }: ManualRunSetupCardProps) {
   const orderedSnapshots = orderExperimentModelOptions(snapshots);
+  const selectedBasePolicy = basePolicies.find((policy) => policy.id === basePolicy);
 
   return (
     <article className="results-card">
@@ -59,7 +74,7 @@ export function ManualRunSetupCard({
         <>
           <div className="run-form-head">
             <label>
-              Calibration Parameter Version
+              <InfoLabel label="Calibration Parameter Version" info={SETTING_HELP.calibrationParameterVersion} />
               <select
                 value={selectedBaseline}
                 disabled={executionDisabled}
@@ -77,7 +92,22 @@ export function ManualRunSetupCard({
             </label>
 
             <label>
-              Optional run title
+              <InfoLabel label="Base policy" info={SETTING_HELP.basePolicy} />
+              <select
+                value={basePolicy}
+                disabled={executionDisabled}
+                onChange={(event) => onBasePolicyChange(event.target.value as BasePolicyId)}
+              >
+                {basePolicies.map((policy) => (
+                  <option key={policy.id} value={policy.id}>
+                    {policy.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <InfoLabel label="Optional run title" info={SETTING_HELP.optionalRunTitle} />
               <input
                 type="text"
                 value={title}
@@ -86,9 +116,18 @@ export function ManualRunSetupCard({
                 maxLength={120}
                 placeholder="Policy scenario label"
               />
-              <small>Output folder uses: &lt;title&gt; &lt;calibration-version&gt;.</small>
             </label>
           </div>
+
+          {selectedBasePolicy ? (
+            <section className="policy-summary-panel" aria-label="Base policy summary">
+              <div className="policy-summary-item">
+                <span>Base policy</span>
+                <h4>{selectedBasePolicy.title}</h4>
+                <p>{selectedBasePolicy.summary}</p>
+              </div>
+            </section>
+          ) : null}
 
           {warnings.length > 0 && (
             <div className="run-warning-card">
@@ -116,18 +155,14 @@ export function ManualRunSetupCard({
                 <h4>Central Bank policy</h4>
                 <div className="run-param-grid">
                   {policyParameters.map((parameter) => (
-                    <label key={parameter.key} className="run-param-item">
-                      <span>{parameter.title}</span>
-                      <small>{parameter.key}</small>
-                      <input
-                        type="number"
-                        step={parameter.type === 'integer' ? 1 : 'any'}
-                        value={String(formValues[parameter.key] ?? '')}
-                        disabled={executionDisabled}
-                        onChange={(event) => onFormValueChange(parameter, event.target.value)}
-                      />
-                      <small>{parameter.description}</small>
-                    </label>
+                    <ParameterInput
+                      key={parameter.key}
+                      parameter={parameter}
+                      value={formValues[parameter.key]}
+                      executionDisabled={executionDisabled}
+                      mode="manual"
+                      onChange={onFormValueChange}
+                    />
                   ))}
                 </div>
               </section>

@@ -15,8 +15,17 @@ import type {
   ResultsStorageSummary,
   ModelRunSubmitRequest,
   ModelRunSubmitResponse,
-  ModelRunWarning
+  ModelRunWarning,
+  BasePolicyId
 } from '../../shared/types';
+import {
+  BASE_POLICY_OPTIONS,
+  SENSITIVITY_POLICY_PACKAGES,
+  assertCompatiblePolicyPackageTypes,
+  getBasePolicyOption,
+  getDefaultBasePolicyId,
+  isBasePolicyId
+} from '../../shared/policyCatalogue';
 import { getInProgressVersions, getVersions } from './service';
 import {
   appendLogLine,
@@ -334,6 +343,7 @@ interface PrepareModelRunSubmissionOptions {
 
 interface PreparedModelRunSubmission {
   baseline: string;
+  basePolicy: BasePolicyId;
   title?: string;
   runId: string;
   jobId: string;
@@ -557,6 +567,47 @@ function getParameterDefinitionsForBaseline(pathsInput: RuntimePathInput, baseli
       defaultValue: parseTypedConfigValue(rawValue, definition.type, definition.key)
     };
   });
+}
+
+function getSensitivityPolicyPackagesForParameters(
+  parameters: ModelRunParameterDefinition[]
+): ModelRunOptionsPayload['sensitivityPolicyPackages'] {
+  const parameterTypesByKey = new Map(parameters.map((parameter) => [parameter.key, parameter.type]));
+  return SENSITIVITY_POLICY_PACKAGES.map((packageDefinition) => {
+    assertCompatiblePolicyPackageTypes(packageDefinition, parameterTypesByKey);
+    return {
+      ...packageDefinition,
+      parameterKeys: [...packageDefinition.parameterKeys]
+    };
+  });
+}
+
+function resolveBasePolicyId(baseline: string, rawBasePolicy: BasePolicyId | undefined): BasePolicyId {
+  if (rawBasePolicy === undefined) {
+    return getDefaultBasePolicyId(baseline);
+  }
+  if (!isBasePolicyId(rawBasePolicy)) {
+    throw new Error(`Unsupported base policy: ${rawBasePolicy}`);
+  }
+  return rawBasePolicy;
+}
+
+function applyBasePolicyValues(
+  basePolicy: BasePolicyId,
+  parameterDefMap: ReadonlyMap<string, ModelRunParameterDefinition>,
+  valuesByKey: Map<string, number | boolean>,
+  normalizedOverrides: Map<string, string>,
+  overriddenParameters: Record<string, number | boolean>
+): void {
+  const policy = getBasePolicyOption(basePolicy);
+  for (const [key, value] of Object.entries(policy.values)) {
+    if (!parameterDefMap.has(key)) {
+      throw new Error(`Base policy ${basePolicy} references unsupported parameter ${key}.`);
+    }
+    valuesByKey.set(key, value);
+    normalizedOverrides.set(key, String(value));
+    overriddenParameters[key] = value;
+  }
 }
 
 function rewriteConfigForJob(
@@ -983,13 +1034,17 @@ export function getModelRunOptions(
 ): ModelRunOptionsPayload {
   const paths = resolveRuntimePaths(pathsInput);
   const { baseline, snapshots, defaultBaseline } = resolveBaseline(paths, requestedBaseline);
+  const parameters = getParameterDefinitionsForBaseline(paths, baseline);
 
   return {
     executionEnabled,
     snapshots,
     defaultBaseline,
     requestedBaseline: baseline,
-    parameters: getParameterDefinitionsForBaseline(paths, baseline)
+    parameters,
+    basePolicies: BASE_POLICY_OPTIONS,
+    defaultBasePolicy: getDefaultBasePolicyId(baseline),
+    sensitivityPolicyPackages: getSensitivityPolicyPackagesForParameters(parameters)
   };
 }
 
@@ -1135,6 +1190,8 @@ export function prepareModelRunSubmission(
   const overriddenParameters: Record<string, number | boolean> = {};
 
   const valuesByKey = new Map(parameterDefinitions.map((definition) => [definition.key, definition.defaultValue]));
+  const basePolicy = resolveBasePolicyId(baseline, payload.basePolicy);
+  applyBasePolicyValues(basePolicy, parameterDefMap, valuesByKey, normalizedOverrides, overriddenParameters);
 
   for (const [key, rawValue] of overrideEntries) {
     const definition = parameterDefMap.get(key);
@@ -1199,6 +1256,7 @@ export function prepareModelRunSubmission(
     accepted: true,
     prepared: {
       baseline,
+      basePolicy,
       title,
       runId,
       jobId,

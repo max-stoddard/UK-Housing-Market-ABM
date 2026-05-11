@@ -13,6 +13,9 @@ export function ManualRunSetupPanel({ controller, runActionsDisabled }: ManualRu
       isLoadingOptions={controller.isLoadingOptions || !controller.options}
       selectedBaseline={controller.selectedBaseline}
       onBaselineChange={controller.onBaselineChange}
+      basePolicies={controller.options?.basePolicies ?? []}
+      basePolicy={controller.basePolicy}
+      onBasePolicyChange={controller.setBasePolicy}
       snapshots={controller.options?.snapshots ?? []}
       title={controller.title}
       onTitleChange={controller.setTitle}
