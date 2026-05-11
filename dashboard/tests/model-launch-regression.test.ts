@@ -10,6 +10,7 @@ import {
   createMavenModelLauncher,
   createPackagedModelLauncher,
   getConfiguredMavenBin,
+  prepareCommandForSpawn,
   type ModelLauncher,
   type ModelLaunchRequest
 } from '../server/lib/modelLauncher.js';
@@ -30,8 +31,8 @@ interface ProcessResult {
 
 function runCommand(command: string, args: string[], cwd: string): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const useShell = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
-    const child = spawn(command, args, { cwd, shell: useShell });
+    const prepared = prepareCommandForSpawn(command, args, { cwd, shell: false });
+    const child = spawn(prepared.command, prepared.args, prepared.options);
     let stdout = '';
     let stderr = '';
 

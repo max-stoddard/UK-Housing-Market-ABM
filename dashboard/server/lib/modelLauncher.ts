@@ -32,17 +32,57 @@ export interface ModelLauncher {
   launch: (request: ModelLaunchRequest) => ChildProcessWithoutNullStreams;
 }
 
+const windowsBatchInvokerScript = [
+  '$ErrorActionPreference = "Stop"',
+  '$command = $args[0]',
+  '$commandArgs = @()',
+  'if ($args.Count -gt 1) { $commandArgs = $args[1..($args.Count - 1)] }',
+  '& $command @commandArgs',
+  'exit $LASTEXITCODE'
+].join('; ');
+
 function defaultMavenWrapperBin(repoRoot?: string): string {
   const wrapperName = process.platform === 'win32' ? 'mvnw.cmd' : 'mvnw';
   return repoRoot ? path.join(repoRoot, wrapperName) : `.${path.sep}${wrapperName}`;
 }
 
-function shouldUseShellForCommand(command: string): boolean {
+function isWindowsBatchCommand(command: string): boolean {
   return process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
 }
 
 export function getConfiguredMavenBin(repoRoot?: string): string {
   return process.env.DASHBOARD_MAVEN_BIN?.trim() || defaultMavenWrapperBin(repoRoot);
+}
+
+export function prepareCommandForSpawn(
+  command: string,
+  args: string[],
+  options: SpawnOptionsWithoutStdio
+): ModelLauncherCommand {
+  if (!isWindowsBatchCommand(command)) {
+    return {
+      command,
+      args,
+      options: { ...options, shell: false },
+      commandTemplate: `${command} ${args.join(' ')}`
+    };
+  }
+
+  return {
+    command: 'powershell.exe',
+    args: [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      windowsBatchInvokerScript,
+      command,
+      ...args
+    ],
+    options: { ...options, shell: false },
+    commandTemplate: `${command} ${args.join(' ')}`
+  };
 }
 
 function quoteForExecArgs(value: string): string {
@@ -66,7 +106,7 @@ export function buildMavenModelLaunchCommand(
     args: ['compile', 'exec:java', `-Dexec.args=${execArgs}`],
     options: {
       cwd: request.repoRoot,
-      shell: shouldUseShellForCommand(mavenBin)
+      shell: false
     },
     commandTemplate: `${mavenBin} compile exec:java -Dexec.args="-configFile <path> -outputFolder <path> -dev"`
   };
@@ -101,7 +141,8 @@ export function createMavenModelLauncher(mavenBin = getConfiguredMavenBin()): Mo
     buildCommand: (request) => buildMavenModelLaunchCommand(mavenBin, request),
     launch: (request) => {
       const command = buildMavenModelLaunchCommand(mavenBin, request);
-      return spawn(command.command, command.args, command.options);
+      const prepared = prepareCommandForSpawn(command.command, command.args, command.options);
+      return spawn(prepared.command, prepared.args, prepared.options);
     }
   };
 }
@@ -120,7 +161,8 @@ export function createPackagedModelLauncher(javaExe: string, modelJar: string): 
     buildCommand: (request) => buildPackagedModelLaunchCommand(javaExe, modelJar, request),
     launch: (request) => {
       const command = buildPackagedModelLaunchCommand(javaExe, modelJar, request);
-      return spawn(command.command, command.args, command.options);
+      const prepared = prepareCommandForSpawn(command.command, command.args, command.options);
+      return spawn(prepared.command, prepared.args, prepared.options);
     }
   };
 }
