@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import type { AuthStatusPayload } from '../shared/types';
 import {
+  type ApiViewMode,
   fetchAuthStatus,
   logoutWriteAccess,
   setApiAuthToken,
@@ -14,17 +15,25 @@ import { LoginPage } from './pages/LoginPage';
 import { ValidationPage } from './pages/ValidationPage';
 
 const AUTH_TOKEN_STORAGE_KEY = 'dashboard.writeAuthToken';
-const PREVIEW_MODE_STORAGE_KEY = 'dashboard.prodPreviewEnabled';
+const VIEW_MODE_STORAGE_KEY = 'dashboard.viewMode';
+const LEGACY_PREVIEW_MODE_STORAGE_KEY = 'dashboard.prodPreviewEnabled';
 const EXPERIMENTS_VIEW_PATH = '/experiments?mode=view&type=manual';
 
 const DEFAULT_AUTH_STATUS: AuthStatusPayload = {
   authEnabled: false,
   canWrite: true,
+  canDownloadResults: true,
   authMisconfigured: false,
   modelRunsEnabled: false,
   modelRunsConfigured: false,
   modelRunsDisabledReason: null
 };
+
+const VIEW_MODE_OPTIONS: Array<{ value: ApiViewMode; label: string }> = [
+  { value: 'dev', label: 'Dev mode' },
+  { value: 'preview_desktop', label: 'Preview desktop' },
+  { value: 'preview_cloud', label: 'Preview cloud' }
+];
 
 function loadStoredAuthToken(): string | null {
   try {
@@ -46,20 +55,37 @@ function persistAuthToken(token: string | null): void {
   }
 }
 
-function loadStoredProdPreviewEnabled(): boolean {
-  try {
-    return window.localStorage.getItem(PREVIEW_MODE_STORAGE_KEY) === 'true';
-  } catch {
-    return false;
-  }
+function isApiViewMode(value: string | null): value is ApiViewMode {
+  return value === 'dev' || value === 'preview_desktop' || value === 'preview_cloud';
 }
 
-function persistProdPreviewEnabled(enabled: boolean): void {
+function loadStoredViewMode(isDevEnv: boolean): ApiViewMode {
+  if (!isDevEnv) {
+    return 'preview_cloud';
+  }
+
   try {
-    if (enabled) {
-      window.localStorage.setItem(PREVIEW_MODE_STORAGE_KEY, 'true');
+    const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    if (isApiViewMode(stored)) {
+      return stored;
+    }
+    if (stored === 'non_dev_preview' || window.localStorage.getItem(LEGACY_PREVIEW_MODE_STORAGE_KEY) === 'true') {
+      return 'preview_cloud';
+    }
+  } catch {
+    return 'dev';
+  }
+
+  return 'dev';
+}
+
+function persistViewMode(mode: ApiViewMode, isDevEnv: boolean): void {
+  try {
+    if (isDevEnv) {
+      window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+      window.localStorage.removeItem(LEGACY_PREVIEW_MODE_STORAGE_KEY);
     } else {
-      window.localStorage.removeItem(PREVIEW_MODE_STORAGE_KEY);
+      window.localStorage.removeItem(VIEW_MODE_STORAGE_KEY);
     }
   } catch {
     // ignore persistence failures
@@ -77,9 +103,7 @@ export function App() {
   const isDevEnv = import.meta.env.DEV;
   const [desktopApi] = useState<UkHousingDesktopApi | null>(() => getDesktopApi());
   const isDesktopRuntime = Boolean(desktopApi);
-  const [isProdPreviewEnabled, setIsProdPreviewEnabled] = useState<boolean>(() =>
-    isDevEnv ? loadStoredProdPreviewEnabled() : false
-  );
+  const [viewMode, setViewMode] = useState<ApiViewMode>(() => loadStoredViewMode(isDevEnv));
   const [authStatus, setAuthStatus] = useState<AuthStatusPayload>(DEFAULT_AUTH_STATUS);
   const [authInitialised, setAuthInitialised] = useState(false);
   const [authLoaded, setAuthLoaded] = useState(false);
@@ -87,7 +111,9 @@ export function App() {
   const [desktopActionError, setDesktopActionError] = useState('');
   const [desktopActionMessage, setDesktopActionMessage] = useState('');
   const experimentsVisible = true;
-  const validationVisible = isDevEnv && !isProdPreviewEnabled;
+  const validationVisible = isDevEnv && viewMode === 'dev';
+  const browserAuthControlsVisible = !isDesktopRuntime && viewMode !== 'preview_desktop';
+  const activeViewModeLabel = VIEW_MODE_OPTIONS.find((option) => option.value === viewMode)?.label ?? 'Dev mode';
 
   const loginPath = `/login?next=${encodeURIComponent(EXPERIMENTS_VIEW_PATH)}`;
 
@@ -145,14 +171,14 @@ export function App() {
     if (!authInitialised) {
       return;
     }
-    if (!isDevEnv && isProdPreviewEnabled) {
-      setIsProdPreviewEnabled(false);
+    if (!isDevEnv && viewMode !== 'preview_cloud') {
+      setViewMode('preview_cloud');
       return;
     }
-    persistProdPreviewEnabled(isDevEnv && isProdPreviewEnabled);
-    setApiViewMode(isDevEnv && !isProdPreviewEnabled ? 'dev' : 'non_dev_preview');
+    persistViewMode(viewMode, isDevEnv);
+    setApiViewMode(viewMode);
     void refreshAuthStatus();
-  }, [authInitialised, experimentsVisible, isDevEnv, isProdPreviewEnabled, refreshAuthStatus]);
+  }, [authInitialised, experimentsVisible, isDevEnv, refreshAuthStatus, viewMode]);
 
   const handleLoginSuccess = useCallback(
     async (token: string | null) => {
@@ -176,6 +202,11 @@ export function App() {
     persistAuthToken(null);
     await refreshAuthStatus();
   }, [isDesktopRuntime, refreshAuthStatus]);
+
+  const handleViewModeChange = useCallback((nextViewMode: ApiViewMode) => {
+    setApiViewMode(nextViewMode);
+    setViewMode(nextViewMode);
+  }, []);
 
   const handleOpenDesktopFolder = useCallback(async (openFolder: () => Promise<UkHousingDesktopFolderOpenResult>) => {
     const result = await openFolder();
@@ -206,18 +237,20 @@ export function App() {
           <p className="eyebrow">Max Stoddard BEng Individual Project</p>
           <h1 className="brand-title">
             <span>UK Housing Market ABM</span>
-            {isDevEnv && <span className="env-pill-dev">Dev</span>}
-            {isDevEnv && (
-              <button
-                type="button"
-                className="env-toggle"
-                onClick={() => setIsProdPreviewEnabled((current) => !current)}
-                aria-pressed={isProdPreviewEnabled}
-              >
-                {isProdPreviewEnabled ? 'Show dev view' : 'Preview non-dev'}
-              </button>
-            )}
+            {isDevEnv && <span className="env-pill-dev">{activeViewModeLabel}</span>}
           </h1>
+          {isDevEnv && (
+            <label className="env-selector">
+              <span>Runtime view</span>
+              <select value={viewMode} onChange={(event) => handleViewModeChange(event.target.value as ApiViewMode)}>
+                {VIEW_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
         </div>
         <div className="header-nav-wrap">
           <nav className="main-nav" aria-label="Main">
@@ -227,7 +260,7 @@ export function App() {
             <NavLink to="/compare">Calibration</NavLink>
             {validationVisible && <NavLink to="/validation">Validation</NavLink>}
             {experimentsVisible && <NavLink to="/experiments">Experiments</NavLink>}
-            {experimentsVisible && !isDesktopRuntime && authStatus.authEnabled && !authStatus.canWrite && (
+            {experimentsVisible && browserAuthControlsVisible && authStatus.authEnabled && !authStatus.canWrite && (
               <NavLink className="main-nav-auth-control main-nav-auth-link" to={loginPath}>
                 <span className="main-nav-auth-icon" aria-hidden="true">
                   <svg viewBox="0 0 20 20" role="img" aria-hidden="true">
@@ -240,7 +273,7 @@ export function App() {
                 <span>Login</span>
               </NavLink>
             )}
-            {experimentsVisible && !isDesktopRuntime && authStatus.authEnabled && authStatus.canWrite && (
+            {experimentsVisible && browserAuthControlsVisible && authStatus.authEnabled && authStatus.canWrite && (
               <button type="button" className="main-nav-auth-control main-nav-auth-button" onClick={() => void handleLogout()}>
                 <span className="main-nav-auth-icon" aria-hidden="true">
                   <svg viewBox="0 0 20 20" role="img" aria-hidden="true">
@@ -301,7 +334,13 @@ export function App() {
             {experimentsVisible && (
               <Route
                 path="/experiments"
-                element={<ExperimentsPage canWrite={authStatus.canWrite} authEnabled={authStatus.authEnabled} />}
+                element={
+                  <ExperimentsPage
+                    canWrite={authStatus.canWrite}
+                    canDownloadResults={authStatus.canDownloadResults}
+                    authEnabled={authStatus.authEnabled}
+                  />
+                }
               />
             )}
             {experimentsVisible && (

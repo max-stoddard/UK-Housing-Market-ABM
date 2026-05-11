@@ -147,26 +147,40 @@ code {
   line-height: 1;
 }
 
-.env-toggle {
+.env-selector {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  color: #9c4b00;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.env-selector select {
   border: 1px solid rgba(240, 140, 0, 0.36);
   background: #fff4e6;
   color: #9c4b00;
-  border-radius: 999px;
+  border-radius: 0.45rem;
   font: inherit;
-  font-size: 0.66rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  line-height: 1;
-  padding: 0.24rem 0.52rem;
+  letter-spacing: 0;
+  line-height: 1.2;
+  padding: 0.24rem 1.8rem 0.24rem 0.52rem;
   cursor: pointer;
 }
 
-.env-toggle:hover {
+.env-selector select:hover {
   background: #ffe8cc;
 }
 
-.env-toggle[aria-pressed='true'] {
+.env-selector select:focus {
+  outline: 2px solid rgba(240, 140, 0, 0.28);
+  outline-offset: 2px;
+}
+
+.env-selector select:has(option[value='preview_cloud']:checked) {
   background: #ffd8a8;
   border-color: rgba(240, 140, 0, 0.5);
 }
@@ -1344,8 +1358,9 @@ code {
   grid-column: span 5;
 }
 
-.sensitivity-version-field {
-  grid-column: span 6;
+.sensitivity-version-field,
+.sensitivity-base-policy-field {
+  grid-column: span 3;
 }
 
 .sensitivity-min-field,
@@ -1368,6 +1383,7 @@ code {
   color: var(--muted);
 }
 
+.setting-field-label,
 .sensitivity-field-label {
   display: inline-flex;
   align-items: center;
@@ -1375,6 +1391,7 @@ code {
   min-width: 0;
 }
 
+.setting-info-trigger,
 .sensitivity-info-trigger {
   position: relative;
   display: inline-flex;
@@ -1385,6 +1402,7 @@ code {
   cursor: help;
 }
 
+.setting-info-icon,
 .sensitivity-info-icon {
   display: inline-flex;
   align-items: center;
@@ -1399,6 +1417,7 @@ code {
   line-height: 1;
 }
 
+.setting-info-tooltip,
 .sensitivity-info-tooltip {
   position: absolute;
   bottom: calc(100% + 0.4rem);
@@ -1423,6 +1442,8 @@ code {
   visibility: hidden;
 }
 
+.setting-info-trigger:hover .setting-info-tooltip,
+.setting-info-trigger:focus .setting-info-tooltip,
 .sensitivity-info-trigger:hover .sensitivity-info-tooltip,
 .sensitivity-info-trigger:focus .sensitivity-info-tooltip {
   opacity: 1;
@@ -1430,12 +1451,15 @@ code {
   visibility: visible;
 }
 
+.setting-info-trigger:hover .setting-info-icon,
+.setting-info-trigger:focus .setting-info-icon,
 .sensitivity-info-trigger:hover .sensitivity-info-icon,
 .sensitivity-info-trigger:focus .sensitivity-info-icon {
   border-color: rgba(11, 114, 133, 0.35);
   color: #0b7285;
 }
 
+.setting-info-trigger:focus,
 .sensitivity-info-trigger:focus {
   border-radius: 999px;
   outline: 2px solid var(--accent);
@@ -1486,6 +1510,43 @@ code {
   padding-left: 1.15rem;
   display: grid;
   gap: 0.25rem;
+}
+
+.policy-summary-panel {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  border: 1px solid rgba(17, 32, 24, 0.1);
+  border-radius: 0.7rem;
+  background: #f8faf9;
+  padding: 0.65rem;
+}
+
+.policy-summary-item {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.policy-summary-item span {
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.policy-summary-item h4 {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.policy-summary-item p {
+  margin: 0;
+  color: #2f3e34;
+  font-size: 0.82rem;
+  line-height: 1.4;
 }
 
 .sensitivity-run-summary {
@@ -1559,7 +1620,7 @@ code {
   min-width: 0;
 }
 
-.run-param-item span {
+.run-param-item > span {
   font-weight: 700;
   overflow-wrap: anywhere;
 }
@@ -1602,6 +1663,12 @@ code {
   margin: 0;
 }
 
+.job-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
 .summary-link-inline {
   display: inline-flex;
   align-items: center;
@@ -1615,6 +1682,16 @@ code {
   font-weight: 700;
   padding: 0.28rem 0.65rem;
   justify-self: start;
+}
+
+.summary-button-inline {
+  font: inherit;
+  cursor: pointer;
+}
+
+.summary-button-inline:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
 }
 
 .job-log-view {
@@ -2947,6 +3024,7 @@ code {
   .sensitivity-policy-field,
   .sensitivity-title-field,
   .sensitivity-version-field,
+  .sensitivity-base-policy-field,
   .sensitivity-min-field,
   .sensitivity-max-field,
   .sensitivity-sample-field {
