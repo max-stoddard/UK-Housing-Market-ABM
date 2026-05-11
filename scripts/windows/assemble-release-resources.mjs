@@ -626,9 +626,17 @@ function assembleModelArtifact(outputRoot) {
   return destinationModelJar;
 }
 
+function resolveReleaseCommit() {
+  const configuredCommit = process.env.RELEASE_GIT_COMMIT?.trim();
+  if (configuredCommit) {
+    return configuredCommit;
+  }
+  return runCapture('git', ['rev-parse', 'HEAD'], repoRoot).trim();
+}
+
 function writeReleaseManifest(outputRoot, releaseDataManifest, javaMetadata, modelJarPath) {
   const packageJson = readJson(path.join(dashboardRoot, 'package.json'));
-  const commit = runCapture('git', ['rev-parse', 'HEAD'], repoRoot).trim();
+  const commit = resolveReleaseCommit();
   const relativeModelJar = normalizeRel(path.relative(outputRoot, modelJarPath));
   const relativeJava = normalizeRel(path.relative(outputRoot, javaMetadata.path));
   const manifest = {

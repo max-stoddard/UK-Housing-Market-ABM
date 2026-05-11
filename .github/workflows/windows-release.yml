@@ -15,22 +15,56 @@ permissions:
   contents: write
 
 jobs:
-  build-windows-release:
-    runs-on: windows-latest
-    defaults:
-      run:
-        shell: pwsh
+  prepare-release-source:
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.source-metadata.outputs.commit_sha }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          sparse-checkout-cone-mode: false
-          sparse-checkout: |
-            /*
-            !/src/main/resources/supporting-data/
-            !/src/main/resources/supporting-data/**
+
+      - id: source-metadata
+        name: Resolve source metadata
+        run: echo "commit_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Remove Windows-incompatible supporting data
+        run: rm -rf src/main/resources/supporting-data
+
+      - name: Upload sanitized release source
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-source-${{ github.run_id }}
+          path: |
+            .mvn
+            dashboard
+            input-data-versions
+            scripts
+            src
+            mvnw
+            mvnw.cmd
+            pom.xml
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  build-windows-release:
+    needs: prepare-release-source
+    runs-on: windows-latest
+    env:
+      RELEASE_GIT_COMMIT: ${{ needs.prepare-release-source.outputs.commit_sha }}
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Download sanitized release source
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-release-source-${{ github.run_id }}
+          path: .
 
       - id: release-metadata
         name: Resolve release metadata
