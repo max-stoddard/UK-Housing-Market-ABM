@@ -30,7 +30,8 @@ interface ProcessResult {
 
 function runCommand(command: string, args: string[], cwd: string): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd, shell: false });
+    const useShell = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
+    const child = spawn(command, args, { cwd, shell: useShell });
     let stdout = '';
     let stderr = '';
 
