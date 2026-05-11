@@ -1,4 +1,10 @@
 import type express from 'express';
+import { pipeline } from 'node:stream/promises';
+import {
+  createManualResultArchive,
+  createSensitivityResultArchive,
+  type ResultArchive,
+} from '../lib/resultDownloads';
 import {
   deleteResultsRun,
   getResultsCompare,
@@ -20,6 +26,7 @@ import {
 import { cancelExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../lib/experimentJobs';
 import {
   cancelSensitivityExperiment,
+  deleteSensitivityExperiment,
   getActiveSensitivityExperimentId,
   getSensitivityExperiment,
   getSensitivityExperimentCharts,
@@ -33,6 +40,18 @@ import type { RouteContext } from './routeContext';
 
 const MODEL_RUNS_DISABLED_REASON_CONFIG =
   'Model execution is disabled in this environment.';
+const FINISHED_EXPERIMENT_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
+
+function contentDispositionFileName(fileName: string): string {
+  const quoted = fileName.replace(/["\\]/g, '_');
+  return `attachment; filename="${quoted}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+}
+
+async function sendResultArchive(res: express.Response, archive: ResultArchive): Promise<void> {
+  res.setHeader('Content-Type', archive.contentType);
+  res.setHeader('Content-Disposition', contentDispositionFileName(archive.fileName));
+  await pipeline(archive.stream, res);
+}
 
 export function registerDevRoutes(app: express.Express, context: RouteContext): void {
   app.post('/api/auth/login', (req, res) => {
@@ -120,6 +139,28 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       const files = getResultsRunFiles(context.runtimePaths, String(req.params.runId ?? ''));
       res.json({ runId: String(req.params.runId ?? ''), files });
     } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get('/api/results/runs/:runId/download', async (req, res) => {
+    if (!context.requireExperimentsFeature(req, res)) {
+      return;
+    }
+    if (!context.requireDownloadAccess(req, res)) {
+      return;
+    }
+    try {
+      const runId = String(req.params.runId ?? '');
+      const archive = context.remoteExecution
+        ? await context.remoteExecution.getRemoteManualResultArchive(runId)
+        : createManualResultArchive(context.runtimePaths, runId);
+      await sendResultArchive(res, archive);
+    } catch (error) {
+      if (res.headersSent) {
+        res.destroy(error as Error);
+        return;
+      }
       res.status(400).json({ error: (error as Error).message });
     }
   });
@@ -436,6 +477,25 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
+  app.delete('/api/experiments/sensitivity/:experimentId', async (req, res) => {
+    if (!context.requireExperimentsFeature(req, res)) {
+      return;
+    }
+    if (!context.requireWriteAccess(req, res)) {
+      return;
+    }
+
+    try {
+      if (context.remoteExecution) {
+        res.status(400).json({ error: 'Remote sensitivity experiment artifacts are immutable from the dashboard API.' });
+        return;
+      }
+      res.json(deleteSensitivityExperiment(context.runtimePaths, String(req.params.experimentId ?? '')));
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
   app.get('/api/experiments/sensitivity/:experimentId/results', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
@@ -462,6 +522,35 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       }
       res.json(getSensitivityExperimentCharts(context.runtimePaths, String(req.params.experimentId ?? '')));
     } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  app.get('/api/experiments/sensitivity/:experimentId/download', async (req, res) => {
+    if (!context.requireExperimentsFeature(req, res)) {
+      return;
+    }
+    if (!context.requireDownloadAccess(req, res)) {
+      return;
+    }
+    try {
+      const experimentId = String(req.params.experimentId ?? '');
+      if (context.remoteExecution) {
+        await sendResultArchive(res, await context.remoteExecution.getSensitivityExperimentArchive(experimentId));
+        return;
+      }
+
+      const detail = getSensitivityExperiment(context.runtimePaths, experimentId).experiment;
+      if (!FINISHED_EXPERIMENT_STATUSES.has(detail.status)) {
+        res.status(400).json({ error: `Sensitivity experiment is not finished yet: ${experimentId}` });
+        return;
+      }
+      await sendResultArchive(res, createSensitivityResultArchive(context.runtimePaths, experimentId));
+    } catch (error) {
+      if (res.headersSent) {
+        res.destroy(error as Error);
+        return;
+      }
       res.status(400).json({ error: (error as Error).message });
     }
   });

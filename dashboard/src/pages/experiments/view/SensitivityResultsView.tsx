@@ -13,6 +13,8 @@ import type { EChartsOption } from 'echarts';
 import { EChart } from '../../../components/EChart';
 import {
   API_RETRY_DELAY_MS,
+  deleteSensitivityExperiment,
+  downloadSensitivityExperiment,
   fetchSensitivityExperiment,
   fetchSensitivityExperimentCharts,
   fetchSensitivityExperimentResults,
@@ -25,11 +27,13 @@ import { DEFAULT_EXPERIMENT_ROUTE_STATE } from '../types';
 const KPI_OPTIONS: Array<{ key: KpiMetricKey; label: string }> = [
   { key: 'mean', label: 'Mean (monthly)' },
   { key: 'cv', label: 'CV (monthly)' },
-  { key: 'annualisedTrend', label: 'Annualised Trend (annualised)' },
   { key: 'range', label: 'Range (monthly, P95-P5)' }
 ];
 
 interface SensitivityResultsViewProps {
+  canWrite: boolean;
+  canDownloadResults: boolean;
+  authEnabled: boolean;
   requestedExperimentId: string;
   onSelectedExperimentIdChange: (experimentId: string) => void;
   sidebarSubtitle: string;
@@ -53,6 +57,10 @@ function formatStatus(status: SensitivityExperimentSummary['status']): string {
   return status.replace('_', ' ');
 }
 
+function isFinishedStatus(status: SensitivityExperimentSummary['status']): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'canceled';
+}
+
 function formatMetric(value: number | null): string {
   if (value === null) {
     return 'n/a';
@@ -65,6 +73,21 @@ function formatSignedPercent(value: number | null): string {
     return 'n/a';
   }
   return `${value >= 0 ? '+' : ''}${value.toLocaleString('en-GB', { maximumFractionDigits: 6 })}%`;
+}
+
+function formatBasePolicyLabel(basePolicy: SensitivityExperimentSummary['basePolicy']): string {
+  return basePolicy ? `${basePolicy} base policy` : 'Not recorded';
+}
+
+function formatPointValue(value: number | null, valuesByKey?: Record<string, number>): string {
+  if (value !== null) {
+    return formatMetric(value);
+  }
+  const values = Object.values(valuesByKey ?? {}).filter((item) => Number.isFinite(item));
+  if (values.length === 0) {
+    return 'base policy values';
+  }
+  return `base policy values (${values.map((item) => formatMetric(item)).join(', ')})`;
 }
 
 function buildTornadoOption(charts: SensitivityExperimentChartsPayload, kpi: KpiMetricKey): EChartsOption {
@@ -117,7 +140,7 @@ function buildTornadoOption(charts: SensitivityExperimentChartsPayload, kpi: Kpi
   };
 }
 
-function buildDeltaTrendOption(series: SensitivityDeltaTrendSeries, parameterKey: string, kpi: KpiMetricKey): EChartsOption {
+function buildDeltaTrendOption(series: SensitivityDeltaTrendSeries, parameterTitle: string, kpi: KpiMetricKey): EChartsOption {
   return {
     animation: false,
     tooltip: {
@@ -137,7 +160,7 @@ function buildDeltaTrendOption(series: SensitivityDeltaTrendSeries, parameterKey
     },
     xAxis: {
       type: 'value',
-      name: parameterKey,
+      name: parameterTitle,
       nameGap: 30,
       nameLocation: 'middle'
     },
@@ -152,13 +175,18 @@ function buildDeltaTrendOption(series: SensitivityDeltaTrendSeries, parameterKey
         type: 'line',
         showSymbol: true,
         connectNulls: false,
-        data: series.points.map((point) => [point.parameterValue, point.deltaByKpi[kpi]])
+        data: series.points
+          .filter((point) => point.parameterValue !== null)
+          .map((point) => [point.parameterValue, point.deltaByKpi[kpi]])
       }
     ]
   };
 }
 
 export function SensitivityResultsView({
+  canWrite,
+  canDownloadResults,
+  authEnabled,
   requestedExperimentId,
   onSelectedExperimentIdChange,
   sidebarSubtitle
@@ -172,6 +200,8 @@ export function SensitivityResultsView({
   const [selectedKpiKey, setSelectedKpiKey] = useState<KpiMetricKey>('mean');
   const [isLoadingHistory, setIsLoadingHistory] = useState<boolean>(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
+  const [isDownloadingExperiment, setIsDownloadingExperiment] = useState<boolean>(false);
+  const [isDeletingExperimentId, setIsDeletingExperimentId] = useState<string>('');
   const [pageError, setPageError] = useState<string>('');
 
   useEffect(() => {
@@ -311,6 +341,61 @@ export function SensitivityResultsView({
     return activeDeltaSeries.title;
   }, [activeDeltaSeries]);
 
+  const downloadSelectedExperiment = async () => {
+    if (!selectedExperimentId || !canDownloadResults) {
+      return;
+    }
+
+    setPageError('');
+    setIsDownloadingExperiment(true);
+    try {
+      await downloadSensitivityExperiment(selectedExperimentId);
+    } catch (error) {
+      setPageError((error as Error).message);
+    } finally {
+      setIsDownloadingExperiment(false);
+    }
+  };
+
+  const deleteExperiment = async (experimentId: string) => {
+    if (!canWrite) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete sensitivity experiment "${experimentId}"? This permanently removes its Results folder.`
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setPageError('');
+    setIsDeletingExperimentId(experimentId);
+    try {
+      await deleteSensitivityExperiment(experimentId);
+      if (selectedExperimentId === experimentId) {
+        setSelectedExperimentId('');
+        setDetail(null);
+        setResults(null);
+        setCharts(null);
+      }
+      await refreshHistory();
+    } catch (error) {
+      setPageError((error as Error).message);
+    } finally {
+      setIsDeletingExperimentId('');
+    }
+  };
+
+  const loginPath = `/login?next=${encodeURIComponent(
+    buildExperimentsPath({
+      ...DEFAULT_EXPERIMENT_ROUTE_STATE,
+      type: 'sensitivity',
+      mode: 'view',
+      experimentId: selectedExperimentId
+    })
+  )}`;
+
   return (
     <section className="results-layout">
       {pageError && <p className="error-banner">{pageError}</p>}
@@ -356,34 +441,71 @@ export function SensitivityResultsView({
             <p className="info-banner">No sensitivity experiments yet.</p>
           ) : (
             <ul className="run-list">
-              {experiments.map((experiment) => (
-                <li
-                  key={experiment.experimentId}
-                  className={`run-item ${selectedExperimentId === experiment.experimentId ? 'focused' : ''}`}
-                >
-                  <button
-                    type="button"
-                    className="run-focus-btn"
-                    onClick={() => setSelectedExperimentId(experiment.experimentId)}
+              {experiments.map((experiment) => {
+                const canDeleteExperiment = isFinishedStatus(experiment.status);
+                return (
+                  <li
+                    key={experiment.experimentId}
+                    className={`run-item ${selectedExperimentId === experiment.experimentId ? 'focused' : ''}`}
                   >
-                    {selectedExperimentId === experiment.experimentId ? 'Viewing' : 'View'}
-                  </button>
-                  <strong>{experiment.title || experiment.experimentId}</strong>
-                  <p>
-                    Parameter: {experiment.parameter.title} ({experiment.parameter.key})
-                  </p>
-                  <p>
-                    <span className={statusClass(experiment.status)}>{formatStatus(experiment.status)}</span>
-                  </p>
-                </li>
-              ))}
+                    <button
+                      type="button"
+                      className="run-focus-btn"
+                      onClick={() => setSelectedExperimentId(experiment.experimentId)}
+                    >
+                      {selectedExperimentId === experiment.experimentId ? 'Viewing' : 'View'}
+                    </button>
+                    <strong>{experiment.title || experiment.experimentId}</strong>
+                    <p>Package: {experiment.parameter.title}</p>
+                    <p>Base policy: {formatBasePolicyLabel(experiment.basePolicy)}</p>
+                    <p>
+                      <span className={statusClass(experiment.status)}>{formatStatus(experiment.status)}</span>
+                    </p>
+                    {canWrite && (
+                      <button
+                        type="button"
+                        className="danger-button"
+                        disabled={isDeletingExperimentId === experiment.experimentId || !canDeleteExperiment}
+                        onClick={() => void deleteExperiment(experiment.experimentId)}
+                        title={!canDeleteExperiment ? 'Cancel or wait for this experiment to finish before deleting.' : undefined}
+                      >
+                        {isDeletingExperimentId === experiment.experimentId ? 'Deleting...' : 'Delete'}
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </aside>
 
         <div className="results-main">
           <article className="results-card">
-            <h3>Experiment Detail</h3>
+            <div className="results-card-head">
+              <h3>Experiment Detail</h3>
+              {detail && (
+                !canDownloadResults ? (
+                  authEnabled ? (
+                    <Link className="summary-link-inline" to={loginPath}>
+                      Login to Download
+                    </Link>
+                  ) : (
+                    <button type="button" className="summary-link-inline summary-button-inline" disabled>
+                      Download Unavailable
+                    </button>
+                  )
+                ) : (
+                  <button
+                    type="button"
+                    className="summary-link-inline summary-button-inline"
+                    disabled={isDownloadingExperiment}
+                    onClick={() => void downloadSelectedExperiment()}
+                  >
+                    {isDownloadingExperiment ? 'Downloading...' : 'Download Results'}
+                  </button>
+                )
+              )}
+            </div>
             {isLoadingDetail ? (
               <p className="loading-banner">Loading experiment detail...</p>
             ) : !detail ? (
@@ -400,7 +522,13 @@ export function SensitivityResultsView({
                   <strong>Baseline:</strong> {detail.baseline}
                 </p>
                 <p>
-                  <strong>Parameter:</strong> {detail.parameter.title} ({detail.parameter.key})
+                  <strong>Base policy:</strong> {formatBasePolicyLabel(detail.basePolicy)}
+                </p>
+                <p>
+                  <strong>Package:</strong> {detail.parameter.title}
+                </p>
+                <p>
+                  <strong>Package description:</strong> {detail.parameter.description}
                 </p>
                 <p>
                   <strong>Range:</strong> {detail.parameter.min} to {detail.parameter.max}
@@ -457,7 +585,7 @@ export function SensitivityResultsView({
               {activeDeltaSeries ? (
                 <EChart
                   className="validation-chart"
-                  option={buildDeltaTrendOption(activeDeltaSeries, charts.parameter.key, selectedKpiKey)}
+                  option={buildDeltaTrendOption(activeDeltaSeries, charts.parameter.title, selectedKpiKey)}
                 />
               ) : (
                 <p className="info-banner">No trend data available.</p>
@@ -482,8 +610,6 @@ export function SensitivityResultsView({
                         <th>% diff Mean (monthly)</th>
                         <th>CV (monthly)</th>
                         <th>% diff CV (monthly)</th>
-                        <th>Annualised Trend (annualised)</th>
-                        <th>% diff Annualised Trend (annualised)</th>
                         <th>Range (monthly, P95-P5)</th>
                         <th>% diff Range (monthly, P95-P5)</th>
                       </tr>
@@ -494,7 +620,7 @@ export function SensitivityResultsView({
                         return (
                           <tr key={point.pointId}>
                             <td>{point.label}</td>
-                            <td>{point.value}</td>
+                            <td>{formatPointValue(point.value, point.valuesByKey)}</td>
                             <td>
                               <span className={statusClass(point.status)}>{formatStatus(point.status)}</span>
                             </td>
@@ -502,8 +628,6 @@ export function SensitivityResultsView({
                             <td>{formatSignedPercent(values?.deltaFromBaseline.mean ?? null)}</td>
                             <td>{formatMetric(values?.kpi.cv ?? null)}</td>
                             <td>{formatSignedPercent(values?.deltaFromBaseline.cv ?? null)}</td>
-                            <td>{formatMetric(values?.kpi.annualisedTrend ?? null)}</td>
-                            <td>{formatSignedPercent(values?.deltaFromBaseline.annualisedTrend ?? null)}</td>
                             <td>{formatMetric(values?.kpi.range ?? null)}</td>
                             <td>{formatSignedPercent(values?.deltaFromBaseline.range ?? null)}</td>
                           </tr>

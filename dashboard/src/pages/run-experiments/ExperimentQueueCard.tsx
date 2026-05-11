@@ -29,7 +29,11 @@ interface ExperimentQueueCardProps {
   selectedJobRef: string;
   onSelectJobRef: (jobRef: string) => void;
   executionDisabled: boolean;
+  authEnabled: boolean;
+  canDownloadResults: boolean;
+  downloadingJobRef: string;
   onCancelJob: (jobRef: string) => void;
+  onDownloadJob: (job: ExperimentJobSummary) => void;
 }
 
 export function ExperimentQueueCard({
@@ -38,7 +42,11 @@ export function ExperimentQueueCard({
   selectedJobRef,
   onSelectJobRef,
   executionDisabled,
-  onCancelJob
+  authEnabled,
+  canDownloadResults,
+  downloadingJobRef,
+  onCancelJob,
+  onDownloadJob
 }: ExperimentQueueCardProps) {
   return (
     <article className="results-card">
@@ -76,21 +84,68 @@ export function ExperimentQueueCard({
               )}
 
               {job.type === 'manual' && job.status === 'succeeded' && job.runId && (
-                <Link
-                  className="summary-link-inline"
-                  to={`/experiments?type=manual&mode=view&baselineRunId=${encodeURIComponent(job.runId)}`}
-                >
-                  View Experiment Results
-                </Link>
+                <div className="job-actions-row">
+                  <Link
+                    className="summary-link-inline"
+                    to={`/experiments?type=manual&mode=view&baselineRunId=${encodeURIComponent(job.runId)}`}
+                  >
+                    View Experiment Results
+                  </Link>
+                  {!canDownloadResults ? (
+                    authEnabled ? (
+                      <Link className="summary-link-inline" to={`/login?next=${encodeURIComponent('/experiments?type=manual&mode=run')}`}>
+                        Login to Download
+                      </Link>
+                    ) : (
+                      <button type="button" className="summary-link-inline summary-button-inline" disabled>
+                        Download Unavailable
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      className="summary-link-inline summary-button-inline"
+                      disabled={downloadingJobRef === job.jobRef}
+                      onClick={() => onDownloadJob(job)}
+                    >
+                      {downloadingJobRef === job.jobRef ? 'Downloading...' : 'Download Results'}
+                    </button>
+                  )}
+                </div>
               )}
 
               {job.type === 'sensitivity' && job.status === 'succeeded' && (
-                <Link
-                  className="summary-link-inline"
-                  to={`/experiments?type=sensitivity&mode=view&experimentId=${encodeURIComponent(job.id)}`}
-                >
-                  View Experiment Results
-                </Link>
+                <div className="job-actions-row">
+                  <Link
+                    className="summary-link-inline"
+                    to={`/experiments?type=sensitivity&mode=view&experimentId=${encodeURIComponent(job.id)}`}
+                  >
+                    View Experiment Results
+                  </Link>
+                  {!canDownloadResults ? (
+                    authEnabled ? (
+                      <Link
+                        className="summary-link-inline"
+                        to={`/login?next=${encodeURIComponent('/experiments?type=sensitivity&mode=run')}`}
+                      >
+                        Login to Download
+                      </Link>
+                    ) : (
+                      <button type="button" className="summary-link-inline summary-button-inline" disabled>
+                        Download Unavailable
+                      </button>
+                    )
+                  ) : (
+                    <button
+                      type="button"
+                      className="summary-link-inline summary-button-inline"
+                      disabled={downloadingJobRef === job.jobRef}
+                      onClick={() => onDownloadJob(job)}
+                    >
+                      {downloadingJobRef === job.jobRef ? 'Downloading...' : 'Download Results'}
+                    </button>
+                  )}
+                </div>
               )}
             </li>
           ))}

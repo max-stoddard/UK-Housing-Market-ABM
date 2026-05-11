@@ -34,6 +34,8 @@ const MODEL_RUNS_DISABLED_REASON_RUNTIME =
 const EXPERIMENTS_DISABLED_REASON =
   'Experiments are not available in this environment.';
 
+type DashboardViewMode = 'dev' | 'preview_desktop' | 'preview_cloud';
+
 export interface DashboardStaticServingOptions {
   enabled?: boolean;
   root?: string;
@@ -84,9 +86,15 @@ function resolveConfiguredPortFromEnv(): number | undefined {
   return value === undefined ? undefined : Number.parseInt(value, 10);
 }
 
-function isPreviewStrictRequest(req: express.Request): boolean {
+function resolveDashboardViewMode(req: express.Request): DashboardViewMode {
   const viewMode = req.get('X-Dashboard-View-Mode')?.trim().toLowerCase() ?? '';
-  return viewMode === 'non_dev_preview';
+  if (viewMode === 'preview_desktop') {
+    return 'preview_desktop';
+  }
+  if (viewMode === 'preview_cloud' || viewMode === 'non_dev_preview') {
+    return 'preview_cloud';
+  }
+  return 'dev';
 }
 
 function logInfo(message: string, writer?: RotatingLogWriter): void {
@@ -212,7 +220,12 @@ function createRouteContext(input: {
   };
   const getRuntimeDependencies = () => checkRuntimeDependencies(runtimeDependencyOptions);
   const resolveRuntimePolicy = (req: express.Request): RuntimePolicy => {
-    const devBypassActive = input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && !isPreviewStrictRequest(req);
+    const viewMode = resolveDashboardViewMode(req);
+    const devBypassActive = input.runtimePaths.mode !== 'desktop' && input.isDevRuntime && viewMode === 'dev';
+    const downloadBypassActive =
+      input.runtimePaths.mode !== 'desktop' &&
+      input.isDevRuntime &&
+      (viewMode === 'dev' || viewMode === 'preview_desktop');
     const modelRunsConfigured = devBypassActive ? true : input.modelRunsConfigured;
     const launchRuntimeAvailable = isModelLauncherRuntimeAvailable(
       input.startupRuntimeDependencies,
@@ -234,7 +247,9 @@ function createRouteContext(input: {
     const writeAuthConfigurationError = getWriteAuthConfigurationError(input.writeAuth, modelRunsEnabled, devBypassActive);
 
     return {
+      viewMode,
       devBypassActive,
+      downloadBypassActive,
       modelRunsConfigured,
       modelRunsEnabled,
       modelRunsDisabledReason,
@@ -261,6 +276,37 @@ function createRouteContext(input: {
     res.status(403).json({ error: 'Write access requires login.' });
     return false;
   };
+  const requireDownloadAccess = (req: express.Request, res: express.Response): boolean => {
+    const policy = resolveRuntimePolicy(req);
+    if (policy.downloadBypassActive) {
+      return true;
+    }
+    const cloudLoginRequired = input.runtimePaths.mode !== 'desktop' && !policy.devBypassActive;
+    if (cloudLoginRequired && !input.writeAuth.authEnabled) {
+      res.status(503).json({
+        error: 'Result downloads require configured dashboard credentials. Set DASHBOARD_WRITE_USERNAME and DASHBOARD_WRITE_PASSWORD.'
+      });
+      return false;
+    }
+
+    const access = resolveDashboardWriteAccess(
+      input.writeAuth,
+      req.get('authorization'),
+      policy.modelRunsEnabled,
+      policy.devBypassActive
+    );
+    if (access.canWrite) {
+      return true;
+    }
+    if (access.authMisconfigured) {
+      res.status(503).json({
+        error: policy.writeAuthConfigurationError ?? 'Download access is unavailable due to server configuration.'
+      });
+      return false;
+    }
+    res.status(403).json({ error: 'Result downloads require login.' });
+    return false;
+  };
   const requireExperimentsFeature = (req: express.Request, res: express.Response): boolean => {
     void req;
     if (experimentsFeatureEnabled()) {
@@ -280,6 +326,7 @@ function createRouteContext(input: {
     modelLogSink: input.modelLog ? (line) => input.modelLog?.writeLine(line) : undefined,
     getRuntimeDependencies,
     resolveRuntimePolicy,
+    requireDownloadAccess,
     requireWriteAccess,
     requireExperimentsFeature,
     withMemoryLogging: createMemoryLoggingMiddleware(input.memoryLoggingEnabled, input.serverLog)

@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import type { ExperimentJobSummary } from '../../../../shared/types';
+import { downloadResultsRun, downloadSensitivityExperiment } from '../../../lib/api';
 import { buildExperimentsPath } from '../routeState';
 import { DEFAULT_EXPERIMENT_ROUTE_STATE, type ExperimentType } from '../types';
 import { experimentTypeRegistry } from '../registry';
@@ -9,6 +12,7 @@ import { useExperimentRunController } from './useExperimentRunController';
 interface ExperimentRunModeProps {
   activeType: ExperimentType;
   canWrite: boolean;
+  canDownloadResults: boolean;
   authEnabled: boolean;
   selectedJobRef: string;
   onSelectedJobRefChange: (jobRef: string) => void;
@@ -19,6 +23,7 @@ interface ExperimentRunModeProps {
 export function ExperimentRunMode({
   activeType,
   canWrite,
+  canDownloadResults,
   authEnabled,
   selectedJobRef,
   onSelectedJobRefChange,
@@ -31,14 +36,36 @@ export function ExperimentRunMode({
     onOpenManualResults,
     onOpenSensitivityResults
   });
+  const [downloadingJobRef, setDownloadingJobRef] = useState<string>('');
+  const [downloadError, setDownloadError] = useState<string>('');
 
   const runActionsDisabled = controller.executionDisabled || !canWrite;
   const RunSetupComponent = experimentTypeRegistry[activeType].RunSetupComponent;
+
+  const downloadJobResults = async (job: ExperimentJobSummary) => {
+    if (!canDownloadResults) {
+      return;
+    }
+    setDownloadError('');
+    setDownloadingJobRef(job.jobRef);
+    try {
+      if (job.type === 'manual' && job.runId) {
+        await downloadResultsRun(job.runId);
+      } else if (job.type === 'sensitivity') {
+        await downloadSensitivityExperiment(job.id);
+      }
+    } catch (error) {
+      setDownloadError((error as Error).message);
+    } finally {
+      setDownloadingJobRef('');
+    }
+  };
 
   return (
     <section className="run-exp-layout">
       {controller.pageError && <p className="error-banner">{controller.pageError}</p>}
       {controller.logError && <p className="error-banner">{controller.logError}</p>}
+      {downloadError && <p className="error-banner">{downloadError}</p>}
 
       {controller.pendingRunId && (
         <p className="waiting-banner">
@@ -106,8 +133,14 @@ export function ExperimentRunMode({
           selectedJobRef={selectedJobRef}
           onSelectJobRef={onSelectedJobRefChange}
           executionDisabled={runActionsDisabled}
+          authEnabled={authEnabled}
+          canDownloadResults={canDownloadResults}
+          downloadingJobRef={downloadingJobRef}
           onCancelJob={(jobRef) => {
             void controller.onCancelJob(jobRef);
+          }}
+          onDownloadJob={(job) => {
+            void downloadJobResults(job);
           }}
         />
 

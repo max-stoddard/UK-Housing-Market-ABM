@@ -54,6 +54,10 @@ import {
   prepareSensitivityExperimentSubmission,
   type PreparedSensitivityExperimentSubmission
 } from './sensitivityRuns';
+import {
+  createRemoteResultArchive,
+  type ResultArchive
+} from './resultDownloads';
 import type { RuntimePathInput } from './runtimePaths';
 
 const INDEX_KEY = 'experiments/remote-job-index/index.json';
@@ -119,6 +123,9 @@ interface RemoteRunRequest {
   sourceBundleKey: string;
   artifactS3Prefix: string;
   payload: ModelRunSubmitRequest | SensitivityExperimentCreateRequest;
+  preparedSensitivity?: {
+    experimentId: string;
+  };
 }
 
 export interface RemoteAwsAdapter {
@@ -126,6 +133,7 @@ export interface RemoteAwsAdapter {
   getSourceDeployManifest(bucket: string): Promise<SourceDeployManifest>;
   putJson(bucket: string, key: string, value: unknown): Promise<void>;
   getJson<T>(bucket: string, key: string): Promise<T | null>;
+  getBytes(bucket: string, key: string): Promise<Buffer | null>;
   getText(bucket: string, key: string): Promise<string | null>;
   listObjects(bucket: string, prefix: string): Promise<Array<{
     key: string;
@@ -242,15 +250,15 @@ function mapSsmStatus(status: string): RemoteJobStatus {
   return 'running';
 }
 
-function streamBodyToString(body: unknown): Promise<string> {
-  const maybeTransform = body as { transformToString?: () => Promise<string> } | null;
-  if (maybeTransform?.transformToString) {
-    return maybeTransform.transformToString();
+function streamBodyToBuffer(body: unknown): Promise<Buffer> {
+  const maybeTransform = body as { transformToByteArray?: () => Promise<Uint8Array> } | null;
+  if (maybeTransform?.transformToByteArray) {
+    return maybeTransform.transformToByteArray().then((bytes) => Buffer.from(bytes));
   }
 
   const readable = body as AsyncIterable<Uint8Array> | null;
   if (!readable) {
-    return Promise.resolve('');
+    return Promise.resolve(Buffer.alloc(0));
   }
 
   return (async () => {
@@ -258,7 +266,7 @@ function streamBodyToString(body: unknown): Promise<string> {
     for await (const chunk of readable) {
       chunks.push(chunk);
     }
-    return Buffer.concat(chunks).toString('utf-8');
+    return Buffer.concat(chunks);
   })();
 }
 
@@ -340,16 +348,21 @@ export class AwsSdkRemoteAdapter implements RemoteAwsAdapter {
     return text ? (JSON.parse(text) as T) : null;
   }
 
-  async getText(bucket: string, key: string): Promise<string | null> {
+  async getBytes(bucket: string, key: string): Promise<Buffer | null> {
     try {
       const result = await this.s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-      return await streamBodyToString(result.Body);
+      return await streamBodyToBuffer(result.Body);
     } catch (error) {
       if (error instanceof NoSuchKey || (error as { name?: string }).name === 'NoSuchKey') {
         return null;
       }
       throw error;
     }
+  }
+
+  async getText(bucket: string, key: string): Promise<string | null> {
+    const bytes = await this.getBytes(bucket, key);
+    return bytes === null ? null : bytes.toString('utf-8');
   }
 
   async listObjects(bucket: string, prefix: string): Promise<Array<{
@@ -638,7 +651,11 @@ export class RemoteExecutionManager {
       sensitivityMetadata: metadata
     };
 
-    await this.dispatchRemoteJob(job, payload);
+    await this.dispatchRemoteJob(job, payload, {
+      preparedSensitivity: {
+        experimentId: prepared.experimentId
+      }
+    });
     return {
       accepted: true,
       warnings: prepared.warnings,
@@ -729,6 +746,22 @@ export class RemoteExecutionManager {
     };
   }
 
+  async getRemoteManualResultArchive(runId: string): Promise<ResultArchive> {
+    const job = await this.findManualJobByRunId(runId);
+    if (!TERMINAL_STATUSES.has(job.status)) {
+      throw new Error(`Remote manual result is not finished yet: ${runId}`);
+    }
+    const prefix = this.remoteRunResultsPrefix(job);
+    const objects = await this.adapter.listObjects(this.config.artifactsBucket, prefix);
+    return createRemoteResultArchive({
+      archiveRootName: job.runId ?? job.id,
+      fileName: `${job.runId ?? job.id}.tar.gz`,
+      prefix,
+      objects,
+      readObjectBytes: (key) => this.adapter.getBytes(this.config.artifactsBucket, key)
+    });
+  }
+
   async listSensitivityExperiments(): Promise<SensitivityExperimentListPayload> {
     const index = await this.refreshIndex();
     return {
@@ -771,6 +804,22 @@ export class RemoteExecutionManager {
       tornado: [],
       deltaTrend: []
     };
+  }
+
+  async getSensitivityExperimentArchive(experimentId: string): Promise<ResultArchive> {
+    const job = await this.findJob('sensitivity', experimentId);
+    if (!TERMINAL_STATUSES.has(job.status)) {
+      throw new Error(`Remote sensitivity experiment is not finished yet: ${experimentId}`);
+    }
+    const prefix = `${job.artifactS3Prefix}Results/experiments/sensitivity/${experimentId}/`;
+    const objects = await this.adapter.listObjects(this.config.artifactsBucket, prefix);
+    return createRemoteResultArchive({
+      archiveRootName: experimentId,
+      fileName: `${experimentId}.tar.gz`,
+      prefix,
+      objects,
+      readObjectBytes: (key) => this.adapter.getBytes(this.config.artifactsBucket, key)
+    });
   }
 
   async getSensitivityExperimentLogs(
@@ -838,7 +887,8 @@ export class RemoteExecutionManager {
 
   private async dispatchRemoteJob(
     job: RemoteJobRecord,
-    payload: ModelRunSubmitRequest | SensitivityExperimentCreateRequest
+    payload: ModelRunSubmitRequest | SensitivityExperimentCreateRequest,
+    prepared?: Pick<RemoteRunRequest, 'preparedSensitivity'>
   ): Promise<void> {
     const status = await this.getStatus();
     if (!status.available) {
@@ -859,7 +909,8 @@ export class RemoteExecutionManager {
       sourceCommit: job.sourceCommit,
       sourceBundleKey: job.sourceBundleKey,
       artifactS3Prefix: job.artifactS3Prefix,
-      payload
+      payload,
+      ...(prepared?.preparedSensitivity ? { preparedSensitivity: prepared.preparedSensitivity } : {})
     };
     await this.adapter.putJson(this.config.artifactsBucket, job.requestKey, request);
     index.jobs.push(job);
@@ -1052,6 +1103,7 @@ export class RemoteExecutionManager {
       experimentId: prepared.experimentId,
       title: prepared.title,
       baseline: prepared.baseline,
+      basePolicy: prepared.basePolicy,
       status: 'queued',
       createdAt: now.toISOString(),
       seedsPerPoint: prepared.seeds.length,
@@ -1059,11 +1111,17 @@ export class RemoteExecutionManager {
       maxWorkers: prepared.maxWorkers,
       generalOverrides: prepared.generalOverrides,
       parameter: {
-        key: prepared.parameter.key,
-        title: prepared.parameter.title,
-        description: prepared.parameter.description,
-        type: prepared.parameter.type as 'integer' | 'number',
+        key:
+          prepared.policyPackage.parameterKeys.length === 1
+            ? prepared.policyPackage.parameterKeys[0]
+            : prepared.policyPackage.id,
+        packageId: prepared.policyPackage.id,
+        parameterKeys: [...prepared.policyPackage.parameterKeys],
+        title: prepared.policyPackage.title,
+        description: prepared.policyPackage.description,
+        type: prepared.policyPackage.type,
         baselineValue: prepared.baselineValue,
+        baselineValuesByKey: prepared.baselineValuesByKey,
         min: prepared.min,
         max: prepared.max,
         sampleCount: prepared.sampleCount

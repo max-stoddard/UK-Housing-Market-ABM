@@ -25,6 +25,7 @@ import type {
   ResultsSeriesPayload,
   SensitivityExperimentChartsPayload,
   SensitivityExperimentCreateRequest,
+  SensitivityExperimentDeleteResponse,
   SensitivityExperimentDetailPayload,
   SensitivityExperimentListPayload,
   SensitivityExperimentLogsPayload,
@@ -74,8 +75,8 @@ export const API_RETRY_DELAY_MS = 2000;
 
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
 let authToken: string | null = null;
-export type ApiViewMode = 'dev' | 'non_dev_preview';
-let apiViewMode: ApiViewMode = import.meta.env.DEV ? 'dev' : 'non_dev_preview';
+export type ApiViewMode = 'dev' | 'preview_desktop' | 'preview_cloud';
+let apiViewMode: ApiViewMode = import.meta.env.DEV ? 'dev' : 'preview_cloud';
 
 function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -143,6 +144,52 @@ async function requestJsonWithInit<T>(url: string, fallbackMessage: string, init
   }
 
   return (await response.json()) as T;
+}
+
+function parseDownloadFileName(contentDisposition: string | null, fallbackFileName: string): string {
+  if (!contentDisposition) {
+    return fallbackFileName;
+  }
+
+  const encodedMatch = /filename\*=UTF-8''([^;]+)/i.exec(contentDisposition);
+  if (encodedMatch?.[1]) {
+    try {
+      return decodeURIComponent(encodedMatch[1]);
+    } catch {
+      return fallbackFileName;
+    }
+  }
+
+  const quotedMatch = /filename="([^"]+)"/i.exec(contentDisposition);
+  if (quotedMatch?.[1]) {
+    return quotedMatch[1];
+  }
+
+  return fallbackFileName;
+}
+
+async function requestDownload(url: string, fallbackMessage: string, fallbackFileName: string): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(url, withAuthHeaders());
+  } catch {
+    throw new ApiRequestError(fallbackMessage, true, null);
+  }
+
+  if (!response.ok) {
+    const message = await readErrorMessage(response, fallbackMessage);
+    throw new ApiRequestError(message, isRetryableStatus(response.status), response.status);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = parseDownloadFileName(response.headers.get('content-disposition'), fallbackFileName);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
 }
 
 export function isRetryableApiError(error: unknown): boolean {
@@ -264,6 +311,14 @@ export async function deleteResultsRun(runId: string): Promise<ResultsRunDeleteR
     {
       method: 'DELETE'
     }
+  );
+}
+
+export async function downloadResultsRun(runId: string): Promise<void> {
+  return requestDownload(
+    buildApiUrl(`/api/results/runs/${encodeURIComponent(runId)}/download`),
+    'Failed to download run results',
+    `${runId}.tar.gz`
   );
 }
 
@@ -393,6 +448,16 @@ export async function fetchSensitivityExperiment(experimentId: string): Promise<
   );
 }
 
+export async function deleteSensitivityExperiment(experimentId: string): Promise<SensitivityExperimentDeleteResponse> {
+  return requestJsonWithInit<SensitivityExperimentDeleteResponse>(
+    buildApiUrl(`/api/experiments/sensitivity/${encodeURIComponent(experimentId)}`),
+    'Failed to delete sensitivity experiment',
+    {
+      method: 'DELETE'
+    }
+  );
+}
+
 export async function fetchSensitivityExperimentResults(experimentId: string): Promise<SensitivityExperimentResultsPayload> {
   return requestJson<SensitivityExperimentResultsPayload>(
     buildApiUrl(`/api/experiments/sensitivity/${encodeURIComponent(experimentId)}/results`),
@@ -404,6 +469,14 @@ export async function fetchSensitivityExperimentCharts(experimentId: string): Pr
   return requestJson<SensitivityExperimentChartsPayload>(
     buildApiUrl(`/api/experiments/sensitivity/${encodeURIComponent(experimentId)}/charts`),
     'Failed to fetch sensitivity experiment charts'
+  );
+}
+
+export async function downloadSensitivityExperiment(experimentId: string): Promise<void> {
+  return requestDownload(
+    buildApiUrl(`/api/experiments/sensitivity/${encodeURIComponent(experimentId)}/download`),
+    'Failed to download sensitivity experiment results',
+    `${experimentId}.tar.gz`
   );
 }
 

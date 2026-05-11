@@ -15,6 +15,7 @@ import { ManualSelectionStatusPills } from '../../../components/ManualSelectionS
 import {
   API_RETRY_DELAY_MS,
   deleteResultsRun,
+  downloadResultsRun,
   fetchResultsCompare,
   fetchResultsRunDetail,
   fetchResultsRunFiles,
@@ -49,6 +50,8 @@ type ManualResultsMode = 'single' | 'compare';
 
 interface ManualResultsViewProps {
   canWrite: boolean;
+  canDownloadResults: boolean;
+  authEnabled: boolean;
   requestedBaselineRunId: string;
   requestedComparisonRunId: string;
   onManualSelectionChange: (selection: { baselineRunId: string; comparisonRunId: string }) => void;
@@ -113,6 +116,8 @@ function InlineInfoTip({ label, description }: InlineInfoTipProps) {
 
 export function ManualResultsView({
   canWrite,
+  canDownloadResults,
+  authEnabled,
   requestedBaselineRunId,
   requestedComparisonRunId,
   onManualSelectionChange,
@@ -134,6 +139,7 @@ export function ManualResultsView({
   const [isLoadingCompare, setIsLoadingCompare] = useState<boolean>(false);
   const [isLoadingManifest, setIsLoadingManifest] = useState<boolean>(false);
   const [isDeletingRunId, setIsDeletingRunId] = useState<string>('');
+  const [isDownloadingRunId, setIsDownloadingRunId] = useState<string>('');
   const [isIndicatorSettingsOpen, setIsIndicatorSettingsOpen] = useState<boolean>(false);
   const [manifestTarget, setManifestTarget] = useState<ManifestTarget>('baseline');
   const [versions, setVersions] = useState<string[]>([]);
@@ -488,6 +494,62 @@ export function ManualResultsView({
     }
   };
 
+  const downloadRun = async (runId: string) => {
+    if (!runId || !canDownloadResults) {
+      return;
+    }
+
+    setLoadError('');
+    setIsDownloadingRunId(runId);
+    try {
+      await downloadResultsRun(runId);
+    } catch (error) {
+      setLoadError((error as Error).message);
+    } finally {
+      setIsDownloadingRunId('');
+    }
+  };
+
+  const loginPath = `/login?next=${encodeURIComponent(
+    buildExperimentsPath({
+      ...DEFAULT_EXPERIMENT_ROUTE_STATE,
+      type: 'manual',
+      mode: 'view',
+      baselineRunId,
+      comparisonRunId
+    })
+  )}`;
+
+  const renderDownloadAction = (runId: string, label: string) => {
+    if (!runId) {
+      return null;
+    }
+    if (!canDownloadResults) {
+      if (!authEnabled) {
+        return (
+          <button type="button" className="summary-link-inline summary-button-inline" disabled>
+            Download Unavailable
+          </button>
+        );
+      }
+      return (
+        <Link className="summary-link-inline" to={loginPath}>
+          Login to Download
+        </Link>
+      );
+    }
+    return (
+      <button
+        type="button"
+        className="summary-link-inline summary-button-inline"
+        disabled={isDownloadingRunId === runId}
+        onClick={() => void downloadRun(runId)}
+      >
+        {isDownloadingRunId === runId ? 'Downloading...' : label}
+      </button>
+    );
+  };
+
   return (
     <section className="results-layout manual-results-layout">
       {loadError && <p className="error-banner">{loadError}</p>}
@@ -683,6 +745,8 @@ export function ManualResultsView({
               >
                 Open Sensitivity Results
               </Link>
+              {renderDownloadAction(baselineRunId, 'Download Baseline Results')}
+              {comparisonRunId && renderDownloadAction(comparisonRunId, 'Download Comparison Results')}
             </div>
 
             <div className="manual-selection-summary">
@@ -723,7 +787,7 @@ export function ManualResultsView({
                 <h3>Aggregate Results</h3>
                 <p>
                   {showAllKpiDetails
-                    ? 'Detailed tables show mean plus all aggregate metrics for every KPI.'
+                    ? 'Detailed tables show mean, CV, and range for every KPI.'
                     : 'Mean is shown by default. Use More details to switch every KPI card to a detailed table.'}
                 </p>
               </div>

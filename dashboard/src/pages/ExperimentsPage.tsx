@@ -10,10 +10,11 @@ import type { ExperimentRouteState, ExperimentType } from './experiments/types';
 
 interface ExperimentsPageProps {
   canWrite: boolean;
+  canDownloadResults: boolean;
   authEnabled: boolean;
 }
 
-export function ExperimentsPage({ canWrite, authEnabled }: ExperimentsPageProps) {
+export function ExperimentsPage({ canWrite, canDownloadResults, authEnabled }: ExperimentsPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawQuery = searchParams.toString();
 
@@ -85,6 +86,7 @@ export function ExperimentsPage({ canWrite, authEnabled }: ExperimentsPageProps)
         <ExperimentRunMode
           activeType={routeState.type}
           canWrite={canWrite}
+          canDownloadResults={canDownloadResults}
           authEnabled={authEnabled}
           selectedJobRef={routeState.jobRef}
           onSelectedJobRefChange={(jobRef) => updateRouteState({ jobRef }, true)}
@@ -98,6 +100,8 @@ export function ExperimentsPage({ canWrite, authEnabled }: ExperimentsPageProps)
       ) : (
         <activeConfig.ViewComponent
           canWrite={canWrite}
+          canDownloadResults={canDownloadResults}
+          authEnabled={authEnabled}
           requestedBaselineRunId={routeState.baselineRunId}
           requestedComparisonRunId={routeState.comparisonRunId}
           requestedExperimentId={routeState.experimentId}

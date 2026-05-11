@@ -262,6 +262,7 @@ Resources:
             Action:
               - s3:GetObject
             Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/remote-job-index/*
               - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/manual/*
               - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/sensitivity/*
               - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/${SourceBundlePrefix}/current-deploy.json

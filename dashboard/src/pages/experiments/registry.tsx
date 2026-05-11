@@ -13,6 +13,8 @@ export interface ExperimentRunRendererProps {
 
 export interface ExperimentViewRendererProps {
   canWrite: boolean;
+  canDownloadResults: boolean;
+  authEnabled: boolean;
   requestedBaselineRunId: string;
   requestedComparisonRunId: string;
   requestedExperimentId: string;
@@ -30,6 +32,8 @@ interface ExperimentTypeDefinition {
 
 const ManualViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
   canWrite,
+  canDownloadResults,
+  authEnabled,
   requestedBaselineRunId,
   requestedComparisonRunId,
   onManualSelectionChange,
@@ -37,6 +41,8 @@ const ManualViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
 }) => (
   <ManualResultsView
     canWrite={canWrite}
+    canDownloadResults={canDownloadResults}
+    authEnabled={authEnabled}
     requestedBaselineRunId={requestedBaselineRunId}
     requestedComparisonRunId={requestedComparisonRunId}
     onManualSelectionChange={onManualSelectionChange}
@@ -45,11 +51,17 @@ const ManualViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
 );
 
 const SensitivityViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
+  canWrite,
+  canDownloadResults,
+  authEnabled,
   requestedExperimentId,
   onSelectedExperimentIdChange,
   sidebarSubtitle
 }) => (
   <SensitivityResultsView
+    canWrite={canWrite}
+    canDownloadResults={canDownloadResults}
+    authEnabled={authEnabled}
     requestedExperimentId={requestedExperimentId}
     onSelectedExperimentIdChange={onSelectedExperimentIdChange}
     sidebarSubtitle={sidebarSubtitle}
