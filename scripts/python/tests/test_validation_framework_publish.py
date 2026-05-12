@@ -370,8 +370,13 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertEqual(metric["targetBand"], {"lower": 4.396, "upper": 5.947})
         self.assertEqual(len(metric["sourceReferences"]), 4)
         self.assertIsNotNone(metric["metricLoss"])
-        self.assertAlmostEqual(metric["lossScale"], 5.17125)
-        self.assertEqual(metric["lossScaleBasis"], "source_value")
+        self.assertEqual(metric["lossFamily"], "positive_level")
+        self.assertEqual(metric["lossTransform"], "log_ratio_to_target_band")
+        self.assertIsNone(metric["lossScale"])
+        self.assertEqual(metric["lossScaleBasis"], "not_applicable")
+        self.assertIsNotNone(metric["distanceComponent"])
+        self.assertIsNotNone(metric["spreadComponent"])
+        self.assertIsNotNone(metric["insideRateComponent"])
 
     def test_market_source_metrics_are_scored_once_required_bands_exist(self) -> None:
         summary = build_validation_summary(
@@ -392,9 +397,11 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         self.assertIsNotNone(oo_dti["metricLoss"])
         self.assertIsNotNone(rental["metricLoss"])
         self.assertIsNotNone(spread["metricLoss"])
-        self.assertEqual(oo_dti["lossScaleBasis"], "source_value")
-        self.assertEqual(rental["lossScaleBasis"], "source_value")
-        self.assertEqual(spread["lossScaleBasis"], "source_value")
+        self.assertEqual(oo_dti["lossFamily"], "positive_level")
+        self.assertEqual(rental["lossFamily"], "positive_level")
+        self.assertEqual(spread["lossFamily"], "signed_additive")
+        self.assertEqual(spread["lossTransform"], "additive_distance")
+        self.assertIsNotNone(spread["additiveScale"])
         self.assertEqual(len(oo_dti["sourceReferences"]), 5)
         self.assertEqual(
             oo_dti["sourceReferences"][-1]["sourceDocumentPath"],
@@ -415,9 +422,12 @@ class TestValidationFrameworkPublish(unittest.TestCase):
 
         self.assertEqual(mortgage_approvals["status"], "pass")
         self.assertEqual(financial_wealth["status"], "pass")
-        self.assertEqual(mortgage_approvals["lossScaleBasis"], "source_value")
+        self.assertEqual(mortgage_approvals["lossFamily"], "positive_level")
+        self.assertEqual(mortgage_approvals["lossScaleBasis"], "not_applicable")
         self.assertEqual(financial_wealth["lossScaleBasis"], "target_band_upper")
         self.assertAlmostEqual(financial_wealth["lossScale"], 0.12)
+        self.assertEqual(financial_wealth["lossFamily"], "bounded_low_is_better")
+        self.assertIsNotNone(financial_wealth["levelComponent"])
 
     def test_build_validation_summary_uses_metric_only_composite_weighting(self) -> None:
         summary = build_validation_summary(

@@ -39,7 +39,7 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
 
         for version in versions:
             payload = json.loads((validation_dir / f"{version}.json").read_text(encoding="utf-8"))
-            self.assertEqual(payload["schemaVersion"], 3, msg=version)
+            self.assertEqual(payload["schemaVersion"], 4, msg=version)
             self.assertEqual(payload["seeds"], [1, 2, 3, 4, 5, 6, 7, 8], msg=version)
             self.assertNotIn("familySummaries", payload, msg=version)
             metrics_by_id = {metric["metricId"]: metric for metric in payload["metrics"]}
@@ -50,12 +50,16 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
                 self.assertNotEqual(metric["status"], "unsupported", msg=f"{version} {metric_id}")
                 self.assertIsNotNone(metric["targetBand"], msg=f"{version} {metric_id}")
                 self.assertIsNotNone(metric["insideRate"], msg=f"{version} {metric_id}")
-                self.assertIsNotNone(metric["lossScale"], msg=f"{version} {metric_id}")
+                self.assertIsNotNone(metric["lossFamily"], msg=f"{version} {metric_id}")
+                self.assertIsNotNone(metric["lossTransform"], msg=f"{version} {metric_id}")
                 self.assertIn(
-                    metric["lossScaleBasis"],
-                    {"source_value", "target_band_midpoint", "target_band_upper"},
+                    metric["lossFamily"],
+                    {"positive_level", "signed_additive", "bounded_low_is_better"},
                     msg=f"{version} {metric_id}",
                 )
+                self.assertIn("distanceComponent", metric, msg=f"{version} {metric_id}")
+                self.assertIn("spreadComponent", metric, msg=f"{version} {metric_id}")
+                self.assertIn("insideRateComponent", metric, msg=f"{version} {metric_id}")
                 self.assertIsNotNone(metric["metricLoss"], msg=f"{version} {metric_id}")
                 self.assertEqual(metric["metricWeight"], 1.0, msg=f"{version} {metric_id}")
                 self.assertNotIn("familyId", metric, msg=f"{version} {metric_id}")

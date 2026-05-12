@@ -95,6 +95,31 @@ class TestValidationCatalog2024Review(unittest.TestCase):
             },
         )
 
+    def test_catalog_assigns_explicit_loss_family_to_every_required_metric(self) -> None:
+        expected_families = {
+            "core_mortgageApprovals": "positive_level",
+            "core_housingTransactions": "positive_level",
+            "core_advancesToFTB": "positive_level",
+            "core_advancesToHM": "positive_level",
+            "core_advancesToBTL": "positive_level",
+            "core_debtToIncome": "positive_level",
+            "core_priceToIncome": "positive_level",
+            "core_housePriceGrowth": "signed_additive",
+            "core_hpiMean": "positive_level",
+            "core_hpiStd": "positive_level",
+            "core_hpiCyclePeriod": "positive_level",
+            "core_ooDebtToIncome": "positive_level",
+            "core_rentalYield": "positive_level",
+            "core_interestRateSpread": "signed_additive",
+            "income_distribution_jsd": "bounded_low_is_better",
+            "housing_wealth_distribution_jsd": "bounded_low_is_better",
+            "financial_wealth_distribution_jsd": "bounded_low_is_better",
+        }
+        self.assertEqual(
+            {metric_id: TARGETS_BY_ID[metric_id].loss_family for metric_id in expected_families},
+            expected_families,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

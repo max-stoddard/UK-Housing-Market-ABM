@@ -17,6 +17,8 @@ from scripts.python.validation.model.validate_all_input_data_versions import (
     resolve_versions,
     run_validation_campaign,
 )
+from scripts.python.validation.model.rescore_validation_summaries import rescore_summary_payload
+from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
 
 class TestValidationFrameworkBulk(unittest.TestCase):
@@ -186,6 +188,43 @@ class TestValidationFrameworkBulk(unittest.TestCase):
             self.assertEqual(failures, [])
             self.assertEqual(observed_profiles["v0"], {(2024, "R8")})
             self.assertEqual(observed_profiles["v1.0"], {(2024, "R8")})
+
+    def test_rescore_summary_payload_upgrades_cached_summary_without_seed_outputs(self) -> None:
+        summary = {
+            "schemaVersion": 3,
+            "version": "v-test",
+            "validationTargetYear": 2024,
+            "generatedAt": "2026-05-01T00:00:00Z",
+            "seeds": [1, 2, 3, 4, 5, 6, 7, 8],
+            "window": {"startIndex": 200, "endIndex": 2000},
+            "overallCompositeLoss": 9.0,
+            "metrics": [
+                {
+                    "metricId": "core_advancesToBTL",
+                    "label": "Advances to BTL",
+                    "requirement": "required",
+                    "units": "count/month",
+                    "sourceLabel": "source",
+                    "targetBand": {"lower": 4.396, "upper": 5.947},
+                    "seedMean": 17.45106215277778,
+                    "p25": 17.17581777777778,
+                    "p75": 17.730475555555557,
+                    "insideRate": 0.0,
+                    "sourceValue": 5.17125,
+                    "metricLoss": 9.0,
+                    "metricWeight": 1.0,
+                    "status": "fail",
+                }
+            ],
+        }
+
+        rescored = rescore_summary_payload(summary=summary, validation_profile=resolve_validation_profile("v-test"))
+        metric = rescored["metrics"][0]
+
+        self.assertEqual(rescored["schemaVersion"], 4)
+        self.assertEqual(metric["lossFamily"], "positive_level")
+        self.assertAlmostEqual(metric["metricLoss"], 1.5844592470279106)
+        self.assertAlmostEqual(rescored["overallCompositeLoss"], metric["metricLoss"])
 
 
 if __name__ == "__main__":

@@ -45,7 +45,9 @@ from scripts.python.calibration.output.four_parameter_esmda import (
     run_calibration,
 )
 from scripts.python.calibration.output.validation_bridge import (
+    FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
     MemberValidationResult,
+    TARGET_NORMALIZED_ADDITIVE_OBJECTIVE,
     build_member_validation_result,
     build_validation_observations,
     observation_error_covariance,
@@ -66,6 +68,8 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         )
 
         self.assertEqual(args.validation_year, 2024)
+        self.assertEqual(args.validation_objective, FAMILY_AWARE_METRIC_LOSS_OBJECTIVE)
+        self.assertAlmostEqual(args.validation_loss_error_std, 1.0)
         self.assertEqual(args.seeds, "1,2,3,4")
         self.assertEqual(args.workers, 20)
         self.assertEqual(args.ensemble_size, DEFAULT_ENSEMBLE_SIZE)
@@ -164,13 +168,16 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         with self.assertRaises(ValueError):
             resolve_calibration_validation_profile(version="v4.14o", validation_year=2011)
 
-    def test_validation_observation_covariance_and_member_aggregation(self) -> None:
+    def test_validation_observation_covariance_and_member_aggregation_for_default_loss_objective(self) -> None:
         profile = resolve_calibration_validation_profile(version="v4.14o", validation_year=2024)
         observations = build_validation_observations(profile)
         observed = observation_vector(observations)
         covariance = observation_error_covariance(observations)
 
         self.assertEqual(len(observations), 17)
+        self.assertTrue(all(observation.validation_objective == FAMILY_AWARE_METRIC_LOSS_OBJECTIVE for observation in observations))
+        self.assertTrue(all(observation.assimilation_transform == "schema4_metric_loss" for observation in observations))
+        self.assertTrue(np.all(observed == 0.0))
         self.assertEqual(covariance.shape, (17, 17))
         self.assertTrue(np.all(np.diag(covariance) > 0.0))
 
@@ -192,7 +199,46 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         )
 
         self.assertEqual(len(member.observation_vector), len(observed))
+        self.assertTrue(all(value >= 0.0 for value in member.observation_vector))
+        self.assertEqual(member.ranking_objective, FAMILY_AWARE_METRIC_LOSS_OBJECTIVE)
+        self.assertAlmostEqual(member.ranking_loss, float(member.summary["overallCompositeLoss"]))
         self.assertLess(float(member.summary["overallCompositeLoss"]), 0.6)
+
+    def test_validation_observation_covariance_and_member_aggregation_for_additive_objective(self) -> None:
+        profile = resolve_calibration_validation_profile(version="v4.14o", validation_year=2024)
+        observations = build_validation_observations(
+            profile,
+            validation_objective=TARGET_NORMALIZED_ADDITIVE_OBJECTIVE,
+        )
+        observed = observation_vector(observations)
+        covariance = observation_error_covariance(observations)
+
+        self.assertEqual(len(observations), 17)
+        self.assertTrue(all(observation.validation_objective == TARGET_NORMALIZED_ADDITIVE_OBJECTIVE for observation in observations))
+        self.assertTrue(all(observation.assimilation_transform == "target_normalized_additive" for observation in observations))
+        self.assertTrue(np.all(observed >= 0.0))
+        self.assertEqual(covariance.shape, (17, 17))
+
+        metrics = self._target_metric_values(profile)
+        seed_results = [
+            {"seed": seed, "outputDir": f"seed-{seed}", "metrics": metrics}
+            for seed in (1, 2, 3, 4)
+        ]
+        member = build_member_validation_result(
+            version="v4.14o",
+            iteration=0,
+            member_id=0,
+            parameters=self._default_parameter_values(),
+            seed_results=seed_results,
+            seeds=[1, 2, 3, 4],
+            validation_profile=profile,
+            observations=observations,
+            source_parameters=self._default_parameter_values(),
+        )
+
+        self.assertEqual(len(member.observation_vector), len(observed))
+        self.assertEqual(member.ranking_objective, TARGET_NORMALIZED_ADDITIVE_OBJECTIVE)
+        self.assertLess(member.ranking_loss, 0.6)
 
     def test_config_parsing_and_update_are_limited_to_requested_keys(self) -> None:
         config = self._minimal_config_text()
@@ -331,6 +377,8 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
                         ],
                     },
                     observation_vector=tuple(0.0 for _ in kwargs["observations"]),
+                    ranking_loss=loss,
+                    ranking_objective=str(kwargs["observations"][0].validation_objective),
                     normalized_source_movement=float(iteration) + member_id / 10.0,
                     seed_results=tuple(kwargs["seed_results"]),
                 )

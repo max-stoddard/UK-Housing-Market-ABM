@@ -97,6 +97,12 @@ class TestValidationCatalog2011(unittest.TestCase):
             )
         )
 
+    def test_2011_catalog_inherits_explicit_loss_families(self) -> None:
+        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].loss_family, "positive_level")
+        self.assertEqual(TARGETS_BY_ID["core_housePriceGrowth"].loss_family, "signed_additive")
+        self.assertEqual(TARGETS_BY_ID["core_interestRateSpread"].loss_family, "signed_additive")
+        self.assertEqual(TARGETS_BY_ID["income_distribution_jsd"].loss_family, "bounded_low_is_better")
+
 
 if __name__ == "__main__":
     unittest.main()
