@@ -237,22 +237,24 @@ export function App() {
       <header className="app-header">
         <div className="brand-wrap">
           <p className="eyebrow">Max Stoddard BEng Individual Project</p>
-          <h1 className="brand-title">
-            <span>UK Housing Market ABM</span>
-            {isDevEnv && <span className="env-pill-dev">{activeViewModeLabel}</span>}
-          </h1>
-          {isDevEnv && (
-            <label className="env-selector">
-              <span>Runtime view</span>
-              <select value={viewMode} onChange={(event) => handleViewModeChange(event.target.value as ApiViewMode)}>
-                {VIEW_MODE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          <div className="brand-heading-row">
+            <h1 className="brand-title">UK Housing Market ABM</h1>
+            {isDevEnv && (
+              <div className="env-controls">
+                <span className="env-pill-dev">{activeViewModeLabel}</span>
+                <label className="env-selector">
+                  <span>Runtime view</span>
+                  <select value={viewMode} onChange={(event) => handleViewModeChange(event.target.value as ApiViewMode)}>
+                    {VIEW_MODE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+          </div>
         </div>
         <div className="header-nav-wrap">
           <nav className="main-nav" aria-label="Main">

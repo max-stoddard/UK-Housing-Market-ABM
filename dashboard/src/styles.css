@@ -118,6 +118,13 @@ code {
   padding: 1.4rem 2rem 1rem;
 }
 
+.brand-heading-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
 .brand-wrap h1 {
   margin: 0;
   font-size: clamp(1.3rem, 2.1vw, 2rem);
@@ -125,16 +132,21 @@ code {
 }
 
 .brand-title {
+  line-height: 1.15;
+}
+
+.env-controls {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
   flex-wrap: wrap;
+  gap: 0.45rem;
 }
 
 .env-pill-dev {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-height: 1.7rem;
   font-size: 0.65rem;
   font-weight: 800;
   letter-spacing: 0.1em;
@@ -143,7 +155,7 @@ code {
   background: #ffe8cc;
   border: 1px solid rgba(240, 140, 0, 0.32);
   border-radius: 999px;
-  padding: 0.2rem 0.48rem;
+  padding: 0 0.52rem;
   line-height: 1;
 }
 
@@ -151,7 +163,7 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  margin-top: 0.35rem;
+  min-height: 1.7rem;
   color: #9c4b00;
   font-size: 0.72rem;
   font-weight: 800;
@@ -167,6 +179,7 @@ code {
   font: inherit;
   letter-spacing: 0;
   line-height: 1.2;
+  min-height: 1.7rem;
   padding: 0.24rem 1.8rem 0.24rem 0.52rem;
   cursor: pointer;
 }
@@ -2985,6 +2998,14 @@ code {
   .app-header {
     flex-direction: column;
     align-items: start;
+  }
+
+  .brand-heading-row {
+    align-items: flex-start;
+  }
+
+  .env-controls {
+    width: 100%;
   }
 
   .header-nav-wrap {
