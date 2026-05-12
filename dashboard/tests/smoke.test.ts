@@ -2411,6 +2411,7 @@ assert.equal(v38Note?.validation.financial_wealth_diff_pct, 13.438086, 'v4.0 fin
 
 const validationOverview = getValidationOverview(repoRoot, 'v4.1');
 assert.equal(validationOverview.selectedVersion, 'v4.1');
+assert.equal(validationOverview.selectedValidationTargetYear, 2024);
 assert.ok(validationOverview.trend.points.length > 0);
 assert.ok(validationOverview.selectedSummary.metrics.some((metric) => metric.metricId === 'core_mortgageApprovals'));
 assert.equal(
@@ -2437,17 +2438,53 @@ assert.equal(
   2024,
   'Selecting v0 should keep the metric table on the tracked 2024 summary'
 );
-const referenceValidationOverview = getValidationOverview(repoRoot, 'v4.1', 'reference_2011');
-assert.equal(referenceValidationOverview.selectedVersion, 'v4.1');
+assert.deepEqual(
+  originalValidationOverview.availableValidationTargetYearsByVersion.v0,
+  [2024, 2011],
+  'Original v0 should expose both the 2024 validation and matching 2011 overlay'
+);
+assert.deepEqual(
+  originalValidationOverview.availableValidationTargetYearsByVersion.v0o,
+  [2024, 2011],
+  'v0o should expose both the 2024 validation and matching 2011 overlay'
+);
+assert.deepEqual(
+  originalValidationOverview.availableValidationTargetYearsByVersion.v0oo,
+  [2024, 2011],
+  'v0oo should expose both the 2024 validation and matching 2011 overlay'
+);
+assert.deepEqual(
+  validationOverview.availableValidationTargetYearsByVersion['v4.1'],
+  [2024],
+  'Non-v0-family validation versions should expose only the 2024 validation'
+);
+const referenceValidationOverview = getValidationOverview(repoRoot, 'v0', 2011);
+assert.equal(referenceValidationOverview.selectedVersion, 'v0');
+assert.equal(referenceValidationOverview.selectedValidationTargetYear, 2011);
 assert.equal(
   referenceValidationOverview.selectedSummary.version,
-  'v0-2011',
-  'Reference validation mode should surface the separate v0-2011 summary as the selected table'
+  'v0',
+  'Selecting the 2011 validation year should keep the selected version stable'
 );
 assert.equal(
   referenceValidationOverview.selectedSummary.validationTargetYear,
   2011,
-  'Reference validation mode should keep the summary table on the 2011 target year'
+  'Selecting the 2011 validation year should surface the matching overlay table'
+);
+const v0ooReferenceValidationOverview = getValidationOverview(repoRoot, 'v0oo', 2011);
+assert.equal(v0ooReferenceValidationOverview.selectedVersion, 'v0oo');
+assert.equal(v0ooReferenceValidationOverview.selectedSummary.version, 'v0oo');
+assert.equal(
+  v0ooReferenceValidationOverview.selectedSummary.validationTargetYear,
+  2011,
+  'Selecting v0oo with 2011 should return the v0oo-specific 2011 overlay metrics'
+);
+const unsupportedReferenceRequestOverview = getValidationOverview(repoRoot, 'v4.1', 2011);
+assert.equal(unsupportedReferenceRequestOverview.selectedVersion, 'v4.1');
+assert.equal(
+  unsupportedReferenceRequestOverview.selectedValidationTargetYear,
+  2024,
+  'Requesting 2011 for an unsupported version should fall back to the 2024 validation year'
 );
 assert.equal(
   referenceValidationOverview.selectedSummary.metrics.find((metric) => metric.metricId === 'core_hpiStd')?.bandNotes,
@@ -2461,7 +2498,7 @@ assert.equal(
 );
 assert.ok(
   referenceValidationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
-  'Reference validation mode should keep the trend chart on the tracked 2024 timeline'
+  'Selecting a 2011 validation year should keep the trend chart on the tracked 2024 timeline'
 );
 const v0FamilyReferencePoints = validationOverview.trend.referencePoints.filter((point) =>
   ['v0', 'v0o', 'v0oo'].includes(point.version)
@@ -2846,6 +2883,7 @@ assert.equal(
   'Tracked v0 summaries should not need to embed the separate 2011 comparator payload'
 );
 const overviewWithReferenceLine = getValidationOverview(validationSummaryFixtureRoot, 'v4.0');
+assert.equal(overviewWithReferenceLine.selectedValidationTargetYear, 2024);
 assert.equal(
   overviewWithReferenceLine.trend.points.find((point) => point.version === 'v0')?.overallCompositeLoss,
   0.5,
@@ -2871,6 +2909,16 @@ assert.deepEqual(
   ['v0'],
   'Validation overview should expose available sparse 2011 reference points keyed to tracked versions'
 );
+assert.deepEqual(
+  overviewWithReferenceLine.availableValidationTargetYearsByVersion.v0,
+  [2024, 2011],
+  'Validation overview should expose 2011 as a selectable validation year only when an overlay exists'
+);
+assert.deepEqual(
+  overviewWithReferenceLine.availableValidationTargetYearsByVersion['v4.0'],
+  [2024],
+  'Validation overview should not expose 2011 for versions without a matching overlay'
+);
 assert.equal(
   overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_mortgageApprovals')
     ?.lossDeltaVsReference2011,
@@ -2883,10 +2931,18 @@ assert.equal(
   -0.3,
   'Tracked validation summaries should expose negative signed loss deltas when they score better than v0-2011'
 );
-const referenceOverviewWithDeltas = getValidationOverview(validationSummaryFixtureRoot, 'v4.0', 'reference_2011');
+const referenceOverviewWithDeltas = getValidationOverview(validationSummaryFixtureRoot, 'v0', 2011);
+assert.equal(referenceOverviewWithDeltas.selectedVersion, 'v0');
+assert.equal(referenceOverviewWithDeltas.selectedValidationTargetYear, 2011);
 assert.ok(
   referenceOverviewWithDeltas.selectedSummary.metrics.every((metric) => metric.lossDeltaVsReference2011 === 0),
-  'Reference validation mode should expose zero deltas for every supported v0-2011 baseline metric'
+  'Selecting the v0 2011 validation year should expose zero deltas for every supported v0-2011 baseline metric'
+);
+const unsupportedFixtureReferenceRequest = getValidationOverview(validationSummaryFixtureRoot, 'v4.0', 2011);
+assert.equal(
+  unsupportedFixtureReferenceRequest.selectedValidationTargetYear,
+  2024,
+  'Validation overview should fall back to 2024 when 2011 is requested for a version without an overlay'
 );
 
 const rangeAtSameVersion = compareParameters(repoRoot, 'v4.0', 'v4.0', ['national_insurance_rates'], 'range');
@@ -6439,15 +6495,21 @@ const eChartSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/compo
 const publicRoutesSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/routes/publicRoutes.ts'), 'utf-8');
 const serviceSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/lib/service.ts'), 'utf-8');
 const apiSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/lib/api.ts'), 'utf-8');
+const validationVersionSelectorIndex = validationPageSource.indexOf('<span>Version</span>');
+const validationYearSelectorIndex = validationPageSource.indexOf('<span>Validation Year</span>');
 assert.ok(
   !validationPageSource.includes('three_lines'),
   'Validation page should no longer support the three-line mode'
 );
 assert.ok(
   validationPageSource.includes('validation-mode-row') &&
-    validationPageSource.includes('Summary view') &&
-    validationPageSource.includes('v0-2011 reference summary'),
-  'Validation page should render a tracked/reference summary toggle'
+    validationVersionSelectorIndex >= 0 &&
+    validationYearSelectorIndex > validationVersionSelectorIndex,
+  'Validation page should render Version as the leftmost selector before Validation Year'
+);
+assert.ok(
+  !validationPageSource.includes('Summary view') && !validationPageSource.includes('reference_2011'),
+  'Validation page should remove the old tracked/reference summary view toggle'
 );
 assert.ok(
   validationPageSource.includes('Validation Loss Across Versions'),
@@ -6456,9 +6518,9 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('tracked 2024 timeline') &&
     validationPageSource.includes('v0-family 2011') &&
-    validationPageSource.includes('full <code>v0-2011</code>') &&
-    validationPageSource.includes('reference summary'),
-  'Validation page should explain that the trend chart stays tracked while showing the v0-family 2011 comparison'
+    validationPageSource.includes('any available 2011 v0-family') &&
+    validationPageSource.includes('selected version'),
+  'Validation page should explain that the metric table can switch to available v0-family 2011 validation'
 );
 assert.ok(
   validationPageSource.includes('core_hpiStd') &&
@@ -6471,7 +6533,8 @@ assert.ok(
   'Validation page should remove the validation categories section'
 );
 assert.ok(
-  validationPageSource.includes('Validation Results by Metric for'),
+  validationPageSource.includes('<h3>Validation Results by Metric</h3>') &&
+    !validationPageSource.includes('Validation Results by Metric for'),
   'Validation page should render the renamed metric results section'
 );
 assert.ok(
@@ -6489,6 +6552,7 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('referenceLineLabel') &&
     validationPageSource.includes('referencePointsByVersion') &&
+    validationPageSource.includes('2024 validation') &&
     validationPageSource.includes('2011 validation (v0 family)') &&
     validationPageSource.includes('Tracked summary:') &&
     !validationPageSource.includes('Dashed comparator:'),
@@ -6584,8 +6648,10 @@ assert.ok(
   'Validation page should render each metric weight from the validation payload'
 );
 assert.ok(
-  validationPageSource.includes("viewMode === 'tracked' && (") && validationPageSource.includes('<span>Version</span>'),
-  'Validation page should hide the version selector whenever the v0-2011 reference summary is selected'
+  validationPageSource.includes('<span>Version</span>') &&
+    validationPageSource.includes('<span>Validation Year</span>') &&
+    validationPageSource.includes('availableValidationTargetYears.map'),
+  'Validation page should always render the version selector and derive validation-year options from the selected version'
 );
 assert.ok(
   !validationPageSource.includes('lossWeight'),
@@ -6613,10 +6679,12 @@ assert.ok(
 );
 assert.ok(
   validationPageSource.includes('handleChartClick') &&
-    validationPageSource.includes('Click a tracked 2024 point') &&
+    validationPageSource.includes('Click a 2024 validation point') &&
     validationPageSource.includes('TRACKED_VALIDATION_SERIES_NAME') &&
+    validationPageSource.includes('V0_FAMILY_REFERENCE_SERIES_NAME') &&
+    validationPageSource.includes('selectVersionAndValidationYear') &&
     validationPageSource.includes('onClick={handleChartClick}'),
-  'Validation page should wire chart point clicks to tracked-version selection'
+  'Validation page should wire chart point clicks to 2024 and 2011 version-year selection'
 );
 assert.ok(
   eChartSource.includes('onClick?: (params: unknown) => void;') &&
@@ -6625,12 +6693,12 @@ assert.ok(
   'EChart should expose an optional click handler and attach it to the ECharts instance'
 );
 assert.ok(
-  apiSource.includes("/api/validation-overview") && apiSource.includes("view: ValidationOverviewViewMode"),
-  'API client should fetch the validation overview payload with an explicit view mode'
+  apiSource.includes("/api/validation-overview") && apiSource.includes("validationTargetYear"),
+  'API client should fetch the validation overview payload with an explicit validation target year'
 );
 assert.ok(
-  publicRoutesSource.includes("/api/validation-overview") && publicRoutesSource.includes("req.query.view"),
-  'Public routes should expose the validation overview endpoint and accept the view query parameter'
+  publicRoutesSource.includes("/api/validation-overview") && publicRoutesSource.includes("req.query.validationTargetYear"),
+  'Public routes should expose the validation overview endpoint and accept the validation target year query parameter'
 );
 assert.ok(
   !serviceSource.includes('entry.validation.income_diff_pct'),

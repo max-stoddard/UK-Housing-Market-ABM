@@ -45,8 +45,6 @@ export interface VersionsPayload {
   inProgressVersions: string[];
 }
 
-export type ValidationOverviewViewMode = 'tracked' | 'reference_2011';
-
 interface CatalogResponse {
   items: ParameterCardMeta[];
 }
@@ -255,13 +253,13 @@ export async function fetchVersions(): Promise<VersionsPayload> {
 
 export async function fetchValidationOverview(
   version?: string,
-  view: ValidationOverviewViewMode = 'tracked'
+  validationTargetYear = 2024
 ): Promise<ValidationOverviewPayload> {
   const params = new URLSearchParams();
   if (version) {
     params.set('version', version);
   }
-  params.set('view', view);
+  params.set('validationTargetYear', String(validationTargetYear));
   const query = params.toString();
   const url = query ? `${buildApiUrl('/api/validation-overview')}?${query}` : buildApiUrl('/api/validation-overview');
   return requestJson<ValidationOverviewPayload>(url, 'Failed to fetch validation overview');

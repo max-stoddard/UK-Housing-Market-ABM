@@ -9,8 +9,7 @@ import { EChart } from '../components/EChart';
 import {
   API_RETRY_DELAY_MS,
   fetchValidationOverview,
-  isRetryableApiError,
-  type ValidationOverviewViewMode
+  isRetryableApiError
 } from '../lib/api';
 
 type ValidationSortMode =
@@ -22,7 +21,9 @@ type ValidationSortMode =
   | 'status_severity';
 
 const DEFAULT_SORT_MODE: ValidationSortMode = 'highest_loss';
-const TRACKED_VALIDATION_SERIES_NAME = 'Validation loss';
+const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
+const REFERENCE_VALIDATION_TARGET_YEAR = 2011;
+const TRACKED_VALIDATION_SERIES_NAME = '2024 validation';
 const V0_FAMILY_REFERENCE_SERIES_NAME = '2011 validation (v0 family)';
 
 function formatNumber(value: number | null, digits = 3): string {
@@ -73,17 +74,62 @@ function formatMetricWeight(value: number): string {
   });
 }
 
-function formatLossScaleBasis(metric: ValidationMetricSummary): string | null {
-  if (metric.lossScale === null || metric.lossScaleBasis === null) {
+function formatLossFamily(metric: ValidationMetricSummary): string | null {
+  if (!metric.lossFamily) {
     return null;
   }
-  const basisLabel =
-    metric.lossScaleBasis === 'source_value'
-      ? 'source target level'
-      : metric.lossScaleBasis === 'target_band_midpoint'
-        ? 'target-band midpoint'
-        : 'target-band upper bound';
-  return `Loss scale ${formatNumber(metric.lossScale, 4)} from ${basisLabel}`;
+  const familyLabel =
+    metric.lossFamily === 'positive_level'
+      ? 'Positive level'
+      : metric.lossFamily === 'signed_additive'
+        ? 'Signed additive'
+        : metric.lossFamily === 'bounded_low_is_better'
+          ? 'Bounded low-is-better'
+          : 'Diagnostic';
+  const transform = metric.lossTransform ? `, ${metric.lossTransform.replace(/_/gu, ' ')}` : '';
+  return `Loss family: ${familyLabel}${transform}`;
+}
+
+function formatLossScaleBasisLabel(basis: ValidationMetricSummary['lossScaleBasis']): string {
+  if (basis === 'source_value') {
+    return 'source target level';
+  }
+  if (basis === 'target_band_midpoint') {
+    return 'target-band midpoint';
+  }
+  if (basis === 'target_band_upper') {
+    return 'target-band upper bound';
+  }
+  if (basis === 'target_band_lower_abs') {
+    return 'absolute target lower bound';
+  }
+  if (basis === 'target_band_upper_abs') {
+    return 'absolute target upper bound';
+  }
+  if (basis === 'target_band_half_width') {
+    return 'target-band half-width';
+  }
+  if (basis === 'metric_floor') {
+    return 'metric floor';
+  }
+  return 'not applicable';
+}
+
+function formatLossScaleBasis(metric: ValidationMetricSummary): string | null {
+  const notes: string[] = [];
+  if (metric.lossScale !== null && metric.lossScaleBasis !== null && metric.lossScaleBasis !== 'not_applicable') {
+    notes.push(`Loss scale ${formatNumber(metric.lossScale, 4)} from ${formatLossScaleBasisLabel(metric.lossScaleBasis)}`);
+  }
+  if (
+    metric.additiveScale !== null &&
+    metric.additiveScaleBasis !== null &&
+    metric.additiveScaleBasis !== 'not_applicable'
+  ) {
+    notes.push(
+      `Additive scale ${formatNumber(metric.additiveScale, 4)} from ${formatLossScaleBasisLabel(metric.additiveScaleBasis)}`
+    );
+  }
+  return notes.length > 0 ? notes.join(' · ') : null;
 }
 
 function getPathTail(pathValue: string | null): string | null {
@@ -159,6 +205,10 @@ function formatValidationTargetYearLabel(validationTargetYear: number): string {
   return `${validationTargetYear} evidence`;
 }
 
+function formatValidationYearOptionLabel(validationTargetYear: number): string {
+  return `${validationTargetYear} validation`;
+}
+
 function formatReferenceLineLabel(label: string, validationTargetYear: number): string {
   return `${label} (${validationTargetYear} comparator)`;
 }
@@ -174,9 +224,16 @@ function getTooltipValue(data: ValidationTooltipRow['data']): number | null {
 }
 
 function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
-  const selectedIndex = overview.trend.points.findIndex((point) => point.version === overview.selectedVersion);
+  const selectedTrackedIndex =
+    overview.selectedValidationTargetYear === DEFAULT_VALIDATION_TARGET_YEAR
+      ? overview.trend.points.findIndex((point) => point.version === overview.selectedVersion)
+      : -1;
   const pointsByVersion = new Map(overview.trend.points.map((point) => [point.version, point]));
   const referencePointsByVersion = new Map(overview.trend.referencePoints.map((point) => [point.version, point]));
+  const selectedReferencePoint =
+    overview.selectedValidationTargetYear === REFERENCE_VALIDATION_TARGET_YEAR
+      ? referencePointsByVersion.get(overview.selectedVersion)
+      : null;
   const referenceLine = overview.trend.referenceLine;
   const referenceLineLabel = referenceLine
     ? formatReferenceLineLabel(referenceLine.label, referenceLine.validationTargetYear)
@@ -218,7 +275,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
     itemStyle: { color: '#0b7285' },
     z: 2,
     markPoint:
-      selectedIndex >= 0
+      selectedTrackedIndex >= 0
         ? {
             symbol: 'circle',
             symbolSize: 18,
@@ -243,8 +300,8 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
             data: [
               {
                 name: overview.selectedVersion,
-                xAxis: overview.trend.points[selectedIndex]?.version,
-                yAxis: overview.trend.points[selectedIndex]?.overallCompositeLoss
+                xAxis: overview.trend.points[selectedTrackedIndex]?.version,
+                yAxis: overview.trend.points[selectedTrackedIndex]?.overallCompositeLoss
               }
             ]
           }
@@ -273,7 +330,39 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
       data: referenceSeriesData,
       lineStyle: { color: '#6741d9', width: 2.2 },
       itemStyle: { color: '#6741d9' },
-      z: 3
+      z: 3,
+      markPoint:
+        selectedReferencePoint
+          ? {
+              symbol: 'diamond',
+              symbolSize: 20,
+              itemStyle: {
+                color: '#d9480f',
+                borderColor: '#fff4e6',
+                borderWidth: 3
+              },
+              label: {
+                show: true,
+                formatter: overview.selectedVersion,
+                position: 'top',
+                distance: 10,
+                color: '#8f3b13',
+                backgroundColor: '#fff4e6',
+                borderColor: '#ffd8a8',
+                borderWidth: 1,
+                borderRadius: 999,
+                padding: [4, 8],
+                fontWeight: 700
+              },
+              data: [
+                {
+                  name: overview.selectedVersion,
+                  xAxis: overview.selectedVersion,
+                  yAxis: selectedReferencePoint.overallCompositeLoss
+                }
+              ]
+            }
+          : undefined
     });
   }
 
@@ -413,7 +502,8 @@ function sortMetrics(metrics: ValidationMetricSummary[], sortMode: ValidationSor
 export function ValidationPage() {
   const [overview, setOverview] = useState<ValidationOverviewPayload | null>(null);
   const [selectedVersion, setSelectedVersion] = useState<string>('');
-  const [viewMode, setViewMode] = useState<ValidationOverviewViewMode>('tracked');
+  const [selectedValidationTargetYear, setSelectedValidationTargetYear] =
+    useState<number>(DEFAULT_VALIDATION_TARGET_YEAR);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isWaitingForApi, setIsWaitingForApi] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
@@ -431,12 +521,13 @@ export function ValidationPage() {
       setError('');
 
       try {
-        const response = await fetchValidationOverview(selectedVersion || undefined, viewMode);
+        const response = await fetchValidationOverview(selectedVersion || undefined, selectedValidationTargetYear);
         if (cancelled) {
           return;
         }
         setOverview(response);
         setSelectedVersion(response.selectedVersion);
+        setSelectedValidationTargetYear(response.selectedValidationTargetYear);
       } catch (loadError) {
         if (cancelled) {
           return;
@@ -464,7 +555,7 @@ export function ValidationPage() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [selectedVersion, viewMode]);
+  }, [selectedVersion, selectedValidationTargetYear]);
 
   const chartOption = useMemo(() => {
     if (!overview || overview.trend.points.length === 0) {
@@ -474,12 +565,15 @@ export function ValidationPage() {
   }, [overview]);
 
   const summary = overview?.selectedSummary ?? null;
-  const selectedValidationTargetYear = summary?.validationTargetYear ?? (viewMode === 'reference_2011' ? 2011 : 2024);
+  const displayedValidationTargetYear =
+    overview?.selectedValidationTargetYear ?? summary?.validationTargetYear ?? selectedValidationTargetYear;
+  const availableValidationTargetYears =
+    overview?.availableValidationTargetYearsByVersion[selectedVersion] ?? [DEFAULT_VALIDATION_TARGET_YEAR];
   const openMetricIdSet = useMemo(() => new Set(openMetricIds), [openMetricIds]);
 
   useEffect(() => {
     setOpenMetricIds([]);
-  }, [summary?.version]);
+  }, [summary?.version, summary?.validationTargetYear]);
 
   const filteredMetrics = useMemo(() => {
     if (!summary) {
@@ -500,21 +594,40 @@ export function ValidationPage() {
     );
   };
 
+  const selectVersionAndValidationYear = (version: string, validationTargetYear: number) => {
+    if (version === selectedVersion && validationTargetYear === selectedValidationTargetYear) {
+      return;
+    }
+    setSelectedVersion(version);
+    setSelectedValidationTargetYear(validationTargetYear);
+  };
+
+  const handleVersionChange = (version: string) => {
+    const availableYears =
+      overview?.availableValidationTargetYearsByVersion[version] ?? [DEFAULT_VALIDATION_TARGET_YEAR];
+    selectVersionAndValidationYear(
+      version,
+      availableYears.includes(selectedValidationTargetYear)
+        ? selectedValidationTargetYear
+        : DEFAULT_VALIDATION_TARGET_YEAR
+    );
+  };
+
   const handleChartClick = (rawParams: unknown) => {
-    if (viewMode !== 'tracked' || !rawParams || typeof rawParams !== 'object') {
+    if (!rawParams || typeof rawParams !== 'object') {
       return;
     }
 
     const params = rawParams as ValidationChartClickParams;
-    if (
-      params.seriesName !== TRACKED_VALIDATION_SERIES_NAME ||
-      typeof params.name !== 'string' ||
-      params.name === selectedVersion
-    ) {
+    if (typeof params.name !== 'string') {
       return;
     }
 
-    setSelectedVersion(params.name);
+    if (params.seriesName === TRACKED_VALIDATION_SERIES_NAME) {
+      selectVersionAndValidationYear(params.name, DEFAULT_VALIDATION_TARGET_YEAR);
+    } else if (params.seriesName === V0_FAMILY_REFERENCE_SERIES_NAME) {
+      selectVersionAndValidationYear(params.name, REFERENCE_VALIDATION_TARGET_YEAR);
+    }
   };
 
   return (
@@ -524,13 +637,13 @@ export function ValidationPage() {
         <div className="validation-intro-copy">
           <p>
             This page keeps the trend chart on the tracked 2024 timeline, overlays the v0-family 2011 validation
-            comparison, and lets you switch the table between the tracked summary and the full <code>v0-2011</code>
-            reference summary. The tracked timeline still includes <code>v0</code> across eight-seed validation
-            summaries.
+            comparison, and lets you switch the metric table between the 2024 summary and any available 2011 v0-family
+            summary for the selected version. The tracked timeline still includes <code>v0</code> across eight-seed
+            validation summaries.
           </p>
-          {viewMode === 'reference_2011' && (
+          {displayedValidationTargetYear === REFERENCE_VALIDATION_TARGET_YEAR && (
             <p>
-              The <code>v0-2011</code> reference summary keeps <code>core_hpiStd</code> benchmarked to the same
+              The 2011 validation summary keeps <code>core_hpiStd</code> benchmarked to the same
               2005-01..2024-12 official std used in the 2024 view, while <code>core_hpiCyclePeriod</code> remains
               2011-anchored.
             </p>
@@ -557,19 +670,9 @@ export function ValidationPage() {
           <div>
             <h3>Validation Loss Across Versions</h3>
             <p className="validation-card-subtitle">
-              {viewMode === 'tracked' ? (
-                <>
-                  Lower validation loss means the model is closer to the external targets and more stable across seeds.
-                  Click a tracked 2024 point to load that version in the metric results below; the 2011 series is a
-                  sparse v0-family comparison.
-                </>
-              ) : (
-                <>
-                  Lower validation loss means the model is closer to the external targets and more stable across seeds.
-                  The chart stays on the tracked 2024 summary timeline for context while the metric results below
-                  remain locked to the separate <code>v0-2011</code> reference summary.
-                </>
-              )}
+              Lower validation loss means the model is closer to the external targets and more stable across seeds.
+              Click a 2024 validation point or a sparse v0-family 2011 validation point to load that version and year in
+              the metric results below.
             </p>
           </div>
         </div>
@@ -583,35 +686,37 @@ export function ValidationPage() {
       </article>
 
       <article className="results-card">
-        <h3>
-          Validation Results by Metric for {summary?.version ?? selectedVersion} ({selectedValidationTargetYear}{' '}
-          targets)
-        </h3>
+        <h3>Validation Results by Metric</h3>
         <p className="validation-card-subtitle">
-          Each row shows one validation metric, the {selectedValidationTargetYear} target band it is checked against,
-          the model summary across seeds, the signed loss delta versus <code>v0-2011</code> where negative is better
-          and positive is worse, the status, and the raw metric weight supplied in the validation payload.
+          Each row shows one validation metric for {summary?.version ?? selectedVersion} against{' '}
+          {displayedValidationTargetYear} targets, the model summary across seeds, the signed loss delta versus{' '}
+          <code>v0-2011</code> where negative is better and positive is worse, the status, and the raw metric weight
+          supplied in the validation payload.
         </p>
         <div className="results-controls validation-mode-row">
           <label className="validation-selector">
-            <span>Summary view</span>
-            <select value={viewMode} onChange={(event) => setViewMode(event.target.value as ValidationOverviewViewMode)}>
-              <option value="tracked">Tracked 2024 summary</option>
-              <option value="reference_2011">v0-2011 reference summary</option>
+            <span>Version</span>
+            <select value={selectedVersion} onChange={(event) => handleVersionChange(event.target.value)}>
+              {overview?.availableVersions.map((version) => (
+                <option key={version} value={version}>
+                  {version}
+                </option>
+              ))}
             </select>
           </label>
-          {viewMode === 'tracked' && (
-            <label className="validation-selector">
-              <span>Version</span>
-              <select value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)}>
-                {overview?.availableVersions.map((version) => (
-                  <option key={version} value={version}>
-                    {version}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+          <label className="validation-selector">
+            <span>Validation Year</span>
+            <select
+              value={displayedValidationTargetYear}
+              onChange={(event) => setSelectedValidationTargetYear(Number.parseInt(event.target.value, 10))}
+            >
+              {availableValidationTargetYears.map((validationTargetYear) => (
+                <option key={validationTargetYear} value={validationTargetYear}>
+                  {formatValidationYearOptionLabel(validationTargetYear)}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="results-controls validation-table-controls">
           <label>
@@ -678,6 +783,9 @@ export function ValidationPage() {
                                   {reference.label}
                                 </div>
                               ))}
+                              {formatLossFamily(metric) && (
+                                <div className="validation-source-note">{formatLossFamily(metric)}</div>
+                              )}
                               {formatLossScaleBasis(metric) && (
                                 <div className="validation-source-note">{formatLossScaleBasis(metric)}</div>
                               )}

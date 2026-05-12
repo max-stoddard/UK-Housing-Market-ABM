@@ -89,9 +89,9 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
   app.get('/api/validation-overview', context.withMemoryLogging('validation-overview', (req, res) => {
     try {
       const version = String(req.query.version ?? '').trim();
-      const viewParam = String(req.query.view ?? 'tracked').trim();
-      const view = viewParam === 'reference_2011' ? 'reference_2011' : 'tracked';
-      res.json(getValidationOverview(context.runtimePaths, version || undefined, view));
+      const targetYearParam = Number.parseInt(String(req.query.validationTargetYear ?? '').trim(), 10);
+      const validationTargetYear = [2011, 2024].includes(targetYearParam) ? targetYearParam : undefined;
+      res.json(getValidationOverview(context.runtimePaths, version || undefined, validationTargetYear));
     } catch (error) {
       res.status(500).json({ error: (error as Error).message });
     }

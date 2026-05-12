@@ -238,7 +238,20 @@ export interface HomePreviewPayload {
 export type ValidationMetricStatus = 'pass' | 'warn' | 'fail' | 'unsupported';
 export type ValidationMetricRequirement = 'required' | 'diagnostic';
 export type ValidationMetricMappingStatus = 'exact_match' | 'derived_match' | 'unsupported';
-export type ValidationLossScaleBasis = 'source_value' | 'target_band_midpoint' | 'target_band_upper';
+export type ValidationLossFamily =
+  | 'positive_level'
+  | 'signed_additive'
+  | 'bounded_low_is_better'
+  | 'diagnostic';
+export type ValidationLossScaleBasis =
+  | 'source_value'
+  | 'target_band_midpoint'
+  | 'target_band_upper'
+  | 'target_band_lower_abs'
+  | 'target_band_upper_abs'
+  | 'target_band_half_width'
+  | 'metric_floor'
+  | 'not_applicable';
 
 export interface ValidationReferenceLine {
   version: string;
@@ -292,10 +305,18 @@ export interface ValidationMetricSummary {
   p25: number;
   p75: number;
   insideRate: number | null;
+  lossFamily: ValidationLossFamily | null;
+  lossTransform: string | null;
   lossScale: number | null;
   lossScaleBasis: ValidationLossScaleBasis | null;
+  additiveScale: number | null;
+  additiveScaleBasis: ValidationLossScaleBasis | null;
   normalizedDistance: number | null;
   normalizedIqr: number | null;
+  distanceComponent: number | null;
+  spreadComponent: number | null;
+  levelComponent: number | null;
+  insideRateComponent: number | null;
   metricLoss: number | null;
   lossDeltaVsReference2011: number | null;
   metricWeight: number;
@@ -331,6 +352,8 @@ export interface ValidationCompositeTrendPayload {
 export interface ValidationOverviewPayload {
   availableVersions: string[];
   selectedVersion: string;
+  selectedValidationTargetYear: number;
+  availableValidationTargetYearsByVersion: Record<string, number[]>;
   trend: ValidationCompositeTrendPayload;
   selectedSummary: ValidationVersionSummary;
 }

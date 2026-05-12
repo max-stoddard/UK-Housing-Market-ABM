@@ -13,7 +13,7 @@ import { resolveRuntimePaths, type RuntimePathInput } from './runtimePaths';
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
 const V0_FAMILY_REFERENCE_VERSIONS = ['v0', 'v0o', 'v0oo'] as const;
-export type ValidationOverviewViewMode = 'tracked' | 'reference_2011';
+const V0_FAMILY_REFERENCE_VERSION_SET = new Set<string>(V0_FAMILY_REFERENCE_VERSIONS);
 const V0_REFERENCE_HPI_STD_BAND_NOTE =
   'Intentionally benchmarked to the same official UK IndexSA population std over 2005-01 through 2024-12 used by the tracked 2024 view; this 2011 reference summary only changes the displayed comparison window.';
 const V0_REFERENCE_HPI_CYCLE_BAND_NOTE =
@@ -226,16 +226,48 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
     p25: assertNumber(objectValue.p25, `metrics[${index}].p25 must be a number`),
     p75: assertNumber(objectValue.p75, `metrics[${index}].p75 must be a number`),
     insideRate: assertNumberOrNull(objectValue.insideRate, `metrics[${index}].insideRate must be a number or null`),
+    lossFamily: assertStringOrNull(
+      objectValue.lossFamily,
+      `metrics[${index}].lossFamily must be a string or null`
+    ) as ValidationMetricSummary['lossFamily'],
+    lossTransform: assertStringOrNull(
+      objectValue.lossTransform,
+      `metrics[${index}].lossTransform must be a string or null`
+    ),
     lossScale: assertNumberOrNull(objectValue.lossScale, `metrics[${index}].lossScale must be a number or null`),
     lossScaleBasis: assertStringOrNull(
       objectValue.lossScaleBasis,
       `metrics[${index}].lossScaleBasis must be a string or null`
     ) as ValidationMetricSummary['lossScaleBasis'],
+    additiveScale: assertNumberOrNull(
+      objectValue.additiveScale,
+      `metrics[${index}].additiveScale must be a number or null`
+    ),
+    additiveScaleBasis: assertStringOrNull(
+      objectValue.additiveScaleBasis,
+      `metrics[${index}].additiveScaleBasis must be a string or null`
+    ) as ValidationMetricSummary['additiveScaleBasis'],
     normalizedDistance: assertNumberOrNull(
       objectValue.normalizedDistance,
       `metrics[${index}].normalizedDistance must be a number or null`
     ),
     normalizedIqr: assertNumberOrNull(objectValue.normalizedIqr, `metrics[${index}].normalizedIqr must be a number or null`),
+    distanceComponent: assertNumberOrNull(
+      objectValue.distanceComponent,
+      `metrics[${index}].distanceComponent must be a number or null`
+    ),
+    spreadComponent: assertNumberOrNull(
+      objectValue.spreadComponent,
+      `metrics[${index}].spreadComponent must be a number or null`
+    ),
+    levelComponent: assertNumberOrNull(
+      objectValue.levelComponent,
+      `metrics[${index}].levelComponent must be a number or null`
+    ),
+    insideRateComponent: assertNumberOrNull(
+      objectValue.insideRateComponent,
+      `metrics[${index}].insideRateComponent must be a number or null`
+    ),
     metricLoss: assertNumberOrNull(objectValue.metricLoss, `metrics[${index}].metricLoss must be a number or null`),
     lossDeltaVsReference2011: assertNumberOrNull(
       objectValue.lossDeltaVsReference2011,
@@ -325,11 +357,7 @@ function referenceOverlayName(version: string): string {
   return `${version}-2011`;
 }
 
-function readValidationReferenceSummary(pathsInput: RuntimePathInput): ValidationVersionSummary | null {
-  const summary = readValidationOverlay(pathsInput, V0_REFERENCE_OVERLAY_NAME);
-  if (!summary) {
-    return null;
-  }
+function decorate2011ReferenceSummary(summary: ValidationVersionSummary): ValidationVersionSummary {
   const metrics = summary.metrics.map((metric) => {
     if (metric.metricId === 'core_hpiStd') {
       return {
@@ -347,9 +375,49 @@ function readValidationReferenceSummary(pathsInput: RuntimePathInput): Validatio
   });
   return {
     ...summary,
-    version: V0_REFERENCE_OVERLAY_NAME,
     metrics
   };
+}
+
+function readValidationReferenceSummary(pathsInput: RuntimePathInput, version = 'v0'): ValidationVersionSummary | null {
+  const summary = readValidationOverlay(pathsInput, referenceOverlayName(version));
+  if (!summary) {
+    return null;
+  }
+  return decorate2011ReferenceSummary(summary);
+}
+
+function hasValidationReferenceSummary(pathsInput: RuntimePathInput, version: string): boolean {
+  if (!V0_FAMILY_REFERENCE_VERSION_SET.has(version)) {
+    return false;
+  }
+  const paths = resolveRuntimePaths(pathsInput);
+  return fs.existsSync(path.join(paths.dataRoot, 'validation-overlays', `${referenceOverlayName(version)}.json`));
+}
+
+function buildAvailableValidationTargetYearsByVersion(
+  pathsInput: RuntimePathInput,
+  availableVersions: string[]
+): Record<string, number[]> {
+  const yearsByVersion: Record<string, number[]> = {};
+  for (const version of availableVersions) {
+    yearsByVersion[version] = hasValidationReferenceSummary(pathsInput, version)
+      ? [DEFAULT_VALIDATION_TARGET_YEAR, 2011]
+      : [DEFAULT_VALIDATION_TARGET_YEAR];
+  }
+  return yearsByVersion;
+}
+
+function resolveRequestedValidationTargetYear(
+  requestedValidationTargetYear: number | undefined,
+  selectedVersion: string,
+  availableValidationTargetYearsByVersion: Record<string, number[]>
+): number {
+  const availableYears = availableValidationTargetYearsByVersion[selectedVersion] ?? [DEFAULT_VALIDATION_TARGET_YEAR];
+  if (requestedValidationTargetYear !== undefined && availableYears.includes(requestedValidationTargetYear)) {
+    return requestedValidationTargetYear;
+  }
+  return DEFAULT_VALIDATION_TARGET_YEAR;
 }
 
 function readV0FamilyReferencePoints(pathsInput: RuntimePathInput, availableVersions: string[]): ValidationReferenceLine[] {
@@ -407,7 +475,7 @@ function addLossDeltaVsReference2011(
 export function getValidationOverview(
   pathsInput: RuntimePathInput,
   requestedVersion?: string,
-  viewMode: ValidationOverviewViewMode = 'tracked'
+  requestedValidationTargetYear?: number
 ): ValidationOverviewPayload {
   const paths = resolveRuntimePaths(pathsInput);
   const availableVersions = listValidationSummaryVersions(paths);
@@ -426,16 +494,22 @@ export function getValidationOverview(
     throw new Error(`Missing selected validation summary for ${selectedVersion}`);
   }
 
-  const referenceSummary = readValidationReferenceSummary(paths);
+  const availableValidationTargetYearsByVersion = buildAvailableValidationTargetYearsByVersion(paths, availableVersions);
+  const selectedValidationTargetYear = resolveRequestedValidationTargetYear(
+    requestedValidationTargetYear,
+    selectedVersion,
+    availableValidationTargetYearsByVersion
+  );
+  const baselineReferenceSummary = readValidationReferenceSummary(paths);
   const referenceLine =
-    (referenceSummary
+    (baselineReferenceSummary
         ? {
-          version: referenceSummary.version,
+          version: V0_REFERENCE_OVERLAY_NAME,
           label: 'Original v0 calibration',
           description:
             'Original v0 calibration loss against 2011 evidence, rescored from the tracked 8-seed v0 validation outputs.',
-          overallCompositeLoss: referenceSummary.overallCompositeLoss,
-          validationTargetYear: referenceSummary.validationTargetYear
+          overallCompositeLoss: baselineReferenceSummary.overallCompositeLoss,
+          validationTargetYear: baselineReferenceSummary.validationTargetYear
         }
       : null) ??
     summaries.find((summary) => summary.referenceLine)?.referenceLine ??
@@ -449,17 +523,20 @@ export function getValidationOverview(
     referenceLine,
     referencePoints: readV0FamilyReferencePoints(paths, availableVersions)
   };
-  if (viewMode === 'reference_2011' && !referenceSummary) {
-    throw new Error(`Missing validation summary for ${V0_REFERENCE_OVERLAY_NAME}`);
-  }
+  const selectedSummaryForYear =
+    selectedValidationTargetYear === 2011
+      ? (readValidationReferenceSummary(paths, selectedVersion) as ValidationVersionSummary)
+      : selectedSummary;
   const selectedSummaryView = addLossDeltaVsReference2011(
-    viewMode === 'reference_2011' ? (referenceSummary as ValidationVersionSummary) : selectedSummary,
-    referenceSummary
+    selectedSummaryForYear,
+    baselineReferenceSummary
   );
 
   return {
     availableVersions,
     selectedVersion,
+    selectedValidationTargetYear,
+    availableValidationTargetYearsByVersion,
     trend,
     selectedSummary: selectedSummaryView
   };
