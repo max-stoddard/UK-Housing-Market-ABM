@@ -12,6 +12,11 @@ export interface DashboardWriteAccessStatus extends WriteAccessStatus {
   authMisconfigured: boolean;
 }
 
+export interface DeleteKeyAccessStatus {
+  configured: boolean;
+  canDelete: boolean;
+}
+
 interface SessionRecord {
   expiresAt: number;
 }
@@ -21,6 +26,11 @@ export interface WriteAuthController {
   login(username: string, password: string): { ok: boolean; token?: string; canWrite: boolean };
   logout(token: string | null): void;
   authEnabled: boolean;
+}
+
+export interface DeleteKeyAuthController {
+  resolveAccess(deleteKeyHeader: string | undefined): DeleteKeyAccessStatus;
+  configured: boolean;
 }
 
 export function getWriteAuthConfigurationError(
@@ -215,4 +225,31 @@ export function createDesktopWriteAuthController(desktopTokenRaw: string | undef
 
 export function createWriteAuthControllerFromEnv(): WriteAuthController {
   return createWriteAuthController(process.env.DASHBOARD_WRITE_USERNAME, process.env.DASHBOARD_WRITE_PASSWORD);
+}
+
+export function createDeleteKeyAuthController(deleteKeyRaw: string | undefined): DeleteKeyAuthController {
+  const deleteKey = deleteKeyRaw?.trim() ?? '';
+  const configured = Boolean(deleteKey);
+
+  return {
+    configured,
+    resolveAccess: (deleteKeyHeader: string | undefined): DeleteKeyAccessStatus => {
+      if (!configured) {
+        return {
+          configured: false,
+          canDelete: false
+        };
+      }
+
+      const candidate = deleteKeyHeader?.trim() ?? '';
+      return {
+        configured: true,
+        canDelete: Boolean(candidate) && secureEquals(deleteKey, candidate)
+      };
+    }
+  };
+}
+
+export function createDeleteKeyAuthControllerFromEnv(): DeleteKeyAuthController {
+  return createDeleteKeyAuthController(process.env.DASHBOARD_DELETE_KEY);
 }

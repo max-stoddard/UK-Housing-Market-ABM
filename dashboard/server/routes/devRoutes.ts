@@ -24,7 +24,7 @@ import {
   listModelRunJobs,
   submitModelRun
 } from '../lib/modelRuns';
-import { cancelExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../lib/experimentJobs';
+import { cancelExperimentJob, deleteExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../lib/experimentJobs';
 import {
   cancelSensitivityExperiment,
   deleteSensitivityExperiment,
@@ -166,17 +166,17 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.delete('/api/results/runs/:runId', (req, res) => {
+  app.delete('/api/results/runs/:runId', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
-    if (!context.requireWriteAccess(req, res)) {
+    if (!context.requireDeleteAccess(req, res)) {
       return;
     }
 
     try {
       if (context.remoteExecution) {
-        res.status(400).json({ error: 'Remote manual result artifacts are immutable from the dashboard API.' });
+        res.json(await context.remoteExecution.deleteRemoteManualResultRun(String(req.params.runId ?? '')));
         return;
       }
       const payload = deleteResultsRun(context.runtimePaths, String(req.params.runId ?? ''));
@@ -482,13 +482,13 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
-    if (!context.requireWriteAccess(req, res)) {
+    if (!context.requireDeleteAccess(req, res)) {
       return;
     }
 
     try {
       if (context.remoteExecution) {
-        res.status(400).json({ error: 'Remote sensitivity experiment artifacts are immutable from the dashboard API.' });
+        res.json(await context.remoteExecution.deleteSensitivityExperiment(String(req.params.experimentId ?? '')));
         return;
       }
       res.json(deleteSensitivityExperiment(context.runtimePaths, String(req.params.experimentId ?? '')));
@@ -676,6 +676,25 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
         return;
       }
       res.json(cancelExperimentJob(context.runtimePaths, String(req.params.jobRef ?? '')));
+    } catch (error) {
+      res.status(400).json({ error: (error as Error).message });
+    }
+  });
+
+  app.delete('/api/experiments/jobs/:jobRef', async (req, res) => {
+    if (!context.requireExperimentsFeature(req, res)) {
+      return;
+    }
+    if (!context.requireDeleteAccess(req, res)) {
+      return;
+    }
+
+    try {
+      if (context.remoteExecution) {
+        res.json(await context.remoteExecution.deleteExperimentJob(String(req.params.jobRef ?? '')));
+        return;
+      }
+      res.json(deleteExperimentJob(context.runtimePaths, String(req.params.jobRef ?? '')));
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }

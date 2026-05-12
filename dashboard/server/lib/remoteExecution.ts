@@ -5,6 +5,7 @@ import {
   type InstanceStateName
 } from '@aws-sdk/client-ec2';
 import {
+  DeleteObjectsCommand,
   GetObjectCommand,
   ListObjectsV2Command,
   NoSuchKey,
@@ -22,6 +23,7 @@ import {
 } from '@aws-sdk/client-ssm';
 import type {
   ExperimentJobLogsPayload,
+  ExperimentJobDeleteResponse,
   ExperimentJobsPayload,
   ExperimentJobSummary,
   ModelRunJob,
@@ -167,6 +169,7 @@ export interface RemoteAwsAdapter {
     stderr: string;
   } | null>;
   cancelCommand(instanceId: string, commandId: string): Promise<void>;
+  deleteObjects(bucket: string, keys: string[]): Promise<void>;
 }
 
 function envValue(name: string): string {
@@ -264,6 +267,45 @@ function mapSsmStatus(status: string): RemoteJobStatus {
   return 'running';
 }
 
+function normalizePositiveInteger(value: number | null | undefined): number | null {
+  if (!Number.isFinite(value) || value === null || value === undefined) {
+    return null;
+  }
+  const normalized = Math.trunc(value);
+  return normalized > 0 ? normalized : null;
+}
+
+function runnerVCpusFromCpuOptions(cpuOptions: { CoreCount?: number; ThreadsPerCore?: number } | undefined): number | null {
+  const coreCount = normalizePositiveInteger(cpuOptions?.CoreCount);
+  const threadsPerCore = normalizePositiveInteger(cpuOptions?.ThreadsPerCore);
+  if (!coreCount || !threadsPerCore) {
+    return null;
+  }
+  return coreCount * threadsPerCore;
+}
+
+function sensitivityWorkerCapFromStatus(status: RemoteExecutionStatus): number {
+  return normalizePositiveInteger(status.runnerVCpus) ?? 1;
+}
+
+function capSensitivityPayloadMaxWorkers(
+  payload: SensitivityExperimentCreateRequest,
+  workerCap: number
+): SensitivityExperimentCreateRequest {
+  const cappedWorkerCap = Math.max(1, Math.trunc(workerCap));
+  if (payload.maxWorkers === undefined || payload.maxWorkers === null) {
+    return {
+      ...payload,
+      maxWorkers: cappedWorkerCap
+    };
+  }
+
+  return {
+    ...payload,
+    maxWorkers: Math.min(payload.maxWorkers, cappedWorkerCap)
+  };
+}
+
 function streamBodyToBuffer(body: unknown): Promise<Buffer> {
   const maybeTransform = body as { transformToByteArray?: () => Promise<Uint8Array> } | null;
   if (maybeTransform?.transformToByteArray) {
@@ -308,6 +350,7 @@ export class AwsSdkRemoteAdapter implements RemoteAwsAdapter {
       const instance = instanceResult.Reservations?.flatMap((reservation) => reservation.Instances ?? [])[0];
       const runnerState = (instance?.State?.Name ?? null) as InstanceStateName | null;
       const ssmPingStatus = (ssmResult.InstanceInformationList?.[0]?.PingStatus ?? null) as PingStatus | null;
+      const runnerVCpus = runnerVCpusFromCpuOptions(instance?.CpuOptions);
       const available = runnerState === 'running' && ssmPingStatus === 'Online';
       const reason = available
         ? null
@@ -322,6 +365,7 @@ export class AwsSdkRemoteAdapter implements RemoteAwsAdapter {
         runnerInstanceId: instanceId,
         runnerState,
         ssmPingStatus,
+        runnerVCpus,
         reason,
         checkedAt
       };
@@ -333,6 +377,7 @@ export class AwsSdkRemoteAdapter implements RemoteAwsAdapter {
         runnerInstanceId: instanceId,
         runnerState: null,
         ssmPingStatus: null,
+        runnerVCpus: null,
         reason: (error as Error).message,
         checkedAt
       };
@@ -463,6 +508,23 @@ export class AwsSdkRemoteAdapter implements RemoteAwsAdapter {
       CommandId: commandId,
       InstanceIds: [instanceId]
     }));
+  }
+
+  async deleteObjects(bucket: string, keys: string[]): Promise<void> {
+    const uniqueKeys = [...new Set(keys.filter(Boolean))];
+    for (let start = 0; start < uniqueKeys.length; start += 1000) {
+      const batch = uniqueKeys.slice(start, start + 1000);
+      if (batch.length === 0) {
+        continue;
+      }
+      await this.s3.send(new DeleteObjectsCommand({
+        Bucket: bucket,
+        Delete: {
+          Objects: batch.map((Key) => ({ Key })),
+          Quiet: true
+        }
+      }));
+    }
   }
 }
 
@@ -674,12 +736,14 @@ export class RemoteExecutionManager {
 
   async decorateModelRunOptions(options: ModelRunOptionsPayload): Promise<ModelRunOptionsPayload> {
     const status = await this.getStatus();
+    const sensitivityMaxWorkersCap = sensitivityWorkerCapFromStatus(status);
     return {
       ...options,
       executionEnabled: status.available,
       executionDisabledReason: status.available ? null : status.reason,
       executionBackend: 'aws_ssm',
-      remoteExecution: status
+      remoteExecution: status,
+      sensitivityMaxWorkersCap
     };
   }
 
@@ -730,7 +794,12 @@ export class RemoteExecutionManager {
     pathsInput: RuntimePathInput,
     payload: SensitivityExperimentCreateRequest
   ): Promise<SensitivityExperimentSubmitResponse> {
-    const preparedResult = prepareSensitivityExperimentSubmission(pathsInput, payload);
+    const status = await this.getStatus();
+    if (!status.available) {
+      throw new Error(status.reason ?? 'EC2 experiment runner is unavailable.');
+    }
+    const cappedPayload = capSensitivityPayloadMaxWorkers(payload, sensitivityWorkerCapFromStatus(status));
+    const preparedResult = prepareSensitivityExperimentSubmission(pathsInput, cappedPayload);
     if (!preparedResult.accepted) {
       return preparedResult;
     }
@@ -762,7 +831,7 @@ export class RemoteExecutionManager {
       sensitivityMetadata: metadata
     };
 
-    await this.dispatchRemoteJob(job, payload, {
+    await this.dispatchRemoteJob(job, cappedPayload, {
       preparedSensitivity: {
         experimentId: prepared.experimentId
       }
@@ -810,6 +879,20 @@ export class RemoteExecutionManager {
     index.jobs = index.jobs.filter((item) => item.jobRef !== job.jobRef);
     await this.saveIndex(index);
     return { jobId, cleared: true };
+  }
+
+  async deleteRemoteManualResultRun(runId: string): Promise<{ runId: string; deleted: boolean }> {
+    const normalizedRunId = runId.trim();
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.type === 'manual' && item.runId === normalizedRunId);
+    if (!job) {
+      throw new Error(`Unknown remote manual result run: ${runId}`);
+    }
+    await this.deleteRemoteJob(index, job);
+    return {
+      runId: normalizedRunId,
+      deleted: true
+    };
   }
 
   async listRemoteManualResultRuns(): Promise<{ runs: ResultsRunSummary[] }> {
@@ -879,6 +962,20 @@ export class RemoteExecutionManager {
       experiments: index.jobs
         .filter((job) => job.type === 'sensitivity')
         .map((job) => this.toSensitivitySummary(job))
+    };
+  }
+
+  async deleteSensitivityExperiment(experimentId: string): Promise<{ experimentId: string; deleted: boolean }> {
+    const normalizedExperimentId = experimentId.trim();
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.type === 'sensitivity' && item.id === normalizedExperimentId);
+    if (!job) {
+      throw new Error(`Unknown sensitivity experiment: ${experimentId}`);
+    }
+    await this.deleteRemoteJob(index, job);
+    return {
+      experimentId: normalizedExperimentId,
+      deleted: true
     };
   }
 
@@ -994,6 +1091,43 @@ export class RemoteExecutionManager {
     job.endedAt = isoNow();
     await this.saveIndex(index);
     return { job: this.toExperimentJobSummary(job) };
+  }
+
+  async deleteExperimentJob(jobRef: string): Promise<ExperimentJobDeleteResponse> {
+    const index = await this.refreshIndex();
+    const job = index.jobs.find((item) => item.jobRef === jobRef.trim());
+    if (!job) {
+      throw new Error(`Unknown experiment jobRef: ${jobRef}`);
+    }
+    await this.deleteRemoteJob(index, job);
+    return {
+      jobRef: job.jobRef,
+      type: job.type,
+      id: job.id,
+      ...(job.runId ? { runId: job.runId } : {}),
+      deleted: true
+    };
+  }
+
+  private async deleteRemoteJob(index: RemoteJobIndex, job: RemoteJobRecord): Promise<void> {
+    if (isActive(job.status)) {
+      throw new Error('Only finished remote experiment jobs can be deleted.');
+    }
+    const expectedArtifactPrefix = job.type === 'manual' ? 'experiments/manual/' : 'experiments/sensitivity/';
+    if (!job.artifactS3Prefix.startsWith(expectedArtifactPrefix)) {
+      throw new Error(`Refusing to delete unexpected remote artifact prefix: ${job.artifactS3Prefix}`);
+    }
+    if (!job.requestKey.startsWith(`${REQUEST_PREFIX}/`)) {
+      throw new Error(`Refusing to delete unexpected remote request key: ${job.requestKey}`);
+    }
+
+    const artifactObjects = await this.adapter.listObjects(this.config.artifactsBucket, job.artifactS3Prefix);
+    await this.adapter.deleteObjects(this.config.artifactsBucket, [
+      job.requestKey,
+      ...artifactObjects.map((object) => object.key)
+    ]);
+    index.jobs = index.jobs.filter((item) => item.jobRef !== job.jobRef);
+    await this.saveIndex(index);
   }
 
   private async dispatchRemoteJob(

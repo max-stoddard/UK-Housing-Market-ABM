@@ -1,15 +1,19 @@
 import type {
   ExperimentJobCancelResponse,
+  ExperimentJobDeleteResponse,
   ExperimentJobLogsPayload,
   ExperimentJobSummary,
   ExperimentJobsPayload,
   ModelRunJob,
   SensitivityExperimentSummary
 } from '../../shared/types';
-import { cancelModelRunJob, getModelRunJobLogs, listModelRunJobs } from './modelRuns';
+import { cancelModelRunJob, clearModelRunJob, getModelRunJob, getModelRunJobLogs, listModelRunJobs } from './modelRuns';
+import { deleteResultsRun } from './results';
 import {
   cancelSensitivityExperiment,
+  deleteSensitivityExperiment,
   getSensitivityExperimentLogs,
+  getSensitivityExperiment,
   listSensitivityExperiments
 } from './sensitivityRuns';
 import type { RuntimePathInput } from './runtimePaths';
@@ -132,5 +136,53 @@ export function cancelExperimentJob(pathsInput: RuntimePathInput, jobRef: string
   const detail = cancelSensitivityExperiment(pathsInput, parsed.id);
   return {
     job: toSensitivitySummary(detail.experiment)
+  };
+}
+
+function isFinishedStatus(status: ModelRunJob['status'] | SensitivityExperimentSummary['status']): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'canceled';
+}
+
+function isUnknownRunDeleteError(error: unknown): boolean {
+  return /^Unknown run:/.test((error as Error).message);
+}
+
+export function deleteExperimentJob(pathsInput: RuntimePathInput, jobRef: string): ExperimentJobDeleteResponse {
+  const parsed = parseJobRef(jobRef);
+
+  if (parsed.type === 'manual') {
+    const job = getModelRunJob(parsed.id);
+    if (!isFinishedStatus(job.status)) {
+      throw new Error('Only finished manual experiment jobs can be deleted.');
+    }
+    if (job.runId) {
+      try {
+        deleteResultsRun(pathsInput, job.runId);
+      } catch (error) {
+        if (!isUnknownRunDeleteError(error)) {
+          throw error;
+        }
+      }
+    }
+    clearModelRunJob(parsed.id);
+    return {
+      jobRef,
+      type: 'manual',
+      id: parsed.id,
+      ...(job.runId ? { runId: job.runId } : {}),
+      deleted: true
+    };
+  }
+
+  const detail = getSensitivityExperiment(pathsInput, parsed.id);
+  if (!isFinishedStatus(detail.experiment.status)) {
+    throw new Error('Only finished sensitivity experiment jobs can be deleted.');
+  }
+  deleteSensitivityExperiment(pathsInput, parsed.id);
+  return {
+    jobRef,
+    type: 'sensitivity',
+    id: parsed.id,
+    deleted: true
   };
 }

@@ -4,7 +4,7 @@ import type { ModelLauncher } from '../lib/modelLauncher';
 import type { RemoteExecutionManager } from '../lib/remoteExecution';
 import type { RuntimeDependencyStatus } from '../lib/runtimeDeps';
 import type { RuntimePaths } from '../lib/runtimePaths';
-import type { WriteAuthController } from '../lib/writeAuth';
+import type { DeleteKeyAuthController, WriteAuthController } from '../lib/writeAuth';
 
 export interface RuntimePolicy {
   viewMode: 'dev' | 'preview_desktop' | 'preview_cloud';
@@ -21,12 +21,14 @@ export interface RouteContext {
   runtimePaths: RuntimePaths;
   modelRunsConfiguredFromEnv: boolean;
   writeAuth: WriteAuthController;
+  deleteKeyAuth: DeleteKeyAuthController;
   launcher?: ModelLauncher;
   remoteExecution?: RemoteExecutionManager;
   modelLogSink?: LogLineSink;
   getRuntimeDependencies: () => RuntimeDependencyStatus;
   resolveRuntimePolicy: (req: express.Request) => RuntimePolicy;
   requireDownloadAccess: (req: express.Request, res: express.Response) => boolean;
+  requireDeleteAccess: (req: express.Request, res: express.Response) => boolean;
   requireWriteAccess: (req: express.Request, res: express.Response) => boolean;
   requireExperimentsFeature: (req: express.Request, res: express.Response) => boolean;
   withMemoryLogging: (label: string, handler: express.RequestHandler) => express.RequestHandler;

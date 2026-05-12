@@ -16,10 +16,12 @@ import { shutdownModelRunProcesses } from './lib/modelRuns';
 import { createPersistentLoggers, type RotatingLogOptions, type RotatingLogWriter } from './lib/logs/persistentLogs';
 import { shutdownSensitivityRunProcesses } from './lib/sensitivityRuns';
 import {
+  createDeleteKeyAuthControllerFromEnv,
   createDesktopWriteAuthController,
   createWriteAuthControllerFromEnv,
   getWriteAuthConfigurationError,
   resolveDashboardWriteAccess,
+  type DeleteKeyAuthController,
   type WriteAuthController
 } from './lib/writeAuth';
 import { registerPublicRoutes } from './routes/publicRoutes';
@@ -48,6 +50,7 @@ export interface StartDashboardServerOptions {
   port?: number;
   runtimePaths?: RuntimePaths;
   writeAuth?: WriteAuthController;
+  deleteKeyAuth?: DeleteKeyAuthController;
   desktopAuthToken?: string;
   launcher?: ModelLauncher;
   remoteExecution?: RemoteExecutionManager;
@@ -160,7 +163,7 @@ function createCorsMiddleware(corsOrigin: string): express.RequestHandler {
     if (requestOrigin && requestOrigin === corsOrigin) {
       res.setHeader('Access-Control-Allow-Origin', corsOrigin);
       res.setHeader('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Dashboard-View-Mode');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Dashboard-View-Mode,X-Dashboard-Delete-Key');
       res.setHeader('Vary', 'Origin');
     }
 
@@ -203,6 +206,7 @@ function createRouteContext(input: {
   runtimePaths: RuntimePaths;
   modelRunsConfigured: boolean;
   writeAuth: WriteAuthController;
+  deleteKeyAuth: DeleteKeyAuthController;
   isDevRuntime: boolean;
   memoryLoggingEnabled: boolean;
   startupRuntimeDependencies: RuntimeDependencyStatus;
@@ -307,6 +311,25 @@ function createRouteContext(input: {
     res.status(403).json({ error: 'Result downloads require login.' });
     return false;
   };
+  const requireDeleteAccess = (req: express.Request, res: express.Response): boolean => {
+    if (!input.remoteExecution) {
+      return requireWriteAccess(req, res);
+    }
+
+    const access = input.deleteKeyAuth.resolveAccess(req.get('x-dashboard-delete-key'));
+    if (!access.configured) {
+      res.status(503).json({
+        error: 'Remote result deletion requires configured dashboard delete key. Set DASHBOARD_DELETE_KEY.'
+      });
+      return false;
+    }
+    if (access.canDelete) {
+      return true;
+    }
+
+    res.status(403).json({ error: 'Remote result deletion requires the private delete key.' });
+    return false;
+  };
   const requireExperimentsFeature = (req: express.Request, res: express.Response): boolean => {
     void req;
     if (experimentsFeatureEnabled()) {
@@ -321,12 +344,14 @@ function createRouteContext(input: {
     runtimePaths: input.runtimePaths,
     modelRunsConfiguredFromEnv: input.modelRunsConfigured,
     writeAuth: input.writeAuth,
+    deleteKeyAuth: input.deleteKeyAuth,
     launcher: input.launcher,
     remoteExecution: input.remoteExecution,
     modelLogSink: input.modelLog ? (line) => input.modelLog?.writeLine(line) : undefined,
     getRuntimeDependencies,
     resolveRuntimePolicy,
     requireDownloadAccess,
+    requireDeleteAccess,
     requireWriteAccess,
     requireExperimentsFeature,
     withMemoryLogging: createMemoryLoggingMiddleware(input.memoryLoggingEnabled, input.serverLog)
@@ -490,6 +515,7 @@ export async function startDashboardServer(options: StartDashboardServerOptions 
           return createDesktopWriteAuthController(options.desktopAuthToken);
         })()
       : (options.writeAuth ?? createWriteAuthControllerFromEnv());
+  const deleteKeyAuth = options.deleteKeyAuth ?? createDeleteKeyAuthControllerFromEnv();
   const isDevRuntime = options.isDevRuntime ?? (envValue('NODE_ENV').toLowerCase() !== 'production');
   const memoryLoggingEnabled = options.memoryLoggingEnabled ?? (envValue('DASHBOARD_LOG_MEMORY').toLowerCase() === 'true');
   const loggers = createPersistentLoggers(runtimePaths.logsRoot, options.logRotation);
@@ -523,6 +549,7 @@ export async function startDashboardServer(options: StartDashboardServerOptions 
     runtimePaths,
     modelRunsConfigured,
     writeAuth,
+    deleteKeyAuth,
     isDevRuntime,
     memoryLoggingEnabled,
     startupRuntimeDependencies,

@@ -39,6 +39,7 @@ Dashboard API environment variables:
 - `DASHBOARD_CORS_ORIGIN` (optional): allowed browser origin for cross-origin requests (for split frontend/API deploys).
 - `DASHBOARD_ENABLE_MODEL_RUNS` (optional): set to `true` to enable model execution APIs in non-dev runtimes.
 - `DASHBOARD_WRITE_USERNAME` + `DASHBOARD_WRITE_PASSWORD` (optional pair): enables write-login mode when both are set.
+- `DASHBOARD_DELETE_KEY` (optional): private key required for deleting remote AWS experiment queue entries and artifacts. This is separate from the write username/password.
 - `DASHBOARD_MAVEN_BIN` (optional): Maven executable used by model runs (defaults to the repo-local Maven wrapper).
 - `DASHBOARD_RESULTS_CAP_MB` (optional): total `Results/` storage cap in MB for dashboard-managed runs (defaults to `400`). New run submissions are blocked when usage is at/above cap after managed-run pruning.
 - `DASHBOARD_LOG_MEMORY` (optional): set to `true` to log request duration plus RSS/heap deltas for public API routes.
@@ -72,6 +73,7 @@ Write-access behavior:
 - If both are set:
   - dashboard write actions require login (single global username/password),
   - read-only pages remain available without login.
+- Remote AWS experiment deletion uses `DASHBOARD_DELETE_KEY` instead of the write login. The browser prompts for this key per delete and does not store it.
 - If model runs are enabled (`DASHBOARD_ENABLE_MODEL_RUNS=true`) but credentials are unset:
   - API enters fail-closed mode for write actions (`503`),
   - login is intentionally disabled until credentials are configured,
@@ -86,6 +88,12 @@ Write actions requiring login in auth-enabled mode:
 - start sensitivity experiments
 - cancel sensitivity experiments
 - cancel unified experiment jobs (`POST /api/experiments/jobs/:jobRef/cancel`)
+
+Delete actions:
+
+- dev and desktop manual/sensitivity result deletion requires normal write access and confirmation
+- remote cloud manual/sensitivity result deletion requires `DASHBOARD_DELETE_KEY` via `X-Dashboard-Delete-Key` and confirmation
+- unified queue deletion (`DELETE /api/experiments/jobs/:jobRef`) is allowed only for finished jobs (`succeeded`, `failed`, `canceled`) and never for queued/running jobs
 
 Sensitivity API endpoints:
 
@@ -198,6 +206,7 @@ AWS production keeps Java/Maven out of the ECS API container. To enable website-
 - `DASHBOARD_MAX_ACTIVE_REMOTE_RUNS=1`
 
 Dashboard write credentials should be stored as SSM SecureString parameters and exposed to the ECS task as secrets for `DASHBOARD_WRITE_USERNAME` and `DASHBOARD_WRITE_PASSWORD`. If the runner is stopped or not SSM-ready, the API reports the backend as unavailable and the frontend disables run controls. The API does not start EC2 instances.
+Remote experiment deletion should use a separate SSM SecureString exposed as `DASHBOARD_DELETE_KEY`; do not reuse the write password for this key.
 
 Deploys are configured from `master` and gated by passing GitHub checks.
 

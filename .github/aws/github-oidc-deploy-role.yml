@@ -79,6 +79,10 @@ Parameters:
     Type: String
     Default: ""
     Description: Optional SSM SecureString parameter ARN for DASHBOARD_WRITE_PASSWORD.
+  DashboardDeleteKeyParameterArn:
+    Type: String
+    Default: ""
+    Description: Optional SSM SecureString parameter ARN for DASHBOARD_DELETE_KEY.
   SsmSecureStringKmsKeyArn:
     Type: String
     Default: ""
@@ -91,16 +95,23 @@ Conditions:
   HasRunnerInstanceRoleName: !Not [!Equals [!Ref RunnerInstanceRoleName, ""]]
   HasDashboardWriteUsernameParameterArn: !Not [!Equals [!Ref DashboardWriteUsernameParameterArn, ""]]
   HasDashboardWritePasswordParameterArn: !Not [!Equals [!Ref DashboardWritePasswordParameterArn, ""]]
+  HasDashboardDeleteKeyParameterArn: !Not [!Equals [!Ref DashboardDeleteKeyParameterArn, ""]]
   HasDashboardWriteParameters: !And
     - !Condition HasDashboardWriteUsernameParameterArn
     - !Condition HasDashboardWritePasswordParameterArn
   ShouldAttachExecutionRoleSecretsPolicy: !And
     - !Condition HasEcsTaskExecutionRoleName
     - !Condition HasDashboardWriteParameters
+  ShouldAttachExecutionRoleDeleteKeyPolicy: !And
+    - !Condition HasEcsTaskExecutionRoleName
+    - !Condition HasDashboardDeleteKeyParameterArn
   HasSsmSecureStringKmsKeyArn: !Not [!Equals [!Ref SsmSecureStringKmsKeyArn, ""]]
   ShouldAttachExecutionRoleKmsPolicy: !And
-    - !Condition ShouldAttachExecutionRoleSecretsPolicy
+    - !Condition HasEcsTaskExecutionRoleName
     - !Condition HasSsmSecureStringKmsKeyArn
+    - !Or
+      - !Condition HasDashboardWriteParameters
+      - !Condition HasDashboardDeleteKeyParameterArn
 
 Resources:
   GitHubOidcProvider:
@@ -273,6 +284,14 @@ Resources:
             Resource:
               - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/remote-job-index/*
               - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/tmp/dashboard-remote/requests/*
+          - Sid: RemoteExperimentDeleteCurrentObjects
+            Effect: Allow
+            Action:
+              - s3:DeleteObject
+            Resource:
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/manual/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/experiments/sensitivity/*
+              - !Sub arn:${AWS::Partition}:s3:::${ArtifactsBucketName}/tmp/dashboard-remote/requests/*
 
   EcsTaskExecutionDashboardSecretsPolicy:
     Type: AWS::IAM::Policy
@@ -292,6 +311,24 @@ Resources:
             Resource:
               - !Ref DashboardWriteUsernameParameterArn
               - !Ref DashboardWritePasswordParameterArn
+
+  EcsTaskExecutionDashboardDeleteKeyPolicy:
+    Type: AWS::IAM::Policy
+    Condition: ShouldAttachExecutionRoleDeleteKeyPolicy
+    Properties:
+      PolicyName: dashboard-delete-key-ssm
+      Roles:
+        - !Ref EcsTaskExecutionRoleName
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ReadDashboardDeleteKey
+            Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource:
+              - !Ref DashboardDeleteKeyParameterArn
 
   EcsTaskExecutionDashboardSecretsKmsPolicy:
     Type: AWS::IAM::Policy

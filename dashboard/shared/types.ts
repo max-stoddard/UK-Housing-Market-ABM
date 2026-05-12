@@ -465,6 +465,8 @@ export interface AuthStatusPayload {
   authEnabled: boolean;
   canWrite: boolean;
   canDownloadResults: boolean;
+  canDeleteResults: boolean;
+  deleteKeyRequired: boolean;
   authMisconfigured: boolean;
   modelRunsEnabled: boolean;
   modelRunsConfigured: boolean;
@@ -481,6 +483,7 @@ export interface RemoteExecutionStatus {
   runnerInstanceId: string | null;
   runnerState: string | null;
   ssmPingStatus: string | null;
+  runnerVCpus: number | null;
   reason: string | null;
   checkedAt: string;
 }
@@ -562,6 +565,7 @@ export interface ModelRunOptionsPayload {
   executionDisabledReason?: string | null;
   executionBackend?: ExperimentExecutionBackend;
   remoteExecution?: RemoteExecutionStatus;
+  sensitivityMaxWorkersCap?: number;
   snapshots: ModelRunSnapshotOption[];
   defaultBaseline: string;
   requestedBaseline: string;
@@ -816,4 +820,12 @@ export interface ExperimentJobLogsPayload {
 
 export interface ExperimentJobCancelResponse {
   job: ExperimentJobSummary;
+}
+
+export interface ExperimentJobDeleteResponse {
+  jobRef: string;
+  type: ExperimentJobType;
+  id: string;
+  runId?: string;
+  deleted: boolean;
 }
