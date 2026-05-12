@@ -707,8 +707,9 @@ export function ValidationPage() {
             just tuned to look good in a single run.
           </p>
           <p className="validation-formula">
-            <strong>Metric loss</strong> = distance relative to target level + 0.25 x spread relative to target level
-            + 0.50 x seeds outside band share
+            <strong>Metric loss</strong> uses family-aware distance: log-ratio for positive levels, robust additive
+            distance for signed metrics, and bounded low-is-better scoring for JSD, plus spread and seeds outside band
+            components.
           </p>
         </div>
       </article>

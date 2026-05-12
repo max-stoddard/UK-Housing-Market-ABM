@@ -2606,7 +2606,7 @@ fs.writeFileSync(
   path.join(validationSummaryFixtureDir, 'v-modern.json'),
   JSON.stringify(
     {
-      schemaVersion: 2,
+      schemaVersion: 4,
       version: 'v-modern',
       generatedAt: '2026-04-14T00:00:00Z',
       seeds: [1, 2, 3, 4, 5, 6, 7, 8],
@@ -2652,10 +2652,18 @@ fs.writeFileSync(
           p25: 8.8,
           p75: 9.2,
           insideRate: 0,
-          lossScale: 5.17125,
-          lossScaleBasis: 'source_value',
-          normalizedDistance: 0.590878521852958,
-          normalizedIqr: 0.077351898525006,
+          lossFamily: 'positive_level',
+          lossTransform: 'log_ratio_to_target_band',
+          lossScale: null,
+          lossScaleBasis: 'not_applicable',
+          additiveScale: null,
+          additiveScaleBasis: 'not_applicable',
+          normalizedDistance: 0.414657051,
+          normalizedIqr: 0.04445176257,
+          distanceComponent: 0.414657051,
+          spreadComponent: 0.01111294064,
+          levelComponent: 0,
+          insideRateComponent: 0.5,
           metricLoss: 1.5,
           metricWeight: 1
         }
@@ -2834,8 +2842,11 @@ fs.writeFileSync(
 const modernSummary = readValidationSummary(validationSummaryFixtureRoot, 'v-modern');
 assert.equal(modernSummary.validationTargetYear, 2024, 'Validation parser should default missing target years to 2024');
 assert.equal(modernSummary.metrics[0]?.sourceReferences.length ?? 0, 1, 'Validation parser should preserve source references');
-assert.equal(modernSummary.metrics[0]?.lossScaleBasis, 'source_value', 'Validation parser should expose loss scale basis');
-assert.equal(modernSummary.metrics[0]?.lossScale, 5.17125, 'Validation parser should expose loss scale values');
+assert.equal(modernSummary.metrics[0]?.lossFamily, 'positive_level', 'Validation parser should expose loss family');
+assert.equal(modernSummary.metrics[0]?.lossTransform, 'log_ratio_to_target_band', 'Validation parser should expose loss transform');
+assert.equal(modernSummary.metrics[0]?.lossScaleBasis, 'not_applicable', 'Validation parser should expose loss scale basis');
+assert.equal(modernSummary.metrics[0]?.lossScale, null, 'Validation parser should expose null loss scales for log-ratio metrics');
+assert.equal(modernSummary.metrics[0]?.distanceComponent, 0.414657051, 'Validation parser should expose loss components');
 assert.equal(modernSummary.metrics[0]?.metricWeight, 1, 'Validation parser should expose raw metric weights');
 assert.equal(
   modernSummary.metrics[0]?.lossDeltaVsReference2011 ?? null,
@@ -6542,8 +6553,10 @@ assert.ok(
   'Validation page should render the selected validation target year in the metric results copy'
 );
 assert.ok(
-  validationPageSource.includes('distance relative to target level'),
-  'Validation page should explain how validation loss is calculated'
+  validationPageSource.includes('family-aware distance') &&
+    validationPageSource.includes('log-ratio for positive levels') &&
+    validationPageSource.includes('bounded low-is-better scoring for JSD'),
+  'Validation page should explain the family-aware validation loss calculation'
 );
 assert.ok(
   validationPageSource.includes('The line chart is a secondary overview'),
@@ -6638,6 +6651,12 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('validation-source-label'),
   'Validation page should render inline source labels for validation metrics'
+);
+assert.ok(
+  validationPageSource.includes('formatLossFamily') &&
+    validationPageSource.includes('Loss family:') &&
+    validationPageSource.includes('Additive scale'),
+  'Validation page should render concise loss family and transform audit details'
 );
 assert.ok(
   validationPageSource.includes('sourceReferences'),
