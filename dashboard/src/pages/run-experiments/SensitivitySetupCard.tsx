@@ -40,6 +40,7 @@ interface SensitivitySetupCardProps {
   formValues: Record<string, string | boolean>;
   onFormValueChange: (parameter: ModelRunParameterDefinition, value: string | boolean) => void;
   maxWorkers: string;
+  maxWorkersCap?: number;
   onMaxWorkersChange: (value: string) => void;
   title: string;
   onTitleChange: (value: string) => void;
@@ -76,6 +77,7 @@ export function SensitivitySetupCard({
   formValues,
   onFormValueChange,
   maxWorkers,
+  maxWorkersCap,
   onMaxWorkersChange,
   title,
   onTitleChange,
@@ -226,6 +228,7 @@ export function SensitivitySetupCard({
               executionDisabled={executionDisabled}
               onFormValueChange={onFormValueChange}
               maxWorkers={maxWorkers}
+              maxWorkersCap={maxWorkersCap}
               onMaxWorkersChange={onMaxWorkersChange}
               maxWorkersHint={SETTING_HELP.maxWorkers}
               showRecordSettings={false}

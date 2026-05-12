@@ -47,6 +47,7 @@ export interface ExperimentRunController {
   setSensitivitySampleCount: (value: string) => void;
   sensitivityMaxWorkers: string;
   setSensitivityMaxWorkers: (value: string) => void;
+  sensitivityMaxWorkersCap?: number;
   sensitivityFormValues: Record<string, FormValue>;
   sensitivityWarnings: ModelRunWarning[];
   jobs: ExperimentJobSummary[];
@@ -79,6 +80,7 @@ export interface ExperimentRunController {
   onSubmitSensitivity: (confirmWarnings: boolean) => Promise<void>;
   onCancelActiveSensitivity: () => Promise<void>;
   onCancelJob: (jobRef: string) => Promise<void>;
+  refreshJobs: () => Promise<void>;
 }
 
 interface UseExperimentRunControllerOptions {
@@ -268,9 +270,13 @@ function parsePositiveInteger(rawValue: FormValue | undefined): number {
   return parsed;
 }
 
-function defaultMaxWorkers(totalRuns: number): string {
+function defaultMaxWorkers(totalRuns: number, workerCap?: number): string {
   if (totalRuns <= 0) {
     return '1';
+  }
+  if (workerCap !== undefined) {
+    const normalizedCap = Math.max(1, Math.trunc(workerCap));
+    return String(Math.max(1, Math.min(totalRuns, normalizedCap)));
   }
   const cpuCount = Math.max(1, Math.trunc(window.navigator.hardwareConcurrency || 1));
   return String(Math.max(1, Math.min(totalRuns, cpuCount, 20)));
@@ -504,8 +510,9 @@ export function useExperimentRunController({
       sensitivitySampleCount
     );
     const seedCount = parsePositiveInteger(sensitivityFormValues.N_SIMS);
-    setSensitivityMaxWorkers(defaultMaxWorkers(pointCount * seedCount));
+    setSensitivityMaxWorkers(defaultMaxWorkers(pointCount * seedCount, options?.sensitivityMaxWorkersCap));
   }, [
+    options?.sensitivityMaxWorkersCap,
     selectedSensitivityBasePolicy,
     selectedSensitivityPackage,
     sensitivityFormValues.N_SIMS,
@@ -741,7 +748,7 @@ export function useExperimentRunController({
         max,
         sampleCount,
         overrides: buildSensitivityGeneralOverrides(),
-        maxWorkers,
+        maxWorkers: Math.min(maxWorkers, options?.sensitivityMaxWorkersCap ?? maxWorkers),
         confirmWarnings
       });
 
@@ -842,6 +849,7 @@ export function useExperimentRunController({
     setSensitivitySampleCount: onSensitivitySampleCountChange,
     sensitivityMaxWorkers,
     setSensitivityMaxWorkers: onSensitivityMaxWorkersChange,
+    sensitivityMaxWorkersCap: options?.sensitivityMaxWorkersCap,
     sensitivityFormValues,
     sensitivityWarnings,
     jobs,
@@ -873,6 +881,7 @@ export function useExperimentRunController({
     onSubmitRun,
     onSubmitSensitivity,
     onCancelActiveSensitivity,
-    onCancelJob
+    onCancelJob,
+    refreshJobs
   };
 }

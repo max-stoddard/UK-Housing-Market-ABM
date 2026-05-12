@@ -15,6 +15,7 @@ interface GeneralModelControlProps {
   executionDisabled: boolean;
   onFormValueChange: (parameter: ModelRunParameterDefinition, value: FormValue) => void;
   maxWorkers?: string;
+  maxWorkersCap?: number;
   onMaxWorkersChange?: (value: string) => void;
   maxWorkersHint?: string;
   showRecordSettings?: boolean;
@@ -90,6 +91,7 @@ export function GeneralModelControl({
   executionDisabled,
   onFormValueChange,
   maxWorkers,
+  maxWorkersCap,
   onMaxWorkersChange,
   maxWorkersHint,
   showRecordSettings = true
@@ -127,6 +129,7 @@ export function GeneralModelControl({
               type="number"
               step={1}
               min={1}
+              max={maxWorkersCap}
               value={maxWorkers ?? ''}
               disabled={executionDisabled}
               onChange={(event) => onMaxWorkersChange(event.target.value)}

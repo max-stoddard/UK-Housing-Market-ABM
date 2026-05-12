@@ -36,6 +36,7 @@ export function SensitivityRunSetupPanel({ controller, runActionsDisabled }: Sen
       formValues={controller.sensitivityFormValues}
       onFormValueChange={controller.onSensitivityFormValueChange}
       maxWorkers={controller.sensitivityMaxWorkers}
+      maxWorkersCap={controller.sensitivityMaxWorkersCap}
       onMaxWorkersChange={controller.setSensitivityMaxWorkers}
       title={controller.sensitivityTitle}
       onTitleChange={controller.setSensitivityTitle}
