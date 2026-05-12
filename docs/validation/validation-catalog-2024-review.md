@@ -101,6 +101,55 @@ The tracked validation contract now uses metric-only weighting:
 
 This means the composite is driven directly by the full set of scored metrics rather than by intermediate category aggregates.
 
+## Validation Status and Loss Taxonomy
+
+Schema version `4` separates pass/fail status from metric loss:
+
+- `pass`: `seedMean` is inside the target band and `insideRate >= 0.75`
+- `warn`: band-width-normalized outside distance is at most `0.50` and `insideRate >= 0.50`
+- `fail`: otherwise
+
+Target bands therefore define acceptance status. Metric loss is a separate ranking signal used to compare misses across
+metrics without letting narrow target bands dominate the composite by construction.
+
+Every catalog metric has an explicit `loss_family`; the framework does not infer the family from units:
+
+- `positive_level`: strictly positive counts, flows, levels, and ratios use log-ratio distance to the nearest target-band
+  edge. This makes a 3x overshoot comparable with a one-third undershoot. If a model value is non-positive, the distance
+  component uses the conservative floor penalty `log(100)`.
+- `signed_additive`: signed or zero-crossing metrics use robust additive normalization with
+  `max(abs(sourceValue), abs(lower), abs(upper), (upper - lower) / 2, 1e-9)`.
+- `bounded_low_is_better`: JSD realism metrics preserve the target-band status rule while adding an in-band level
+  component, so lower divergence is rewarded even when both runs pass.
+
+The published metric audit fields are:
+
+- `lossFamily` and `lossTransform`
+- `lossScale` / `lossScaleBasis` where a bounded score uses the band upper bound
+- `additiveScale` / `additiveScaleBasis` where signed additive or fallback additive spread is used
+- `normalizedDistance`, `normalizedIqr`, `distanceComponent`, `spreadComponent`, `levelComponent`, and
+  `insideRateComponent`
+
+The composite remains:
+
+```text
+overallCompositeLoss = weighted_mean(required metricLoss values, metricWeight = 1)
+```
+
+Cached tracked summaries can be upgraded without rerunning Java/Maven:
+
+```bash
+python3 -m scripts.python.validation.model.rescore_validation_summaries --versions all --include-overlays --write
+```
+
+The rescoring command preserves cached `seedMean`, `p25`, `p75`, `insideRate`, target-band, and source metadata, then
+recomputes `metricLoss`, audit fields, and `overallCompositeLoss` under the current schema.
+
+ES-MDA calibration now exposes a separate validation objective. `family_aware_metric_loss` is the default and assimilates
+zero ideal per-metric schema-4 losses. `target_normalized_additive` preserves the old-compatible additive target-normalized
+observation/member vectors and covariance for reproducibility. Both modes still publish schema-4 validation summaries for
+member diagnostics.
+
 ## Methodology-Owned Bands
 
 The following are explicitly reviewed as methodology constants, not official source values:

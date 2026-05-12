@@ -63,6 +63,10 @@ Reviewed files:
 - `income_distribution_jsd`, `housing_wealth_distribution_jsd`, and
   `financial_wealth_distribution_jsd` keep the existing JSD acceptance band
   `[0.0, 0.12]` but switch the validation dataset from WAS Round 8 to WAS Wave 3.
+- Loss-family metadata is inherited from the 2024 catalog. The 2011 overlay
+  therefore uses log-ratio scoring for positive-level metrics, additive scoring
+  for signed/zero-crossing metrics such as house price growth and interest-rate
+  spread, and bounded low-is-better scoring for the JSD metrics.
 
 ## Review summary
 - The 2011 source bundle is intentionally minimal. It stores only the rows and
@@ -77,6 +81,9 @@ Reviewed files:
   mirrored under `<output-dir>/reference-2011/**` when `v0` validation is run.
   The dashboard-visible 2011 view is therefore a reference overlay, not a
   replacement for the main 2024 validation summary.
+- The v0-family 2011 overlays are schema-4 summaries and can be rescored from
+  cached JSON with:
+  `python3 -m scripts.python.validation.model.rescore_validation_summaries --versions all --include-overlays --write`.
 - Residual non-equivalences remain for the weak CML/BM proxy metrics and for
   `core_hpiStd`, which is intentionally cross-year-normalized to the 2024
   official std benchmark rather than anchored to 2011.
