@@ -8,6 +8,7 @@ import { GroupedCheckboxSections } from '../components/GroupedCheckboxSections';
 import { LoadingSkeleton, LoadingSkeletonGroup } from '../components/LoadingSkeleton';
 import {
   buildVersionLabelState,
+  formatCalibrationVersionTitleLabel,
   formatVersionOptionLabel,
   getLatestStableVersion,
   type VersionLabelKind
@@ -403,21 +404,22 @@ export function ComparePage() {
       ).length
     : 0;
 
-  const titleText =
-    mode === 'single'
-      ? selectedVersion
-        ? `Model parameters at ${selectedVersion}`
-        : ''
-      : left && right
-        ? `${left} vs ${right}`
-        : '';
-  const isTitleLoading = isBootstrapping || titleText.length === 0;
   const hasComparedItems = (compareData?.items.length ?? 0) > 0;
   const isLoadingWithoutData = isBootstrapping || (isLoading && !hasComparedItems);
   const isRefreshingComparedItems = isLoading && hasComparedItems;
   const inProgressSet = useMemo(() => new Set(inProgressVersions), [inProgressVersions]);
   const latestStableVersion = useMemo(() => getLatestStableVersion(versions, inProgressVersions), [versions, inProgressVersions]);
   const getVersionLabelState = (version: string) => buildVersionLabelState(version, latestStableVersion, inProgressSet);
+  const formatTitleLabel = (version: string) => formatCalibrationVersionTitleLabel(version, getVersionLabelState(version));
+  const titleText =
+    mode === 'single'
+      ? selectedVersion
+        ? `Model parameters at ${formatTitleLabel(selectedVersion)}`
+        : ''
+      : left && right
+        ? `${formatTitleLabel(left)} vs ${formatTitleLabel(right)}`
+        : '';
+  const isTitleLoading = isBootstrapping || titleText.length === 0;
   const formatSelectLabel = (version: string) => formatVersionOptionLabel(version, getVersionLabelState(version));
   const renderVersionTags = (prefix: string, version: string) =>
     getVersionLabelState(version).kinds.map((kind) => (
@@ -571,10 +573,7 @@ export function ComparePage() {
               {selectedVersionTags}
             </div>
           )}
-          <p>
-            Visualizing tracked model parameters and calibration provenance from{' '}
-            <code>input-data-versions/dashboard-input-version-history.json</code>
-          </p>
+          <p>Explore how the model's assumptions have changed over time and where each update came from.</p>
 
           <div className="change-filter-row">
             <span>Filter:</span>

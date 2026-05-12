@@ -109,8 +109,16 @@ export function buildResultsRunVersionLabelState(
 }
 
 export function formatModelVersionBaseLabel(version: string, state?: Pick<VersionLabelState, 'isLatest'>): string {
+  if (version === 'v0') {
+    return 'Original 2011 model';
+  }
+
+  if (version === 'v0oo') {
+    return 'Optimised 2011 model';
+  }
+
   if (LEGACY_2011_VERSIONS.has(version)) {
-    return `2011 model ${version}`;
+    return version;
   }
 
   if (version === BEST_2024_VERSION) {
@@ -126,6 +134,26 @@ export function formatModelVersionBaseLabel(version: string, state?: Pick<Versio
   }
 
   return version;
+}
+
+export function formatCalibrationVersionTitleLabel(version: string, state?: Pick<VersionLabelState, 'isLatest'>): string {
+  if (version === 'v0') {
+    return 'Original 2011 model';
+  }
+
+  if (version === 'v0oo') {
+    return 'Optimised 2011 model';
+  }
+
+  if (version === BEST_2024_VERSION) {
+    return 'Best 2024 model';
+  }
+
+  if (state?.isLatest) {
+    return 'Latest 2024 model';
+  }
+
+  return formatModelVersionBaseLabel(version, state);
 }
 
 function formatKind(kind: VersionLabelKind): string {
