@@ -482,7 +482,8 @@ export function buildRemoteRunnerScript(input: {
   const requestKey = shellSingleQuote(input.requestKey);
   const jobRef = shellSingleQuote(input.jobRef);
 
-  return `set -euo pipefail
+  return `exec /bin/bash <<'REMOTE_RUNNER_SCRIPT'
+set -euo pipefail
 BUCKET=${bucket}
 REGION=${region}
 REQUEST_KEY=${requestKey}
@@ -536,6 +537,7 @@ find "$ARTIFACT_DIR" -type f ! -name output-manifest.sha256 -print0 | sort -z | 
 aws s3 sync "$ARTIFACT_DIR/" "s3://$BUCKET/$ARTIFACT_PREFIX" --region "$REGION" --only-show-errors
 trap - EXIT
 echo "[remote] completed job=$JOB_REF prefix=s3://$BUCKET/$ARTIFACT_PREFIX"
+REMOTE_RUNNER_SCRIPT
 `;
 }
 

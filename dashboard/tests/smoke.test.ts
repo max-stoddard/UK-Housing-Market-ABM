@@ -1675,6 +1675,15 @@ try {
   assert.equal(manualSubmit.accepted, true, 'Expected remote manual run to be accepted');
   assert.equal(remoteAdapter.commands.length, 1, 'Expected remote manual submit to dispatch one SSM command');
   const manualCommand = remoteAdapter.commands[0];
+  assert.ok(
+    manualCommand?.script.startsWith("exec /bin/bash <<'REMOTE_RUNNER_SCRIPT'\n"),
+    'Expected SSM command to explicitly execute the remote runner script with Bash'
+  );
+  assert.notEqual(
+    manualCommand?.script.split('\n')[0],
+    'set -euo pipefail',
+    'Expected Bash-only strict mode not to be interpreted by the SSM default shell'
+  );
   assert.ok(manualCommand?.script.includes('remoteRunnerCli.ts'), 'Expected fixed SSM command to call the remote runner CLI');
   assert.equal(manualCommand?.requestKey.includes(':'), false, 'Expected remote request S3 keys to be sanitized');
   assert.ok(
