@@ -39,6 +39,7 @@ jobs:
           name: windows-release-source-${{ github.run_id }}
           path: |
             .dockerignore
+            .github/workflows/windows-release.yml
             .gitignore
             .mvn
             AGENTS.md
