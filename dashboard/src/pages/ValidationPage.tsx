@@ -9,8 +9,14 @@ import { EChart } from '../components/EChart';
 import {
   API_RETRY_DELAY_MS,
   fetchValidationOverview,
+  fetchVersions,
   isRetryableApiError
 } from '../lib/api';
+import {
+  buildVersionLabelState,
+  formatVersionOptionLabel,
+  getLatestStableVersion
+} from '../lib/versionLabels';
 
 type ValidationSortMode =
   | 'highest_loss'
@@ -207,6 +213,36 @@ function formatValidationTargetYearLabel(validationTargetYear: number): string {
 
 function formatValidationYearOptionLabel(validationTargetYear: number): string {
   return `${validationTargetYear} validation`;
+}
+
+function getCanonicalValidationVersionRank(label: string): number {
+  if (label.startsWith('Optimised 2011 model')) {
+    return 0;
+  }
+  if (label.startsWith('Original 2011 model')) {
+    return 1;
+  }
+  if (label.startsWith('Best 2024 model')) {
+    return 2;
+  }
+  if (label.startsWith('Latest 2024 model')) {
+    return 3;
+  }
+  return 4;
+}
+
+function orderValidationVersionOptions(
+  versions: readonly string[],
+  formatVersionLabel: (version: string) => string
+): string[] {
+  return versions
+    .map((version, index) => ({
+      version,
+      index,
+      rank: getCanonicalValidationVersionRank(formatVersionLabel(version))
+    }))
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map((item) => item.version);
 }
 
 function formatReferenceLineLabel(label: string, validationTargetYear: number): string {
@@ -507,6 +543,7 @@ export function ValidationPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isWaitingForApi, setIsWaitingForApi] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [inProgressVersions, setInProgressVersions] = useState<string[]>([]);
   const [metricSearch, setMetricSearch] = useState<string>('');
   const [sortMode, setSortMode] = useState<ValidationSortMode>(DEFAULT_SORT_MODE);
   const [openMetricIds, setOpenMetricIds] = useState<string[]>([]);
@@ -521,13 +558,17 @@ export function ValidationPage() {
       setError('');
 
       try {
-        const response = await fetchValidationOverview(selectedVersion || undefined, selectedValidationTargetYear);
+        const [response, versionsPayload] = await Promise.all([
+          fetchValidationOverview(selectedVersion || undefined, selectedValidationTargetYear),
+          fetchVersions()
+        ]);
         if (cancelled) {
           return;
         }
         setOverview(response);
         setSelectedVersion(response.selectedVersion);
         setSelectedValidationTargetYear(response.selectedValidationTargetYear);
+        setInProgressVersions(versionsPayload.inProgressVersions);
       } catch (loadError) {
         if (cancelled) {
           return;
@@ -570,6 +611,11 @@ export function ValidationPage() {
   const availableValidationTargetYears =
     overview?.availableValidationTargetYearsByVersion[selectedVersion] ?? [DEFAULT_VALIDATION_TARGET_YEAR];
   const openMetricIdSet = useMemo(() => new Set(openMetricIds), [openMetricIds]);
+  const inProgressVersionSet = useMemo(() => new Set(inProgressVersions), [inProgressVersions]);
+  const latestStableValidationVersion = useMemo(
+    () => getLatestStableVersion(overview?.availableVersions ?? [], inProgressVersions),
+    [overview, inProgressVersions]
+  );
 
   useEffect(() => {
     setOpenMetricIds([]);
@@ -593,6 +639,13 @@ export function ValidationPage() {
       current.includes(metricId) ? current.filter((value) => value !== metricId) : [...current, metricId]
     );
   };
+
+  const formatValidationVersionOptionLabel = (version: string) =>
+    formatVersionOptionLabel(version, buildVersionLabelState(version, latestStableValidationVersion, inProgressVersionSet));
+  const orderedValidationVersions = orderValidationVersionOptions(
+    overview?.availableVersions ?? [],
+    formatValidationVersionOptionLabel
+  );
 
   const selectVersionAndValidationYear = (version: string, validationTargetYear: number) => {
     if (version === selectedVersion && validationTargetYear === selectedValidationTargetYear) {
@@ -697,9 +750,9 @@ export function ValidationPage() {
           <label className="validation-selector">
             <span>Version</span>
             <select value={selectedVersion} onChange={(event) => handleVersionChange(event.target.value)}>
-              {overview?.availableVersions.map((version) => (
+              {orderedValidationVersions.map((version) => (
                 <option key={version} value={version}>
-                  {version}
+                  {formatValidationVersionOptionLabel(version)}
                 </option>
               ))}
             </select>

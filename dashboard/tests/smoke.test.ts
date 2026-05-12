@@ -6654,6 +6654,27 @@ assert.ok(
   'Validation page should always render the version selector and derive validation-year options from the selected version'
 );
 assert.ok(
+  validationPageSource.includes('fetchVersions') &&
+    validationPageSource.includes('buildVersionLabelState') &&
+    validationPageSource.includes('formatVersionOptionLabel') &&
+    validationPageSource.includes('getLatestStableVersion'),
+  'Validation page should reuse shared calibration version label helpers for the metric-card version selector'
+);
+assert.ok(
+  validationPageSource.includes('{formatValidationVersionOptionLabel(version)}'),
+  'Validation page should render formatted user-facing labels in the metric-card version selector'
+);
+assert.ok(
+  validationPageSource.includes('orderValidationVersionOptions') &&
+    validationPageSource.includes('getCanonicalValidationVersionRank') &&
+    validationPageSource.includes('orderedValidationVersions.map') &&
+    validationPageSource.includes("label.startsWith('Optimised 2011 model')") &&
+    validationPageSource.includes("label.startsWith('Original 2011 model')") &&
+    validationPageSource.includes("label.startsWith('Best 2024 model')") &&
+    validationPageSource.includes("label.startsWith('Latest 2024 model')"),
+  'Validation page should pin canonically named versions to the top of the metric-card version selector'
+);
+assert.ok(
   !validationPageSource.includes('lossWeight'),
   'Validation page should stop rendering lossWeight fields'
 );
