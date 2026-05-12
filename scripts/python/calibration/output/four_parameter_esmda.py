@@ -42,7 +42,11 @@ from scripts.python.calibration.output.esmda import (
     transformed_matrix_to_parameter_dicts,
 )
 from scripts.python.calibration.output.validation_bridge import (
+    DEFAULT_VALIDATION_LOSS_ERROR_STD,
+    DEFAULT_VALIDATION_OBJECTIVE,
+    FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
     MemberValidationResult,
+    TARGET_NORMALIZED_ADDITIVE_OBJECTIVE,
     build_member_validation_result,
     build_validation_observations,
     group_seed_run_results_by_member,
@@ -64,8 +68,9 @@ DEFAULT_ENSEMBLE_SIZE = 40
 DEFAULT_ASSIMILATION_STEPS = 4
 DEFAULT_RNG_SEED = 20260502
 LOSS_HANDLING_NOTE = (
-    "Validation metricLoss and overallCompositeLoss values are target-normalized but unbounded; "
-    "values greater than 1.0 are expected for severe misses and must not be clipped or treated as probabilities."
+    "Validation metricLoss and overallCompositeLoss values are family-aware and unbounded; values greater than 1.0 "
+    "are expected for severe misses and must not be clipped or treated as probabilities. ES-MDA can also run the "
+    "old-compatible target-normalized additive objective for reproducibility."
 )
 STRATEGIC_METRIC_IDS = (
     "core_advancesToBTL",
@@ -92,6 +97,25 @@ def build_arg_parser() -> argparse.ArgumentParser:
         choices=(2011, 2024),
         default=2024,
         help="Validation target year/profile to use (default: 2024).",
+    )
+    parser.add_argument(
+        "--validation-objective",
+        choices=(FAMILY_AWARE_METRIC_LOSS_OBJECTIVE, TARGET_NORMALIZED_ADDITIVE_OBJECTIVE),
+        default=DEFAULT_VALIDATION_OBJECTIVE,
+        help=(
+            "Validation objective used for ES-MDA assimilation and ranking "
+            f"(default: {DEFAULT_VALIDATION_OBJECTIVE})."
+        ),
+    )
+    parser.add_argument(
+        "--validation-loss-error-std",
+        type=float,
+        default=DEFAULT_VALIDATION_LOSS_ERROR_STD,
+        help=(
+            "Diagonal observation standard deviation used when --validation-objective "
+            f"{FAMILY_AWARE_METRIC_LOSS_OBJECTIVE} targets zero per-metric loss "
+            f"(default: {DEFAULT_VALIDATION_LOSS_ERROR_STD})."
+        ),
     )
     parser.add_argument(
         "--seeds",
@@ -147,7 +171,11 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         version=version,
         validation_year=args.validation_year,
     )
-    observations = build_validation_observations(validation_profile)
+    observations = build_validation_observations(
+        validation_profile,
+        validation_objective=args.validation_objective,
+        validation_loss_error_std=args.validation_loss_error_std,
+    )
     source_config_path = resolved_repo_root / "input-data-versions" / version / "config.properties"
     if not source_config_path.exists():
         raise RuntimeError(f"Missing source version config: {source_config_path}")
@@ -265,7 +293,8 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             "[four-parameter-esmda] "
             f"iteration={iteration + 1}/{args.assimilation_steps + 1} "
             f"bestMember={best_iteration_member.member_id} "
-            f"loss={float(best_iteration_member.summary['overallCompositeLoss']):.6f} "
+            f"rankLoss={best_iteration_member.ranking_loss:.6f} "
+            f"schemaLoss={float(best_iteration_member.summary['overallCompositeLoss']):.6f} "
             f"elapsed={_format_duration(elapsed)}",
             flush=True,
         )
@@ -332,6 +361,8 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
         f"--version {args.version}",
         f"--output-version {args.output_version}",
         f"--validation-year {args.validation_year}",
+        f"--validation-objective {args.validation_objective}",
+        f"--validation-loss-error-std {args.validation_loss_error_std}",
         f"--seeds {args.seeds}",
         f"--workers {args.workers}",
         f"--ensemble-size {args.ensemble_size}",
@@ -359,6 +390,8 @@ def _validate_execution_args(*, args: argparse.Namespace, seeds: Sequence[int]) 
         raise ValueError("ensemble-size must be greater than one")
     if args.assimilation_steps <= 0:
         raise ValueError("assimilation-steps must be positive")
+    if args.validation_loss_error_std <= 0.0:
+        raise ValueError("validation-loss-error-std must be positive")
     if args.workers < len(seeds):
         raise ValueError("workers must be at least the number of seeds for grouped candidate scheduling")
 
@@ -384,6 +417,10 @@ def _build_base_metadata(
         "sourceParameters": dict(source_parameters),
         "validationProfile": summarize_validation_profile(validation_profile),
         "validationLossHandling": LOSS_HANDLING_NOTE,
+        "validationObjective": args.validation_objective,
+        "assimilationTransform": observations[0].assimilation_transform if observations else None,
+        "rankingObjective": args.validation_objective,
+        "validationLossErrorStd": args.validation_loss_error_std,
         "seeds": list(seeds),
         "workers": args.workers,
         "candidateParallelism": max(1, args.workers // len(seeds)),
@@ -416,6 +453,8 @@ def _write_member_results_csv(path: Path, member_results: Sequence[MemberValidat
             "iteration": member.iteration,
             "memberId": member.member_id,
             "overallCompositeLoss": float(member.summary["overallCompositeLoss"]),
+            "rankingLoss": member.ranking_loss,
+            "rankingObjective": member.ranking_objective,
             "passCount": counts.get("pass", 0),
             "warnCount": counts.get("warn", 0),
             "failCount": counts.get("fail", 0),
@@ -452,8 +491,8 @@ def _build_model_quality_warnings(
     if baseline_member is None:
         return warnings
 
-    selected_loss = float(selected_member.summary["overallCompositeLoss"])
-    baseline_loss = float(baseline_member.summary["overallCompositeLoss"])
+    selected_loss = selected_member.ranking_loss
+    baseline_loss = baseline_member.ranking_loss
     if selected_loss >= baseline_loss:
         return warnings
 
@@ -500,6 +539,8 @@ def _member_summary_payload(
         "memberId": member.member_id,
         "parameters": {key: format_float(float(value), decimals=12) for key, value in selected_parameters.items()},
         "overallCompositeLoss": float(member.summary["overallCompositeLoss"]),
+        "rankingLoss": member.ranking_loss,
+        "rankingObjective": member.ranking_objective,
         "statusCounts": counts,
         "normalizedSourceMovement": member.normalized_source_movement,
         "rankKey": list(member_rank_key(member)),
