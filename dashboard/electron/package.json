@@ -8,7 +8,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "electron .",
-    "release:installer": "electron-builder --config electron-builder.yml --win nsis --x64 --publish never"
+    "release:installer": "npm run release:installer:signed",
+    "release:installer:signed": "electron-builder --config electron-builder.yml --win nsis --x64 --publish never",
+    "release:installer:unsigned": "electron-builder --config electron-builder-unsigned.yml --win nsis --x64 --publish never"
   },
   "devDependencies": {
     "@types/node": "^22.13.1",

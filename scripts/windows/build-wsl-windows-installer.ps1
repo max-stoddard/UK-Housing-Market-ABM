@@ -397,10 +397,10 @@ function Invoke-ReleaseBuild {
   Invoke-ProcessChecked -FilePath $NpmCommand -ArgumentList @('run', 'test:release-launch') -WorkingDirectory $dashboardRoot
 
   Write-Step 'Building unsigned Windows installer'
-  Invoke-ProcessChecked -FilePath $NpmCommand -ArgumentList @('run', 'release:installer') -WorkingDirectory $dashboardRoot
+  Invoke-ProcessChecked -FilePath $NpmCommand -ArgumentList @('run', 'release:installer:unsigned') -WorkingDirectory $dashboardRoot
 
   Write-Step 'Validating installer release metadata'
-  Invoke-ProcessChecked -FilePath $NpmCommand -ArgumentList @('run', 'release:installer:check') -WorkingDirectory $dashboardRoot
+  Invoke-ProcessChecked -FilePath $NpmCommand -ArgumentList @('run', 'release:installer:check:unsigned') -WorkingDirectory $dashboardRoot
 
   Write-Step 'Running desktop release-resource smoke test'
   Invoke-ProcessChecked -FilePath $NpmCommand -ArgumentList @('run', 'test:desktop-release-resources') -WorkingDirectory $dashboardRoot

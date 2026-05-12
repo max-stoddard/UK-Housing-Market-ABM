@@ -89,19 +89,34 @@ jobs:
             exit 1
           }
 
-      - name: Validate Windows signing secrets
+      - id: signing-mode
+        name: Resolve Windows signing mode
         env:
           HAS_WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK != '' }}
           HAS_WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD != '' }}
         run: |
+          $missing = @()
           if ($env:HAS_WIN_CSC_LINK -ne "true") {
-            Write-Error "WIN_CSC_LINK secret is required to code sign the Windows installer."
-            exit 1
+            $missing += "WIN_CSC_LINK"
           }
           if ($env:HAS_WIN_CSC_KEY_PASSWORD -ne "true") {
-            Write-Error "WIN_CSC_KEY_PASSWORD secret is required to code sign the Windows installer."
-            exit 1
+            $missing += "WIN_CSC_KEY_PASSWORD"
           }
+
+          if ($missing.Count -eq 0) {
+            "signing_mode=signed" >> $env:GITHUB_OUTPUT
+            "unsigned_reason=" >> $env:GITHUB_OUTPUT
+            "Windows installer signing mode: signed."
+            exit 0
+          }
+
+          $reason = "Missing GitHub secret(s): $($missing -join ', ')"
+          Write-Warning "$reason; building and publishing an unsigned Windows installer."
+          "signing_mode=unsigned" >> $env:GITHUB_OUTPUT
+          "unsigned_reason=$reason" >> $env:GITHUB_OUTPUT
+          "### Windows installer signing" >> $env:GITHUB_STEP_SUMMARY
+          "" >> $env:GITHUB_STEP_SUMMARY
+          "$reason. The workflow will continue with an unsigned installer and mark the release metadata accordingly." >> $env:GITHUB_STEP_SUMMARY
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -150,15 +165,23 @@ jobs:
         run: npm run test:release-launch
 
       - name: Build signed Windows installer
+        if: steps.signing-mode.outputs.signing_mode == 'signed'
         working-directory: dashboard
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-        run: npm run release:installer
+        run: npm run release:installer:signed
+
+      - name: Build unsigned Windows installer
+        if: steps.signing-mode.outputs.signing_mode == 'unsigned'
+        working-directory: dashboard
+        env:
+          INSTALLER_UNSIGNED_REASON: ${{ steps.signing-mode.outputs.unsigned_reason }}
+        run: npm run release:installer:unsigned
 
       - name: Validate installer release metadata
         working-directory: dashboard
-        run: npm run release:installer:check
+        run: npm run "release:installer:check:${{ steps.signing-mode.outputs.signing_mode }}"
 
       - name: Installed app smoke test
         working-directory: dashboard
@@ -185,6 +208,44 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - id: release-notes
+        name: Write GitHub Release notes
+        if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $installerName = "${{ steps.release-metadata.outputs.installer_name }}"
+          $signingMode = "${{ steps.signing-mode.outputs.signing_mode }}"
+          $unsignedReason = "${{ steps.signing-mode.outputs.unsigned_reason }}"
+
+          if ($signingMode -eq "signed") {
+            $signingParagraph = "This release contains a code-signed Electron app for Windows, the packaged Java model, bundled runtime resources, release data, a release manifest, and SHA256 checksum files."
+          } else {
+            $signingParagraph = "This release contains an unsigned Electron app for Windows, the packaged Java model, bundled runtime resources, release data, a release manifest, and SHA256 checksum files. The installer was not code-signed because ${unsignedReason}; Windows may show additional trust prompts."
+          }
+
+          $body = @"
+          UK Housing Model ${{ github.ref_name }} packages the model as a user-friendly Windows desktop app.
+
+          $signingParagraph
+
+          Installation on Windows:
+
+          1. Download '$installerName' from the assets below.
+          2. Optionally verify the download checksum with PowerShell:
+
+          ~~~powershell
+          Get-FileHash .\$installerName -Algorithm SHA256
+          ~~~
+
+          3. Compare the result with 'SHA256SUMS.txt' or '$installerName.sha256'.
+          4. Run the installer and launch **UK Housing Model** from the Start Menu or desktop shortcut.
+
+          The release workflow runs dashboard linting, dashboard build checks, smoke tests, Maven tests, and the packaged-launcher regression before publishing these assets.
+          "@
+
+          $notesPath = "windows-release-notes.md"
+          Set-Content -LiteralPath $notesPath -Value $body -Encoding UTF8
+          "path=$notesPath" >> $env:GITHUB_OUTPUT
+
       - name: Publish draft GitHub Release
         if: success() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
@@ -195,24 +256,7 @@ jobs:
           prerelease: false
           fail_on_unmatched_files: true
           overwrite_files: true
-          body: |
-            UK Housing Model ${{ github.ref_name }} packages the model as a user-friendly Windows desktop app.
-
-            This release contains a code-signed Electron app for Windows, the packaged Java model, bundled runtime resources, release data, a release manifest, and SHA256 checksum files.
-
-            Installation on Windows:
-
-            1. Download `${{ steps.release-metadata.outputs.installer_name }}` from the assets below.
-            2. Optionally verify the download checksum with PowerShell:
-
-            ```powershell
-            Get-FileHash .\${{ steps.release-metadata.outputs.installer_name }} -Algorithm SHA256
-            ```
-
-            3. Compare the result with `SHA256SUMS.txt` or `${{ steps.release-metadata.outputs.installer_name }}.sha256`.
-            4. Run the installer and launch **UK Housing Model** from the Start Menu or desktop shortcut.
-
-            The release workflow runs dashboard linting, dashboard build checks, smoke tests, Maven tests, and the packaged-launcher regression before publishing these assets.
+          body_path: ${{ steps.release-notes.outputs.path }}
           files: |
             dashboard/release/windows/installer/${{ steps.release-metadata.outputs.installer_name }}
             dashboard/release/windows/installer/release-manifest.json

@@ -6434,13 +6434,33 @@ assert.equal(
 );
 assert.equal(
   packageJson.scripts['release:installer'],
-  'npm run release:resources && npm --prefix electron run release:installer && node ../scripts/windows/write-installer-release-manifest.mjs',
-  'Installer release script should assemble validated resources before building the signed Windows installer'
+  'npm run release:installer:signed',
+  'Default installer release script should keep using the signed release path'
+);
+assert.equal(
+  packageJson.scripts['release:installer:signed'],
+  'npm run release:resources && npm --prefix electron run release:installer:signed && node ../scripts/windows/write-installer-release-manifest.mjs --signing-mode signed',
+  'Signed installer release script should assemble resources before building and validating signed metadata'
+);
+assert.equal(
+  packageJson.scripts['release:installer:unsigned'],
+  'npm run release:resources && npm --prefix electron run release:installer:unsigned && node ../scripts/windows/write-installer-release-manifest.mjs --signing-mode unsigned',
+  'Unsigned installer release script should explicitly request unsigned metadata'
 );
 assert.equal(
   packageJson.scripts['release:installer:check'],
-  'npm run release:resources:check && node ../scripts/windows/write-installer-release-manifest.mjs --check',
-  'Installer release check should validate resources and installer release artifacts'
+  'npm run release:installer:check:signed',
+  'Default installer release check should keep using the signed release validation path'
+);
+assert.equal(
+  packageJson.scripts['release:installer:check:signed'],
+  'npm run release:resources:check && node ../scripts/windows/write-installer-release-manifest.mjs --check --signing-mode signed',
+  'Signed installer release check should validate resources and signed installer release artifacts'
+);
+assert.equal(
+  packageJson.scripts['release:installer:check:unsigned'],
+  'npm run release:resources:check && node ../scripts/windows/write-installer-release-manifest.mjs --check --signing-mode unsigned',
+  'Unsigned installer release check should validate resources and unsigned installer release artifacts'
 );
 
 const electronPackageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/electron/package.json'), 'utf-8');
@@ -6457,8 +6477,18 @@ assert.ok(
 );
 assert.equal(
   electronPackageJson.scripts['release:installer'],
+  'npm run release:installer:signed',
+  'Electron package default installer build should keep using the signed release path'
+);
+assert.equal(
+  electronPackageJson.scripts['release:installer:signed'],
   'electron-builder --config electron-builder.yml --win nsis --x64 --publish never',
-  'Electron package should build only the offline NSIS Windows installer target'
+  'Electron package should build the signed offline NSIS Windows installer target'
+);
+assert.equal(
+  electronPackageJson.scripts['release:installer:unsigned'],
+  'electron-builder --config electron-builder-unsigned.yml --win nsis --x64 --publish never',
+  'Electron package should expose an explicit unsigned offline NSIS Windows installer target'
 );
 
 const electronBuilderConfig = fs.readFileSync(path.resolve(repoRoot, 'dashboard/electron/electron-builder.yml'), 'utf-8');
@@ -6486,6 +6516,25 @@ assert.ok(
   'Installer updates/uninstalls should not delete Electron userData by default'
 );
 
+const unsignedElectronBuilderConfig = fs.readFileSync(
+  path.resolve(repoRoot, 'dashboard/electron/electron-builder-unsigned.yml'),
+  'utf-8'
+);
+assert.ok(
+  unsignedElectronBuilderConfig.includes('forceCodeSigning: false') &&
+    unsignedElectronBuilderConfig.includes('signAndEditExecutable: false'),
+  'Unsigned installer builds should explicitly disable Electron Builder code signing'
+);
+assert.ok(
+  !unsignedElectronBuilderConfig.includes('forceCodeSigning: true') &&
+    !unsignedElectronBuilderConfig.includes('signAndEditExecutable: true'),
+  'Unsigned installer config should not inherit signed executable requirements'
+);
+assert.ok(
+  unsignedElectronBuilderConfig.includes('target: nsis') && !unsignedElectronBuilderConfig.includes('nsis-web'),
+  'Unsigned installer should use the same offline NSIS target'
+);
+
 const installerManifestSource = fs.readFileSync(
   path.resolve(repoRoot, 'scripts/windows/write-installer-release-manifest.mjs'),
   'utf-8'
@@ -6495,12 +6544,21 @@ assert.ok(
   'Installer release metadata should verify the Windows Authenticode signature'
 );
 assert.ok(
-  installerManifestSource.includes('signed: true') && installerManifestSource.includes('signature,'),
+  installerManifestSource.includes("const signed = options.signingMode === 'signed';") &&
+    installerManifestSource.includes('signed,') &&
+    installerManifestSource.includes('signature: signed ? signature : null'),
   'Installer release metadata should record signed installer status and signer metadata'
 );
 assert.ok(
-  !installerManifestSource.includes('unsigned: true'),
-  'Installer release metadata should not record signed releases as unsigned'
+  installerManifestSource.includes("signingMode: 'signed'") &&
+    installerManifestSource.includes("--signing-mode requires signed or unsigned") &&
+    installerManifestSource.includes("options.signingMode === 'signed'"),
+  'Installer release metadata should support explicit signed and unsigned modes'
+);
+assert.ok(
+  installerManifestSource.includes('unsignedReason') &&
+    installerManifestSource.includes('Unsigned installer release manifest must include an unsigned reason.'),
+  'Installer release metadata should record why explicitly unsigned installers are unsigned'
 );
 
 const windowsReleaseWorkflowSource = fs.readFileSync(
@@ -6508,16 +6566,36 @@ const windowsReleaseWorkflowSource = fs.readFileSync(
   'utf-8'
 );
 assert.ok(
-  windowsReleaseWorkflowSource.includes('Validate Windows signing secrets') &&
+  windowsReleaseWorkflowSource.includes('Resolve Windows signing mode') &&
     windowsReleaseWorkflowSource.includes('secrets.WIN_CSC_LINK') &&
-    windowsReleaseWorkflowSource.includes('secrets.WIN_CSC_KEY_PASSWORD'),
-  'Windows release workflow should fail early when code-signing secrets are missing'
+    windowsReleaseWorkflowSource.includes('secrets.WIN_CSC_KEY_PASSWORD') &&
+    windowsReleaseWorkflowSource.includes('Write-Warning') &&
+    windowsReleaseWorkflowSource.includes('signing_mode=unsigned') &&
+    windowsReleaseWorkflowSource.includes('GITHUB_STEP_SUMMARY'),
+  'Windows release workflow should warn and select unsigned mode when code-signing secrets are missing'
+);
+assert.ok(
+  !windowsReleaseWorkflowSource.includes('WIN_CSC_LINK secret is required to code sign the Windows installer.') &&
+    !windowsReleaseWorkflowSource.includes('WIN_CSC_KEY_PASSWORD secret is required to code sign the Windows installer.'),
+  'Windows release workflow should not fail solely because code-signing secrets are missing'
 );
 assert.ok(
   windowsReleaseWorkflowSource.includes('Build signed Windows installer') &&
+    windowsReleaseWorkflowSource.includes("steps.signing-mode.outputs.signing_mode == 'signed'") &&
     windowsReleaseWorkflowSource.includes('WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}') &&
     windowsReleaseWorkflowSource.includes('WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}'),
   'Windows release workflow should pass signing secrets only to the installer build step'
+);
+assert.ok(
+  windowsReleaseWorkflowSource.includes('Build unsigned Windows installer') &&
+    windowsReleaseWorkflowSource.includes("steps.signing-mode.outputs.signing_mode == 'unsigned'") &&
+    windowsReleaseWorkflowSource.includes('INSTALLER_UNSIGNED_REASON: ${{ steps.signing-mode.outputs.unsigned_reason }}') &&
+    windowsReleaseWorkflowSource.includes('npm run release:installer:unsigned'),
+  'Windows release workflow should build an unsigned installer explicitly when signing secrets are missing'
+);
+assert.ok(
+  windowsReleaseWorkflowSource.includes('release:installer:check:${{ steps.signing-mode.outputs.signing_mode }}'),
+  'Windows release workflow should validate installer metadata using the selected signing mode'
 );
 assert.ok(
   windowsReleaseWorkflowSource.includes('packages the model as a user-friendly Windows desktop app') &&
@@ -6527,8 +6605,14 @@ assert.ok(
   'Windows release notes should focus on the signed desktop app and high-level installation'
 );
 assert.ok(
+  windowsReleaseWorkflowSource.includes('code-signed Electron app for Windows') &&
+    windowsReleaseWorkflowSource.includes('unsigned Electron app for Windows') &&
+    windowsReleaseWorkflowSource.includes('The installer was not code-signed because') &&
+    windowsReleaseWorkflowSource.includes('body_path: ${{ steps.release-notes.outputs.path }}'),
+  'Windows release notes should conditionally describe signed and unsigned installer status'
+);
+assert.ok(
   !windowsReleaseWorkflowSource.includes('Draft unsigned') &&
-    !windowsReleaseWorkflowSource.includes('not code-signed') &&
     !windowsReleaseWorkflowSource.includes('Included scope:') &&
     !windowsReleaseWorkflowSource.includes('Not included:') &&
     !windowsReleaseWorkflowSource.includes('AWS resources'),

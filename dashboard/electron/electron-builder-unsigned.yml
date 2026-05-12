@@ -1,0 +1,42 @@
+# Author: Max Stoddard
+appId: uk.housing.model.dashboard
+productName: UK Housing Model
+artifactName: UK-Housing-Model-${version}-Setup.${ext}
+asar: false
+forceCodeSigning: false
+publish: null
+
+directories:
+  app: ../release/windows/resources/app
+  output: ../release/windows/installer
+
+extraMetadata:
+  main: electron/dist/electron/main.js
+
+files:
+  - "**/*"
+
+extraResources:
+  - from: ../release/windows/resources/java
+    to: java
+  - from: ../release/windows/resources/model
+    to: model
+  - from: ../release/windows/resources/release-data
+    to: release-data
+  - from: ../release/windows/resources/release-manifest.json
+    to: release-manifest.json
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  signAndEditExecutable: false
+
+nsis:
+  oneClick: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: UK Housing Model

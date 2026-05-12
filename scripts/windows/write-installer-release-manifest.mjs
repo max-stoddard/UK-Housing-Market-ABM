@@ -27,6 +27,8 @@ function usage() {
 
 Options:
   --check              Validate existing installer release metadata without rewriting it.
+  --signing-mode       Installer signing mode: signed or unsigned. Defaults to signed.
+  --unsigned-reason    Reason to record when --signing-mode unsigned is used.
   --resources-root     Release resources root. Defaults to dashboard/release/windows/resources.
   --installer-root     Installer output root. Defaults to dashboard/release/windows/installer.
   --help               Show this help.
@@ -36,6 +38,9 @@ Options:
 function parseArgs(argv) {
   const options = {
     check: false,
+    signingMode: 'signed',
+    unsignedReason:
+      process.env.INSTALLER_UNSIGNED_REASON?.trim() || 'Windows code-signing secrets were not configured for this run.',
     resourcesRoot: defaultResourcesRoot,
     installerRoot: defaultInstallerRoot
   };
@@ -48,6 +53,24 @@ function parseArgs(argv) {
     }
     if (arg === '--check') {
       options.check = true;
+      continue;
+    }
+    if (arg === '--signing-mode') {
+      const value = argv[i + 1];
+      if (value !== 'signed' && value !== 'unsigned') {
+        throw new Error('--signing-mode requires signed or unsigned.');
+      }
+      options.signingMode = value;
+      i += 1;
+      continue;
+    }
+    if (arg === '--unsigned-reason') {
+      const value = argv[i + 1];
+      if (!value || !value.trim()) {
+        throw new Error('--unsigned-reason requires a non-empty value.');
+      }
+      options.unsignedReason = value.trim();
+      i += 1;
       continue;
     }
     if (arg === '--resources-root') {
@@ -165,16 +188,27 @@ function expectedInstallerPath(installerRoot, appVersion) {
   return path.join(installerRoot, installerFileName(appVersion));
 }
 
-function validateBuilderConfig() {
-  const configPath = path.join(electronRoot, 'electron-builder.yml');
+function validateBuilderConfigFile(configPath, requiredSnippets, forbiddenPatterns) {
   assertFile(configPath, 'Electron Builder config');
   const config = fs.readFileSync(configPath, 'utf-8');
-  const requiredSnippets = [
+  for (const snippet of requiredSnippets) {
+    if (!config.includes(snippet)) {
+      fail(`Electron Builder config is missing required setting: ${snippet}`);
+    }
+  }
+  for (const pattern of forbiddenPatterns) {
+    if (pattern.test(config)) {
+      fail(`Electron Builder config contains a forbidden setting matching ${pattern}.`);
+    }
+  }
+}
+
+function validateBuilderConfig(signingMode) {
+  const sharedSnippets = [
     `appId: ${appId}`,
     `productName: ${productName}`,
     'artifactName: UK-Housing-Model-${version}-Setup.${ext}',
     'asar: false',
-    'forceCodeSigning: true',
     'publish: null',
     'app: ../release/windows/resources/app',
     'output: ../release/windows/installer',
@@ -184,17 +218,22 @@ function validateBuilderConfig() {
     'from: ../release/windows/resources/release-data',
     'from: ../release/windows/resources/release-manifest.json',
     'target: nsis',
-    'signAndEditExecutable: true',
     'perMachine: false',
     'deleteAppDataOnUninstall: false'
   ];
-  for (const snippet of requiredSnippets) {
-    if (!config.includes(snippet)) {
-      fail(`Electron Builder config is missing required setting: ${snippet}`);
-    }
-  }
-  if (/nsis-web/i.test(config)) {
-    fail('Electron Builder config must not use nsis-web for the offline v1 installer.');
+
+  validateBuilderConfigFile(
+    path.join(electronRoot, 'electron-builder.yml'),
+    [...sharedSnippets, 'forceCodeSigning: true', 'signAndEditExecutable: true'],
+    [/nsis-web/i, /forceCodeSigning:\s*false/i, /signAndEditExecutable:\s*false/i]
+  );
+
+  if (signingMode === 'unsigned') {
+    validateBuilderConfigFile(
+      path.join(electronRoot, 'electron-builder-unsigned.yml'),
+      [...sharedSnippets, 'forceCodeSigning: false', 'signAndEditExecutable: false'],
+      [/nsis-web/i, /forceCodeSigning:\s*true/i, /signAndEditExecutable:\s*true/i]
+    );
   }
 }
 
@@ -364,14 +403,32 @@ function verifyInstallerSignature(installerPath) {
 function buildInstallerManifest(options, appPackage, installerPath, resourceManifest, signature) {
   const installerHash = sha256File(installerPath);
   const relativeInstallerPath = normalizeRel(path.relative(options.installerRoot, installerPath));
+  const signed = options.signingMode === 'signed';
+  const distribution = {
+    channel: 'windows-desktop',
+    method: 'GitHub Releases',
+    signed
+  };
+  const installer = {
+    path: relativeInstallerPath,
+    fileName: path.basename(installerPath),
+    target,
+    arch,
+    signed,
+    signature: signed ? signature : null,
+    sizeBytes: fs.statSync(installerPath).size,
+    sha256: installerHash
+  };
+
+  if (!signed) {
+    distribution.unsignedReason = options.unsignedReason;
+    installer.unsignedReason = options.unsignedReason;
+  }
+
   return {
     manifestVersion: 1,
     generatedAt: new Date().toISOString(),
-    distribution: {
-      channel: 'windows-desktop',
-      method: 'GitHub Releases',
-      signed: true
-    },
+    distribution,
     app: {
       name: appPackage.name,
       version: appPackage.version,
@@ -382,16 +439,7 @@ function buildInstallerManifest(options, appPackage, installerPath, resourceMani
     git: {
       commit: resolveReleaseCommit()
     },
-    installer: {
-      path: relativeInstallerPath,
-      fileName: path.basename(installerPath),
-      target,
-      arch,
-      signed: true,
-      signature,
-      sizeBytes: fs.statSync(installerPath).size,
-      sha256: installerHash
-    },
+    installer,
     packagedResources: {
       pathInInstaller: 'resources',
       phase10ManifestPath: 'resources/release-manifest.json',
@@ -461,25 +509,34 @@ function validateChecksums(installerRoot, installerPath, releaseManifestPath) {
   }
 }
 
-function validateReleaseManifest(installerRoot, installerPath, releaseManifestPath, resourceManifest) {
+function validateReleaseManifest(options, installerPath, releaseManifestPath, resourceManifest) {
   assertFile(releaseManifestPath, 'installer release manifest');
   const manifest = readJson(releaseManifestPath);
+  const signed = options.signingMode === 'signed';
   if (manifest.app?.appId !== appId || manifest.app?.productName !== productName) {
     fail('Installer release manifest has unexpected app identity.');
   }
   if (manifest.installer?.target !== target || manifest.installer?.arch !== arch) {
     fail('Installer release manifest has unexpected target or architecture.');
   }
-  if (manifest.installer?.signed !== true || manifest.distribution?.signed !== true) {
-    fail('Installer release manifest must record the Windows package as signed.');
+  if (manifest.installer?.signed !== signed || manifest.distribution?.signed !== signed) {
+    fail(`Installer release manifest must record the Windows package as ${signed ? 'signed' : 'unsigned'}.`);
   }
-  if (manifest.installer?.unsigned === true || manifest.distribution?.unsigned === true) {
-    fail('Installer release manifest must not record the Windows package as unsigned.');
+  if (signed && (manifest.installer?.unsigned === true || manifest.distribution?.unsigned === true)) {
+    fail('Signed installer release manifest must not record the Windows package as unsigned.');
+  }
+  if (!signed) {
+    if (!manifest.installer?.unsignedReason || !manifest.distribution?.unsignedReason) {
+      fail('Unsigned installer release manifest must include an unsigned reason.');
+    }
+    if (manifest.installer?.signature) {
+      fail('Unsigned installer release manifest must not include signer metadata.');
+    }
   }
   if (manifest.installer?.sha256 !== sha256File(installerPath)) {
     fail('Installer release manifest installer hash is stale.');
   }
-  if (process.platform === 'win32') {
+  if (signed && process.platform === 'win32') {
     const actualSignature = verifyInstallerSignature(installerPath);
     if (manifest.installer?.signature?.status !== 'Valid') {
       fail('Installer release manifest must include a valid Authenticode signature status.');
@@ -491,7 +548,7 @@ function validateReleaseManifest(installerRoot, installerPath, releaseManifestPa
   if (manifest.packagedResources?.phase10ManifestSha256 !== resourceManifest.sha256) {
     fail('Installer release manifest Phase 10 resource manifest hash is stale.');
   }
-  validateChecksums(installerRoot, installerPath, releaseManifestPath);
+  validateChecksums(options.installerRoot, installerPath, releaseManifestPath);
 }
 
 function main() {
@@ -499,7 +556,7 @@ function main() {
   options.resourcesRoot = path.resolve(options.resourcesRoot);
   options.installerRoot = path.resolve(options.installerRoot);
 
-  validateBuilderConfig();
+  validateBuilderConfig(options.signingMode);
   const dashboardPackage = readJson(path.join(dashboardRoot, 'package.json'));
   const resourceManifest = readAndValidateResourceManifest(options.resourcesRoot);
   const installerPath = expectedInstallerPath(options.installerRoot, dashboardPackage.version);
@@ -518,7 +575,7 @@ function main() {
 
   const winUnpackedResources = path.join(options.installerRoot, 'win-unpacked', 'resources');
   validatePackagedResourceTree(winUnpackedResources, resourceManifest);
-  const signature = verifyInstallerSignature(installerPath);
+  const signature = options.signingMode === 'signed' ? verifyInstallerSignature(installerPath) : null;
 
   if (!options.check) {
     fs.mkdirSync(options.installerRoot, { recursive: true });
@@ -528,7 +585,7 @@ function main() {
     log(`wrote installer release manifest and checksums under ${options.installerRoot}`);
   }
 
-  validateReleaseManifest(options.installerRoot, installerPath, releaseManifestPath, resourceManifest);
+  validateReleaseManifest(options, installerPath, releaseManifestPath, resourceManifest);
   log(`validated installer release artifacts under ${options.installerRoot}`);
 }
 
