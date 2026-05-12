@@ -60,7 +60,7 @@ import {
   type ModelLaunchRequest
 } from '../server/lib/modelLauncher.js';
 import { startDashboardServer } from '../server/dashboardServer.js';
-import { cancelExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../server/lib/experimentJobs.js';
+import { cancelExperimentJob, deleteExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../server/lib/experimentJobs.js';
 import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFilePath } from '../server/lib/io.js';
 import {
   assertDesktopWritablePathsOutsideResources,
@@ -81,6 +81,7 @@ import {
   writeDashboardManagedRunMarker
 } from '../server/lib/runOwnership.js';
 import {
+  createDeleteKeyAuthController,
   createDesktopWriteAuthController,
   createWriteAuthController,
   getWriteAuthConfigurationError,
@@ -131,6 +132,7 @@ import {
   buildResultsRunVersionLabelState,
   buildVersionLabelState,
   extractVersionFromResultsRunId,
+  formatCalibrationVersionTitleLabel,
   formatVersionOptionLabel,
   getLatestStableVersion
 } from '../src/lib/versionLabels.js';
@@ -1528,6 +1530,7 @@ function createModelRunFixtureRepo(prefix = 'dashboard-model-runs-smoke-'): stri
 class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   runnerState = 'stopped';
   ssmPingStatus = 'Offline';
+  runnerVCpus: number | null = 2;
   denyRemoteJobIndexRead = false;
   readonly objects = new Map<string, Buffer>();
   readonly commands: Array<{ commandId: string; script: string; requestKey: string; jobRef: string }> = [];
@@ -1549,6 +1552,7 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
       runnerInstanceId: instanceId,
       runnerState: this.runnerState,
       ssmPingStatus: this.ssmPingStatus,
+      runnerVCpus: this.runnerVCpus,
       reason: available ? null : `EC2 runner is ${this.runnerState}.`,
       checkedAt: new Date().toISOString()
     };
@@ -1622,6 +1626,12 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   async cancelCommand(_instanceId: string, commandId: string): Promise<void> {
     this.commandStatuses.set(commandId, 'Cancelled');
   }
+
+  async deleteObjects(bucket: string, keys: string[]): Promise<void> {
+    for (const key of keys) {
+      this.objects.delete(`${bucket}/${key}`);
+    }
+  }
 }
 
 const remoteFixtureRoot = createModelRunFixtureRepo('dashboard-remote-execution-smoke-');
@@ -1646,6 +1656,8 @@ try {
   const unavailableOptions = await remoteManager.decorateModelRunOptions(remoteOptions);
   assert.equal(unavailableOptions.executionEnabled, false, 'Expected stopped remote runner to disable execution options');
   assert.equal(unavailableOptions.executionBackend, 'aws_ssm', 'Expected remote options to identify AWS SSM backend');
+  assert.equal(unavailableOptions.remoteExecution?.runnerVCpus, 2, 'Expected remote status to expose runner vCPUs');
+  assert.equal(unavailableOptions.sensitivityMaxWorkersCap, 2, 'Expected remote options to cap sensitivity workers by runner vCPUs');
   assert.ok(
     unavailableOptions.executionDisabledReason?.includes('stopped'),
     'Expected stopped remote runner reason to be surfaced in options'
@@ -1665,6 +1677,8 @@ try {
   remoteAdapter.ssmPingStatus = 'Online';
   const availableOptions = await remoteManager.decorateModelRunOptions(remoteOptions);
   assert.equal(availableOptions.executionEnabled, true, 'Expected running SSM-ready runner to enable execution options');
+  assert.equal(availableOptions.remoteExecution?.runnerVCpus, 2, 'Expected running remote status to preserve runner vCPUs');
+  assert.equal(availableOptions.sensitivityMaxWorkersCap, 2, 'Expected running remote options to cap sensitivity workers by runner vCPUs');
 
   const manualSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
     baseline: 'v1.0',
@@ -1817,6 +1831,33 @@ try {
     manualLogs.lines.some((line) => line.includes('remote stdout fixture')),
     'Expected remote logs endpoint to expose SSM output while artifacts are not yet synced'
   );
+  remoteAdapter.objects.set(
+    'fixture-bucket/experiments/manual/2099-01-01/unrelated/keep.txt',
+    Buffer.from('keep me', 'utf-8')
+  );
+  const remoteManualQueueDelete = await remoteManager.deleteExperimentJob(`manual:${manualSubmit.job?.jobId ?? ''}`);
+  assert.equal(remoteManualQueueDelete.deleted, true, 'Expected unified remote manual queue delete to report success');
+  assert.equal(remoteManualQueueDelete.runId, manualSubmit.job?.runId, 'Expected remote queue delete to preserve runId');
+  assert.equal(
+    remoteAdapter.objects.has(`fixture-bucket/${manualCommand?.requestKey ?? ''}`),
+    false,
+    'Expected remote manual delete to remove the request object'
+  );
+  assert.equal(
+    [...remoteAdapter.objects.keys()].some((key) => key.startsWith(`fixture-bucket/${remoteRunPrefix}`)),
+    false,
+    'Expected remote manual delete to remove current artifact objects'
+  );
+  assert.equal(
+    remoteAdapter.objects.has('fixture-bucket/experiments/manual/2099-01-01/unrelated/keep.txt'),
+    true,
+    'Expected remote manual delete to leave unrelated S3 objects intact'
+  );
+  await assert.rejects(
+    () => remoteManager.getRemoteManualResultFiles(manualSubmit.job?.runId ?? ''),
+    /Unknown remote manual result run/,
+    'Expected deleted remote manual result to be removed from the index'
+  );
 
   const sensitivitySubmit = await remoteManager.submitSensitivityExperiment(remoteFixtureRoot, {
     baseline: 'v1.0',
@@ -1826,9 +1867,15 @@ try {
     max: 1,
     sampleCount: 2,
     overrides: { N_SIMS: 1 },
+    maxWorkers: 20,
     confirmWarnings: true
   });
   assert.equal(sensitivitySubmit.accepted, true, 'Expected remote sensitivity experiment to be accepted');
+  assert.equal(
+    sensitivitySubmit.experiment?.maxWorkers,
+    2,
+    'Expected remote sensitivity metadata to cap maxWorkers by runner vCPUs'
+  );
   assert.equal(remoteAdapter.commands.length, 2, 'Expected remote sensitivity submit to dispatch one SSM command');
   const sensitivityExperimentId = sensitivitySubmit.experiment?.experimentId ?? '';
   const sensitivityParameter = sensitivitySubmit.experiment?.parameter;
@@ -1851,6 +1898,11 @@ try {
     false,
     'Expected public sensitivity payload not to carry a client-supplied experiment id'
   );
+  assert.equal(
+    sensitivityRequest.payload?.maxWorkers,
+    2,
+    'Expected remote sensitivity request payload to cap maxWorkers by runner vCPUs'
+  );
   const remoteJobs = await remoteManager.listExperimentJobs();
   assert.ok(
     remoteJobs.jobs.some((job) => job.jobRef === `sensitivity:${sensitivityExperimentId}`),
@@ -1860,6 +1912,11 @@ try {
     remoteJobs.locks.manualSubmissionLocked,
     true,
     'Expected active remote sensitivity job to lock manual submission'
+  );
+  await assert.rejects(
+    () => remoteManager.deleteExperimentJob(`sensitivity:${sensitivityExperimentId}`),
+    /Only finished remote experiment jobs can be deleted/,
+    'Expected active remote sensitivity jobs to be protected from deletion'
   );
   const canceled = await remoteManager.cancelExperimentJob(`sensitivity:${sensitivityExperimentId}`);
   assert.equal(canceled.job.status, 'canceled', 'Expected remote cancel to map to canceled job status');
@@ -1942,6 +1999,131 @@ try {
       && remoteSensitivityArchiveText.includes('remote-sensitivity-fixture.csv'),
     'Expected remote sensitivity archive to read artifacts from the API-prepared experiment id prefix'
   );
+  const remoteSensitivityDelete = await remoteManager.deleteSensitivityExperiment(sensitivityExperimentId);
+  assert.equal(remoteSensitivityDelete.deleted, true, 'Expected remote sensitivity delete to report success');
+  assert.equal(
+    remoteAdapter.objects.has(`fixture-bucket/${sensitivityCommand?.requestKey ?? ''}`),
+    false,
+    'Expected remote sensitivity delete to remove the request object'
+  );
+  assert.equal(
+    [...remoteAdapter.objects.keys()].some((key) => key.startsWith(`fixture-bucket/${sensitivityArtifactPrefix}`)),
+    false,
+    'Expected remote sensitivity delete to remove current artifact objects'
+  );
+  await assert.rejects(
+    () => remoteManager.getSensitivityExperiment(sensitivityExperimentId),
+    /Unknown sensitivity experiment/,
+    'Expected deleted remote sensitivity experiment to be removed from the index'
+  );
+
+  const remoteApiSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
+    baseline: 'v1.0',
+    title: 'remote API delete fixture',
+    overrides: { SEED: 46 },
+    confirmWarnings: true
+  });
+  const remoteApiCommand = remoteAdapter.commands[2];
+  remoteAdapter.commandStatuses.set(remoteApiCommand?.commandId ?? '', 'Success');
+  const remoteApiRunPrefix = remoteApiSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
+  remoteAdapter.objects.set(`fixture-bucket/${remoteApiRunPrefix}/config.properties`, Buffer.from('SEED=46\n', 'utf-8'));
+
+  let missingDeleteKeyServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    missingDeleteKeyServer = await startDashboardServer({
+      dashboardRoot: path.join(repoRoot, 'dashboard'),
+      repoRoot: remoteFixtureRoot,
+      runtimePaths: createDevelopmentRuntimePaths(remoteFixtureRoot),
+      host: '127.0.0.1',
+      port: 0,
+      writeAuth: createWriteAuthController('writer', 'secret'),
+      deleteKeyAuth: createDeleteKeyAuthController(undefined),
+      remoteExecution: remoteManager,
+      modelRunsConfigured: true,
+      isDevRuntime: false,
+      staticServing: { enabled: false },
+      logStartup: false
+    });
+    const missingDeleteKeyResponse = await fetchText(
+      `${missingDeleteKeyServer.url}/api/results/runs/${encodeURIComponent(remoteApiSubmit.job?.runId ?? '')}`,
+      { method: 'DELETE' }
+    );
+    assert.equal(
+      missingDeleteKeyResponse.status,
+      503,
+      'Expected remote delete to fail closed when DASHBOARD_DELETE_KEY is not configured'
+    );
+  } finally {
+    if (missingDeleteKeyServer) {
+      await missingDeleteKeyServer.shutdown();
+    }
+  }
+
+  let remoteDeleteServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    remoteDeleteServer = await startDashboardServer({
+      dashboardRoot: path.join(repoRoot, 'dashboard'),
+      repoRoot: remoteFixtureRoot,
+      runtimePaths: createDevelopmentRuntimePaths(remoteFixtureRoot),
+      host: '127.0.0.1',
+      port: 0,
+      writeAuth: createWriteAuthController('writer', 'secret'),
+      deleteKeyAuth: createDeleteKeyAuthController('delete-secret'),
+      remoteExecution: remoteManager,
+      modelRunsConfigured: true,
+      isDevRuntime: false,
+      staticServing: { enabled: false },
+      logStartup: false
+    });
+    const remoteDeleteAuthStatus = JSON.parse((await fetchText(`${remoteDeleteServer.url}/api/auth/status`)).text) as {
+      canDeleteResults?: boolean;
+      deleteKeyRequired?: boolean;
+    };
+    assert.equal(remoteDeleteAuthStatus.canDeleteResults, true, 'Expected auth status to expose remote delete availability');
+    assert.equal(remoteDeleteAuthStatus.deleteKeyRequired, true, 'Expected auth status to flag delete-key requirement');
+    const noDeleteKeyResponse = await fetchText(
+      `${remoteDeleteServer.url}/api/results/runs/${encodeURIComponent(remoteApiSubmit.job?.runId ?? '')}`,
+      { method: 'DELETE' }
+    );
+    assert.equal(noDeleteKeyResponse.status, 403, 'Expected remote delete without private key to be rejected');
+    const loginResponse = await fetchText(`${remoteDeleteServer.url}/api/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ username: 'writer', password: 'secret' })
+    });
+    const loginPayload = JSON.parse(loginResponse.text) as { token?: string };
+    const writeTokenDeleteResponse = await fetchText(
+      `${remoteDeleteServer.url}/api/results/runs/${encodeURIComponent(remoteApiSubmit.job?.runId ?? '')}`,
+      {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${loginPayload.token ?? ''}`
+        }
+      }
+    );
+    assert.equal(writeTokenDeleteResponse.status, 403, 'Expected write login not to authorize remote deletion');
+    const validDeleteResponse = await fetchText(
+      `${remoteDeleteServer.url}/api/results/runs/${encodeURIComponent(remoteApiSubmit.job?.runId ?? '')}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'X-Dashboard-Delete-Key': 'delete-secret'
+        }
+      }
+    );
+    assert.equal(validDeleteResponse.status, 200, 'Expected remote delete with private key to succeed');
+    assert.equal(
+      remoteAdapter.objects.has(`fixture-bucket/${remoteApiCommand?.requestKey ?? ''}`),
+      false,
+      'Expected remote API delete to remove the request object'
+    );
+  } finally {
+    if (remoteDeleteServer) {
+      await remoteDeleteServer.shutdown();
+    }
+  }
 } finally {
   fs.rmSync(remoteFixtureRoot, { recursive: true, force: true });
 }
@@ -2039,17 +2221,26 @@ assert.equal(latestStableVersion, expectedLatestStableVersion, 'Expected latest 
 assert.notEqual(latestStableVersion, '', 'Expected at least one stable version to exist');
 const originalVersionState = buildVersionLabelState('v0', latestStableVersion, new Set(inProgressVersions));
 assert.ok(originalVersionState.isOriginal, 'Expected v0 to be labelled as original');
-assert.equal(formatVersionOptionLabel('v0', originalVersionState), '2011 model v0 (Original)', 'Expected v0 select label to include Original');
+assert.equal(
+  formatVersionOptionLabel('v0', originalVersionState),
+  'Original 2011 model (Original)',
+  'Expected v0 select label to use the standard original model name'
+);
 const combinedLabelState = buildVersionLabelState('v0', 'v0', new Set<string>());
 assert.equal(
   formatVersionOptionLabel('v0', combinedLabelState),
-  '2011 model v0 (Latest, Original)',
+  'Original 2011 model (Latest, Original)',
   'Expected combined labels to preserve Latest then Original ordering'
 );
 assert.equal(
   formatVersionOptionLabel('v0o', buildVersionLabelState('v0o', latestStableVersion, new Set(inProgressVersions))),
-  '2011 model v0o',
-  'Expected v0o select labels to identify the 2011 model family'
+  'v0o',
+  'Expected v0o select labels to remain a raw legacy version label'
+);
+assert.equal(
+  formatVersionOptionLabel('v0oo', buildVersionLabelState('v0oo', latestStableVersion, new Set(inProgressVersions))),
+  'Optimised 2011 model',
+  'Expected v0oo select labels to use the standard optimised model name'
 );
 assert.equal(
   formatVersionOptionLabel('v1.0', buildVersionLabelState('v1.0', latestStableVersion, new Set(inProgressVersions))),
@@ -2068,6 +2259,26 @@ assert.equal(
   formatVersionOptionLabel(latestStableVersion, latestVersionState),
   `Latest 2024 model ${latestStableVersion} (Latest)`,
   'Expected latest stable select label to include Latest'
+);
+assert.equal(
+  formatCalibrationVersionTitleLabel('v0', originalVersionState),
+  'Original 2011 model',
+  'Expected v0 calibration titles to use the name without the raw version id'
+);
+assert.equal(
+  formatCalibrationVersionTitleLabel('v0oo', buildVersionLabelState('v0oo', latestStableVersion, new Set(inProgressVersions))),
+  'Optimised 2011 model',
+  'Expected v0oo calibration titles to use the name without the raw version id'
+);
+assert.equal(
+  formatCalibrationVersionTitleLabel('v4.4', buildVersionLabelState('v4.4', latestStableVersion, new Set(inProgressVersions))),
+  'Best 2024 model',
+  'Expected v4.4 calibration titles to use the name without the raw version id'
+);
+assert.equal(
+  formatCalibrationVersionTitleLabel(latestStableVersion, latestVersionState),
+  'Latest 2024 model',
+  'Expected latest calibration titles to use the name without the raw version id'
 );
 const inProgressVersion = inProgressVersions.find((version) => version !== 'v0');
 if (inProgressVersion) {
@@ -3667,8 +3878,8 @@ try {
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 4).map((snapshot) => formatExperimentModelOption(snapshot, orderedExperimentSnapshots)),
     [
-      '2011 model v0oo (Stable)',
-      '2011 model v0 (Stable)',
+      'Optimised 2011 model (Stable)',
+      'Original 2011 model (Stable)',
       'Latest 2024 model v1.0 (Beta)',
       '2024 model v1.1 (Beta, In progress)'
     ],
@@ -4123,6 +4334,11 @@ try {
   });
   assert.equal(thirdSubmit.accepted, true, 'Expected third submit accepted');
   assert.equal(spawnedProcesses.length, 3, 'Expected third submit to start another process after previous completion');
+  assert.throws(
+    () => deleteExperimentJob(modelRunFixtureRoot, `manual:${thirdSubmit.job?.jobId ?? ''}`),
+    /Only finished manual experiment jobs can be deleted/,
+    'Expected running manual jobs to be protected from unified queue deletion'
+  );
   cancelModelRunJob(modelRunFixtureRoot, thirdSubmit.job?.jobId ?? '');
   await waitForAsyncTick();
   const canceledRunningJob = listModelRunJobs().find((job) => job.jobId === thirdSubmit.job?.jobId);
@@ -4165,6 +4381,17 @@ try {
   assert.ok(
     firstOutputPath && fs.existsSync(path.join(modelRunFixtureRoot, firstOutputPath)),
     'Expected clear job action not to delete successful run outputs'
+  );
+  const overwriteOutputPath = overwriteCompleted?.outputPath ?? '';
+  const deletedManualQueueJob = deleteExperimentJob(modelRunFixtureRoot, `manual:${overwriteSubmit.job?.jobId ?? ''}`);
+  assert.equal(deletedManualQueueJob.deleted, true, 'Expected unified queue delete to report manual success');
+  assert.ok(
+    !listModelRunJobs().some((job) => job.jobId === overwriteSubmit.job?.jobId),
+    'Expected unified queue delete to clear finished manual job history'
+  );
+  assert.ok(
+    overwriteOutputPath && !fs.existsSync(path.join(modelRunFixtureRoot, overwriteOutputPath)),
+    'Expected unified queue delete to remove managed manual run output'
   );
 
   __resetModelRunManagerForTests();
@@ -5384,6 +5611,11 @@ try {
     /Only finished sensitivity experiments can be deleted/,
     'Expected active sensitivity experiments to be protected from deletion'
   );
+  assert.throws(
+    () => deleteExperimentJob(sensitivityFixtureRoot, `sensitivity:${cancelExperimentId}`),
+    /Only finished sensitivity experiment jobs can be deleted/,
+    'Expected active sensitivity experiments to be protected from unified queue deletion'
+  );
   cancelSensitivityExperiment(sensitivityFixtureRoot, cancelExperimentId);
   await waitUntil(() => {
     const detail = getSensitivityExperiment(sensitivityFixtureRoot, cancelExperimentId).experiment;
@@ -5443,6 +5675,16 @@ try {
     const job = listExperimentJobs(sensitivityFixtureRoot).jobs.find((item) => item.jobRef === `manual:${lockedManualJobId}`);
     return job?.status === 'canceled';
   });
+  const deletedCanceledSensitivityJob = deleteExperimentJob(sensitivityFixtureRoot, `sensitivity:${cancelExperimentId}`);
+  assert.equal(deletedCanceledSensitivityJob.deleted, true, 'Expected unified queue delete to remove canceled sensitivity jobs');
+  assert.ok(
+    !listExperimentJobs(sensitivityFixtureRoot).jobs.some((job) => job.jobRef === `sensitivity:${cancelExperimentId}`),
+    'Expected deleted sensitivity queue job to be removed from unified history'
+  );
+  assert.ok(
+    !fs.existsSync(path.join(sensitivityFixtureRoot, 'Results', 'experiments', 'sensitivity', cancelExperimentId)),
+    'Expected unified sensitivity queue delete to remove artifacts'
+  );
 
   __resetModelRunManagerForTests();
   __resetSensitivityRunsForTests();
@@ -5734,6 +5976,15 @@ assert.equal(enabledStatusWithToken.canWrite, true, 'Expected bearer token to gr
 writeAuthEnabled.logout(goodLogin.token ?? null);
 const afterLogoutStatus = writeAuthEnabled.resolveAccess(`Bearer ${goodLogin.token}`);
 assert.equal(afterLogoutStatus.canWrite, false, 'Expected logout to revoke write access token');
+
+const deleteKeyDisabled = createDeleteKeyAuthController(undefined);
+assert.equal(deleteKeyDisabled.configured, false, 'Expected delete key auth to be disabled when key is unset');
+assert.equal(deleteKeyDisabled.resolveAccess('delete-secret').canDelete, false, 'Expected unset delete key auth to reject deletes');
+const deleteKeyEnabled = createDeleteKeyAuthController('delete-secret');
+assert.equal(deleteKeyEnabled.configured, true, 'Expected delete key auth to report configured state');
+assert.equal(deleteKeyEnabled.resolveAccess(undefined).canDelete, false, 'Expected missing delete key header to be rejected');
+assert.equal(deleteKeyEnabled.resolveAccess('wrong-secret').canDelete, false, 'Expected incorrect delete key to be rejected');
+assert.equal(deleteKeyEnabled.resolveAccess('delete-secret').canDelete, true, 'Expected matching delete key to authorize deletes');
 
 assert.throws(
   () => createDesktopWriteAuthController('   '),
@@ -6081,6 +6332,12 @@ assert.ok(
   manualResultsViewSource.includes("dotted lines show each selected run&apos;s mean over the"),
   'Manual results overlay help copy should explain the dotted mean reference lines'
 );
+assert.ok(
+  manualResultsViewSource.includes('window.confirm') &&
+    manualResultsViewSource.includes('window.prompt') &&
+    manualResultsViewSource.includes('deleteResultsRun(runId, deleteKey'),
+  'Manual results deletion should confirm and prompt for remote delete key before calling the delete API'
+);
 
 const sensitivityResultsViewSource = fs.readFileSync(
   path.resolve(repoRoot, 'dashboard/src/pages/experiments/view/SensitivityResultsView.tsx'),
@@ -6088,8 +6345,34 @@ const sensitivityResultsViewSource = fs.readFileSync(
 );
 assert.ok(
   sensitivityResultsViewSource.includes('window.confirm') &&
+    sensitivityResultsViewSource.includes('window.prompt') &&
     sensitivityResultsViewSource.includes('deleteSensitivityExperiment'),
-  'Sensitivity results deletion should require confirmation before calling the delete API'
+  'Sensitivity results deletion should confirm and prompt for remote delete key before calling the delete API'
+);
+
+const experimentQueueCardSource = fs.readFileSync(
+  path.resolve(repoRoot, 'dashboard/src/pages/run-experiments/ExperimentQueueCard.tsx'),
+  'utf-8'
+);
+assert.ok(
+  experimentQueueCardSource.includes('onDeleteJob') &&
+    experimentQueueCardSource.includes('danger-button') &&
+    experimentQueueCardSource.includes('isFinishedStatus(job.status)'),
+  'Experiment queue should render delete actions only for finished jobs'
+);
+assert.ok(
+  experimentQueueCardSource.includes('className="summary-link-inline summary-button-inline queue-download-button"'),
+  'Experiment queue download button should use the same inline summary styling as result links'
+);
+
+const experimentRunModeSource = fs.readFileSync(
+  path.resolve(repoRoot, 'dashboard/src/pages/experiments/run/ExperimentRunMode.tsx'),
+  'utf-8'
+);
+assert.ok(
+  experimentRunModeSource.includes('window.prompt') &&
+    experimentRunModeSource.includes('deleteExperimentJob(job.jobRef, deleteKey'),
+  'Experiment queue deletion should prompt for the remote delete key per delete'
 );
 
 const appSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/App.tsx'), 'utf-8');
