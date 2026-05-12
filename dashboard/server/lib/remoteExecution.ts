@@ -67,6 +67,8 @@ const SSM_DOCUMENT_NAME = 'AWS-RunShellScript';
 const REMOTE_LOG_GROUP = '/aws/ssm/uk-housing-market-abm-remote-experiments';
 const COMMAND_TIMEOUT_SECONDS = 24 * 60 * 60;
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
+const REMOTE_JOB_INDEX_UNAVAILABLE_MESSAGE =
+  'Remote experiment execution is temporarily unavailable because the remote job index cannot be read.';
 
 type RemoteJobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
 type RemoteJobType = 'manual' | 'sensitivity';
@@ -126,6 +128,18 @@ interface RemoteRunRequest {
   preparedSensitivity?: {
     experimentId: string;
   };
+}
+
+export class RemoteExecutionUnavailableError extends Error {
+  constructor(message = REMOTE_JOB_INDEX_UNAVAILABLE_MESSAGE) {
+    super(message);
+    this.name = 'RemoteExecutionUnavailableError';
+  }
+}
+
+function isAccessDeniedError(error: unknown): boolean {
+  const details = error as { name?: string; Code?: string; '$metadata'?: { httpStatusCode?: number } };
+  return details.name === 'AccessDenied' || details.Code === 'AccessDenied' || details.$metadata?.httpStatusCode === 403;
 }
 
 export interface RemoteAwsAdapter {
@@ -937,7 +951,15 @@ export class RemoteExecutionManager {
   }
 
   private async loadIndex(): Promise<RemoteJobIndex> {
-    const index = await this.adapter.getJson<RemoteJobIndex>(this.config.artifactsBucket, INDEX_KEY);
+    let index: RemoteJobIndex | null;
+    try {
+      index = await this.adapter.getJson<RemoteJobIndex>(this.config.artifactsBucket, INDEX_KEY);
+    } catch (error) {
+      if (isAccessDeniedError(error)) {
+        throw new RemoteExecutionUnavailableError();
+      }
+      throw error;
+    }
     return index ?? {
       schemaVersion: 1,
       updatedAt: isoNow(),

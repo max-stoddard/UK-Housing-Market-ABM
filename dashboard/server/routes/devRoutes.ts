@@ -5,6 +5,7 @@ import {
   createSensitivityResultArchive,
   type ResultArchive,
 } from '../lib/resultDownloads';
+import { RemoteExecutionUnavailableError } from '../lib/remoteExecution';
 import {
   deleteResultsRun,
   getResultsCompare,
@@ -620,6 +621,10 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       }
       res.json(listExperimentJobs(context.runtimePaths));
     } catch (error) {
+      if (error instanceof RemoteExecutionUnavailableError) {
+        res.status(503).json({ error: error.message });
+        return;
+      }
       res.status(400).json({ error: (error as Error).message });
     }
   });

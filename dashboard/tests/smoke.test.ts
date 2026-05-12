@@ -90,6 +90,7 @@ import { appendLogLine, type LogBufferState } from '../server/lib/logs/logBuffer
 import { createRotatingLogWriter } from '../server/lib/logs/persistentLogs.js';
 import {
   RemoteExecutionManager,
+  RemoteExecutionUnavailableError,
   buildRemoteRunnerScript,
   type RemoteAwsAdapter,
   type RemoteExecutionConfig
@@ -1527,6 +1528,7 @@ function createModelRunFixtureRepo(prefix = 'dashboard-model-runs-smoke-'): stri
 class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   runnerState = 'stopped';
   ssmPingStatus = 'Offline';
+  denyRemoteJobIndexRead = false;
   readonly objects = new Map<string, Buffer>();
   readonly commands: Array<{ commandId: string; script: string; requestKey: string; jobRef: string }> = [];
   readonly commandStatuses = new Map<string, string>();
@@ -1566,6 +1568,11 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   }
 
   async getBytes(bucket: string, key: string): Promise<Buffer | null> {
+    if (this.denyRemoteJobIndexRead && key === 'experiments/remote-job-index/index.json') {
+      const error = new Error('raw AWS AccessDenied fixture: arn:aws:sts::fixture:assumed-role/example');
+      error.name = 'AccessDenied';
+      throw error;
+    }
     const value = this.objects.get(`${bucket}/${key}`);
     return value ? Buffer.from(value) : null;
   }
@@ -1627,6 +1634,14 @@ try {
   };
   const remoteAdapter = new FakeRemoteAwsAdapter();
   const remoteManager = new RemoteExecutionManager(remoteConfig, remoteAdapter);
+  remoteAdapter.denyRemoteJobIndexRead = true;
+  await assert.rejects(
+    () => remoteManager.listExperimentJobs(),
+    (error: unknown) => error instanceof RemoteExecutionUnavailableError &&
+      !error.message.includes('arn:aws:sts::fixture'),
+    'Expected remote job index AccessDenied errors to be sanitized'
+  );
+  remoteAdapter.denyRemoteJobIndexRead = false;
   const remoteOptions = getModelRunOptions(remoteFixtureRoot, 'v1.0', true);
   const unavailableOptions = await remoteManager.decorateModelRunOptions(remoteOptions);
   assert.equal(unavailableOptions.executionEnabled, false, 'Expected stopped remote runner to disable execution options');
