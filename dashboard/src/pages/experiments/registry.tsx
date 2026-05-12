@@ -14,6 +14,8 @@ export interface ExperimentRunRendererProps {
 export interface ExperimentViewRendererProps {
   canWrite: boolean;
   canDownloadResults: boolean;
+  canDeleteResults: boolean;
+  deleteKeyRequired: boolean;
   authEnabled: boolean;
   requestedBaselineRunId: string;
   requestedComparisonRunId: string;
@@ -33,6 +35,8 @@ interface ExperimentTypeDefinition {
 const ManualViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
   canWrite,
   canDownloadResults,
+  canDeleteResults,
+  deleteKeyRequired,
   authEnabled,
   requestedBaselineRunId,
   requestedComparisonRunId,
@@ -42,6 +46,8 @@ const ManualViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
   <ManualResultsView
     canWrite={canWrite}
     canDownloadResults={canDownloadResults}
+    canDeleteResults={canDeleteResults}
+    deleteKeyRequired={deleteKeyRequired}
     authEnabled={authEnabled}
     requestedBaselineRunId={requestedBaselineRunId}
     requestedComparisonRunId={requestedComparisonRunId}
@@ -53,6 +59,8 @@ const ManualViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
 const SensitivityViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
   canWrite,
   canDownloadResults,
+  canDeleteResults,
+  deleteKeyRequired,
   authEnabled,
   requestedExperimentId,
   onSelectedExperimentIdChange,
@@ -61,6 +69,8 @@ const SensitivityViewRenderer: ComponentType<ExperimentViewRendererProps> = ({
   <SensitivityResultsView
     canWrite={canWrite}
     canDownloadResults={canDownloadResults}
+    canDeleteResults={canDeleteResults}
+    deleteKeyRequired={deleteKeyRequired}
     authEnabled={authEnabled}
     requestedExperimentId={requestedExperimentId}
     onSelectedExperimentIdChange={onSelectedExperimentIdChange}

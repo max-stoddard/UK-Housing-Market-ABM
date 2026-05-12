@@ -5,6 +5,7 @@ import type {
   AuthStatusPayload,
   CompareResponse,
   ExperimentJobCancelResponse,
+  ExperimentJobDeleteResponse,
   ExperimentJobLogsPayload,
   ExperimentJobsPayload,
   HomePreviewPayload,
@@ -89,6 +90,18 @@ function withAuthHeaders(init: RequestInit = {}): RequestInit {
     headers.set('Authorization', `Bearer ${authToken}`);
   }
   headers.set('X-Dashboard-View-Mode', apiViewMode);
+  return {
+    ...init,
+    headers
+  };
+}
+
+function withDeleteKeyHeader(init: RequestInit, deleteKey?: string): RequestInit {
+  if (!deleteKey) {
+    return init;
+  }
+  const headers = new Headers(init.headers);
+  headers.set('X-Dashboard-Delete-Key', deleteKey);
   return {
     ...init,
     headers
@@ -304,13 +317,13 @@ export async function fetchResultsRunFiles(runId: string): Promise<ResultsFileMa
   return payload.files;
 }
 
-export async function deleteResultsRun(runId: string): Promise<ResultsRunDeleteResponse> {
+export async function deleteResultsRun(runId: string, deleteKey?: string): Promise<ResultsRunDeleteResponse> {
   return requestJsonWithInit<ResultsRunDeleteResponse>(
     buildApiUrl(`/api/results/runs/${encodeURIComponent(runId)}`),
     'Failed to delete run',
-    {
+    withDeleteKeyHeader({
       method: 'DELETE'
-    }
+    }, deleteKey)
   );
 }
 
@@ -448,13 +461,16 @@ export async function fetchSensitivityExperiment(experimentId: string): Promise<
   );
 }
 
-export async function deleteSensitivityExperiment(experimentId: string): Promise<SensitivityExperimentDeleteResponse> {
+export async function deleteSensitivityExperiment(
+  experimentId: string,
+  deleteKey?: string
+): Promise<SensitivityExperimentDeleteResponse> {
   return requestJsonWithInit<SensitivityExperimentDeleteResponse>(
     buildApiUrl(`/api/experiments/sensitivity/${encodeURIComponent(experimentId)}`),
     'Failed to delete sensitivity experiment',
-    {
+    withDeleteKeyHeader({
       method: 'DELETE'
-    }
+    }, deleteKey)
   );
 }
 
@@ -531,5 +547,15 @@ export async function cancelExperimentJob(jobRef: string): Promise<ExperimentJob
     {
       method: 'POST'
     }
+  );
+}
+
+export async function deleteExperimentJob(jobRef: string, deleteKey?: string): Promise<ExperimentJobDeleteResponse> {
+  return requestJsonWithInit<ExperimentJobDeleteResponse>(
+    buildApiUrl(`/api/experiments/jobs/${encodeURIComponent(jobRef)}`),
+    'Failed to delete experiment job',
+    withDeleteKeyHeader({
+      method: 'DELETE'
+    }, deleteKey)
   );
 }

@@ -33,6 +33,8 @@ const KPI_OPTIONS: Array<{ key: KpiMetricKey; label: string }> = [
 interface SensitivityResultsViewProps {
   canWrite: boolean;
   canDownloadResults: boolean;
+  canDeleteResults: boolean;
+  deleteKeyRequired: boolean;
   authEnabled: boolean;
   requestedExperimentId: string;
   onSelectedExperimentIdChange: (experimentId: string) => void;
@@ -184,8 +186,9 @@ function buildDeltaTrendOption(series: SensitivityDeltaTrendSeries, parameterTit
 }
 
 export function SensitivityResultsView({
-  canWrite,
   canDownloadResults,
+  canDeleteResults,
+  deleteKeyRequired,
   authEnabled,
   requestedExperimentId,
   onSelectedExperimentIdChange,
@@ -358,7 +361,7 @@ export function SensitivityResultsView({
   };
 
   const deleteExperiment = async (experimentId: string) => {
-    if (!canWrite) {
+    if (!canDeleteResults) {
       return;
     }
 
@@ -369,10 +372,15 @@ export function SensitivityResultsView({
       return;
     }
 
+    const deleteKey = deleteKeyRequired ? window.prompt('Enter the private delete key to delete remote experiment results.') : undefined;
+    if (deleteKeyRequired && !deleteKey) {
+      return;
+    }
+
     setPageError('');
     setIsDeletingExperimentId(experimentId);
     try {
-      await deleteSensitivityExperiment(experimentId);
+      await deleteSensitivityExperiment(experimentId, deleteKey ?? undefined);
       if (selectedExperimentId === experimentId) {
         setSelectedExperimentId('');
         setDetail(null);
@@ -461,7 +469,7 @@ export function SensitivityResultsView({
                     <p>
                       <span className={statusClass(experiment.status)}>{formatStatus(experiment.status)}</span>
                     </p>
-                    {canWrite && (
+                    {canDeleteResults && (
                       <button
                         type="button"
                         className="danger-button"

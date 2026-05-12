@@ -23,6 +23,8 @@ const DEFAULT_AUTH_STATUS: AuthStatusPayload = {
   authEnabled: false,
   canWrite: true,
   canDownloadResults: true,
+  canDeleteResults: true,
+  deleteKeyRequired: false,
   authMisconfigured: false,
   modelRunsEnabled: false,
   modelRunsConfigured: false,
@@ -338,6 +340,8 @@ export function App() {
                   <ExperimentsPage
                     canWrite={authStatus.canWrite}
                     canDownloadResults={authStatus.canDownloadResults}
+                    canDeleteResults={authStatus.canDeleteResults}
+                    deleteKeyRequired={authStatus.deleteKeyRequired}
                     authEnabled={authStatus.authEnabled}
                   />
                 }

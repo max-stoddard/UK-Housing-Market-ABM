@@ -11,10 +11,18 @@ import type { ExperimentRouteState, ExperimentType } from './experiments/types';
 interface ExperimentsPageProps {
   canWrite: boolean;
   canDownloadResults: boolean;
+  canDeleteResults: boolean;
+  deleteKeyRequired: boolean;
   authEnabled: boolean;
 }
 
-export function ExperimentsPage({ canWrite, canDownloadResults, authEnabled }: ExperimentsPageProps) {
+export function ExperimentsPage({
+  canWrite,
+  canDownloadResults,
+  canDeleteResults,
+  deleteKeyRequired,
+  authEnabled
+}: ExperimentsPageProps) {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawQuery = searchParams.toString();
 
@@ -87,6 +95,8 @@ export function ExperimentsPage({ canWrite, canDownloadResults, authEnabled }: E
           activeType={routeState.type}
           canWrite={canWrite}
           canDownloadResults={canDownloadResults}
+          canDeleteResults={canDeleteResults}
+          deleteKeyRequired={deleteKeyRequired}
           authEnabled={authEnabled}
           selectedJobRef={routeState.jobRef}
           onSelectedJobRefChange={(jobRef) => updateRouteState({ jobRef }, true)}
@@ -101,6 +111,8 @@ export function ExperimentsPage({ canWrite, canDownloadResults, authEnabled }: E
         <activeConfig.ViewComponent
           canWrite={canWrite}
           canDownloadResults={canDownloadResults}
+          canDeleteResults={canDeleteResults}
+          deleteKeyRequired={deleteKeyRequired}
           authEnabled={authEnabled}
           requestedBaselineRunId={routeState.baselineRunId}
           requestedComparisonRunId={routeState.comparisonRunId}

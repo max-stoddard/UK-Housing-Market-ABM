@@ -51,6 +51,8 @@ type ManualResultsMode = 'single' | 'compare';
 interface ManualResultsViewProps {
   canWrite: boolean;
   canDownloadResults: boolean;
+  canDeleteResults: boolean;
+  deleteKeyRequired: boolean;
   authEnabled: boolean;
   requestedBaselineRunId: string;
   requestedComparisonRunId: string;
@@ -115,8 +117,9 @@ function InlineInfoTip({ label, description }: InlineInfoTipProps) {
 }
 
 export function ManualResultsView({
-  canWrite,
   canDownloadResults,
+  canDeleteResults,
+  deleteKeyRequired,
   authEnabled,
   requestedBaselineRunId,
   requestedComparisonRunId,
@@ -470,7 +473,7 @@ export function ManualResultsView({
   };
 
   const deleteRun = async (runId: string) => {
-    if (!canWrite) {
+    if (!canDeleteResults) {
       return;
     }
     if (isProtectedResultsRun(runId)) {
@@ -482,10 +485,15 @@ export function ManualResultsView({
       return;
     }
 
+    const deleteKey = deleteKeyRequired ? window.prompt('Enter the private delete key to delete remote experiment results.') : undefined;
+    if (deleteKeyRequired && !deleteKey) {
+      return;
+    }
+
     setLoadError('');
     setIsDeletingRunId(runId);
     try {
-      await deleteResultsRun(runId);
+      await deleteResultsRun(runId, deleteKey ?? undefined);
       await loadRuns();
     } catch (error) {
       setLoadError((error as Error).message);
@@ -627,7 +635,7 @@ export function ManualResultsView({
                         <p>
                           Coverage: {run.parseCoverage.supportedCount}/{run.parseCoverage.requiredCount} supported
                         </p>
-                        {canWrite && (
+                        {canDeleteResults && (
                           <button
                             type="button"
                             className="danger-button"

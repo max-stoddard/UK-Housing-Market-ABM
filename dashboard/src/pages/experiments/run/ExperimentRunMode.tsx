@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ExperimentJobSummary } from '../../../../shared/types';
-import { downloadResultsRun, downloadSensitivityExperiment } from '../../../lib/api';
+import { deleteExperimentJob, downloadResultsRun, downloadSensitivityExperiment } from '../../../lib/api';
 import { buildExperimentsPath } from '../routeState';
 import { DEFAULT_EXPERIMENT_ROUTE_STATE, type ExperimentType } from '../types';
 import { experimentTypeRegistry } from '../registry';
@@ -13,6 +13,8 @@ interface ExperimentRunModeProps {
   activeType: ExperimentType;
   canWrite: boolean;
   canDownloadResults: boolean;
+  canDeleteResults: boolean;
+  deleteKeyRequired: boolean;
   authEnabled: boolean;
   selectedJobRef: string;
   onSelectedJobRefChange: (jobRef: string) => void;
@@ -24,6 +26,8 @@ export function ExperimentRunMode({
   activeType,
   canWrite,
   canDownloadResults,
+  canDeleteResults,
+  deleteKeyRequired,
   authEnabled,
   selectedJobRef,
   onSelectedJobRefChange,
@@ -37,7 +41,9 @@ export function ExperimentRunMode({
     onOpenSensitivityResults
   });
   const [downloadingJobRef, setDownloadingJobRef] = useState<string>('');
+  const [deletingJobRef, setDeletingJobRef] = useState<string>('');
   const [downloadError, setDownloadError] = useState<string>('');
+  const [deleteError, setDeleteError] = useState<string>('');
 
   const runActionsDisabled = controller.executionDisabled || !canWrite;
   const RunSetupComponent = experimentTypeRegistry[activeType].RunSetupComponent;
@@ -61,11 +67,38 @@ export function ExperimentRunMode({
     }
   };
 
+  const deleteJob = async (job: ExperimentJobSummary) => {
+    if (!canDeleteResults) {
+      return;
+    }
+    const confirmed = window.confirm(`Delete ${job.type} experiment "${job.title}"? This permanently removes its results.`);
+    if (!confirmed) {
+      return;
+    }
+
+    const deleteKey = deleteKeyRequired ? window.prompt('Enter the private delete key to delete remote experiment results.') : undefined;
+    if (deleteKeyRequired && !deleteKey) {
+      return;
+    }
+
+    setDeleteError('');
+    setDeletingJobRef(job.jobRef);
+    try {
+      await deleteExperimentJob(job.jobRef, deleteKey ?? undefined);
+      await controller.refreshJobs();
+    } catch (error) {
+      setDeleteError((error as Error).message);
+    } finally {
+      setDeletingJobRef('');
+    }
+  };
+
   return (
     <section className="run-exp-layout">
       {controller.pageError && <p className="error-banner">{controller.pageError}</p>}
       {controller.logError && <p className="error-banner">{controller.logError}</p>}
       {downloadError && <p className="error-banner">{downloadError}</p>}
+      {deleteError && <p className="error-banner">{deleteError}</p>}
 
       {controller.pendingRunId && (
         <p className="waiting-banner">
@@ -135,12 +168,17 @@ export function ExperimentRunMode({
           executionDisabled={runActionsDisabled}
           authEnabled={authEnabled}
           canDownloadResults={canDownloadResults}
+          canDeleteResults={canDeleteResults}
           downloadingJobRef={downloadingJobRef}
+          deletingJobRef={deletingJobRef}
           onCancelJob={(jobRef) => {
             void controller.onCancelJob(jobRef);
           }}
           onDownloadJob={(job) => {
             void downloadJobResults(job);
+          }}
+          onDeleteJob={(job) => {
+            void deleteJob(job);
           }}
         />
 
