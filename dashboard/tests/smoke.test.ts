@@ -1698,9 +1698,26 @@ try {
     'Expected remote runner to search the Ubuntu nvm install used by the EC2 runner'
   );
   assert.ok(
-    manualScript.indexOf('\nactivate_node_runtime\nRUN_BASE=') > 0 &&
-      manualScript.indexOf('cleanup_failure()') > manualScript.indexOf('\nactivate_node_runtime\nRUN_BASE='),
-    'Expected remote runner to activate Node before registering cleanup logic that writes failure status'
+    manualScript.includes('activate_java_runtime'),
+    'Expected remote runner to activate Java before invoking the Maven wrapper'
+  );
+  assert.ok(
+    manualScript.includes('/home/ubuntu/.sdkman'),
+    'Expected remote runner to search the Ubuntu SDKMAN install used by the EC2 runner'
+  );
+  const nodeActivationCallIndex = manualScript.indexOf('\nactivate_node_runtime\nactivate_java_runtime()');
+  const javaActivationCallIndex = manualScript.indexOf('\nactivate_java_runtime\nRUN_BASE=');
+  assert.ok(
+    nodeActivationCallIndex > 0 &&
+      javaActivationCallIndex > nodeActivationCallIndex &&
+      manualScript.indexOf('cleanup_failure()') > javaActivationCallIndex,
+    'Expected remote runner to activate Node and Java before registering cleanup logic that writes failure status'
+  );
+  assert.ok(
+    javaActivationCallIndex > 0 &&
+      manualScript.indexOf('"$NODE_BIN" --import tsx/esm server/remoteRunnerCli.ts') >
+        javaActivationCallIndex,
+    'Expected remote runner to activate Java before starting the TypeScript runner that invokes Maven'
   );
   assert.ok(
     manualScript.includes('RUN_BASE="$HOME/remote-runs"'),

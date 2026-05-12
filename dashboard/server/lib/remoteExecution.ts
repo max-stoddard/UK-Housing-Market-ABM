@@ -529,6 +529,57 @@ activate_node_runtime() {
   return 127
 }
 activate_node_runtime
+activate_java_runtime() {
+  is_java_25_or_newer() {
+    command -v java >/dev/null 2>&1 || return 1
+    local version major
+    version="$(java -version 2>&1 | awk -F '"' '/version/ { print $2; exit }')" || return 1
+    major="\${version%%.*}"
+    case "$major" in
+      ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$major" -ge 25 ]
+  }
+
+  if [ -n "\${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/java" ]; then
+    export PATH="$JAVA_HOME/bin:$PATH"
+  fi
+  if is_java_25_or_newer; then
+    JAVA_BIN="$(command -v java)"
+    JAVA_HOME="\${JAVA_HOME:-$(cd "$(dirname "$JAVA_BIN")/.." && pwd)}"
+    export JAVA_HOME PATH
+    echo "[remote] java=$("$JAVA_BIN" -version 2>&1 | head -n 1) JAVA_HOME=$JAVA_HOME"
+    return 0
+  fi
+
+  for sdkman_dir in "\${SDKMAN_DIR:-}" "$HOME/.sdkman" /home/ubuntu/.sdkman /home/ssm-user/.sdkman /root/.sdkman; do
+    [ -n "$sdkman_dir" ] || continue
+    [ -s "$sdkman_dir/bin/sdkman-init.sh" ] || continue
+    export SDKMAN_DIR="$sdkman_dir"
+    . "$SDKMAN_DIR/bin/sdkman-init.sh"
+    if is_java_25_or_newer; then
+      JAVA_BIN="$(command -v java)"
+      JAVA_HOME="\${JAVA_HOME:-$(cd "$(dirname "$JAVA_BIN")/.." && pwd)}"
+      export JAVA_HOME PATH
+      echo "[remote] java=$("$JAVA_BIN" -version 2>&1 | head -n 1) JAVA_HOME=$JAVA_HOME SDKMAN_DIR=$SDKMAN_DIR"
+      return 0
+    fi
+  done
+
+  for java_home in /home/ubuntu/.sdkman/candidates/java/current /home/ubuntu/.sdkman/candidates/java/25* /home/ssm-user/.sdkman/candidates/java/current /root/.sdkman/candidates/java/current; do
+    [ -x "$java_home/bin/java" ] || continue
+    export JAVA_HOME="$java_home"
+    export PATH="$JAVA_HOME/bin:$PATH"
+    if is_java_25_or_newer; then
+      echo "[remote] java=$("$JAVA_HOME/bin/java" -version 2>&1 | head -n 1) JAVA_HOME=$JAVA_HOME"
+      return 0
+    fi
+  done
+
+  echo "[remote] Java 25+ is required; checked PATH, JAVA_HOME, SDKMAN_DIR, $HOME/.sdkman, /home/ubuntu/.sdkman, /home/ssm-user/.sdkman, and /root/.sdkman." >&2
+  return 1
+}
+activate_java_runtime
 RUN_BASE="$HOME/remote-runs"
 RUN_ROOT="$RUN_BASE/$JOB_REF"
 REQUEST_JSON="$RUN_ROOT/request.json"
