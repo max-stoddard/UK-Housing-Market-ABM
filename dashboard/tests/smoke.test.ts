@@ -1684,6 +1684,15 @@ try {
     'set -euo pipefail',
     'Expected Bash-only strict mode not to be interpreted by the SSM default shell'
   );
+  assert.ok(
+    manualCommand?.script.includes('RUN_BASE="${HOME:-/var/tmp}/remote-runs"'),
+    'Expected remote runner working directory to tolerate SSM environments without HOME'
+  );
+  assert.equal(
+    manualCommand?.script.includes('RUN_ROOT="$HOME/remote-runs/$JOB_REF"'),
+    false,
+    'Expected remote runner working directory not to depend on HOME under set -u'
+  );
   assert.ok(manualCommand?.script.includes('remoteRunnerCli.ts'), 'Expected fixed SSM command to call the remote runner CLI');
   assert.equal(manualCommand?.requestKey.includes(':'), false, 'Expected remote request S3 keys to be sanitized');
   assert.ok(
