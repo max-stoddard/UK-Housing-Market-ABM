@@ -488,7 +488,48 @@ BUCKET=${bucket}
 REGION=${region}
 REQUEST_KEY=${requestKey}
 JOB_REF=${jobRef}
-RUN_BASE="\${HOME:-/var/tmp}/remote-runs"
+export HOME="\${HOME:-/var/tmp/uk-housing-dashboard-ssm}"
+activate_node_runtime() {
+  is_node_22_or_newer() {
+    command -v node >/dev/null 2>&1 || return 1
+    local major
+    major="$(node -p "process.versions.node.split('.')[0]" 2>/dev/null)" || return 1
+    case "$major" in
+      ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$major" -ge 22 ]
+  }
+
+  if is_node_22_or_newer && command -v npm >/dev/null 2>&1; then
+    NODE_BIN="$(command -v node)"
+    NPM_BIN="$(command -v npm)"
+    export NODE_BIN NPM_BIN
+    echo "[remote] node=$("$NODE_BIN" --version) npm=$("$NPM_BIN" --version)"
+    return 0
+  fi
+
+  for nvm_dir in "\${NVM_DIR:-}" "$HOME/.nvm" /home/ubuntu/.nvm /home/ssm-user/.nvm /root/.nvm; do
+    [ -n "$nvm_dir" ] || continue
+    [ -s "$nvm_dir/nvm.sh" ] || continue
+    export NVM_DIR="$nvm_dir"
+    . "$NVM_DIR/nvm.sh"
+    if command -v nvm >/dev/null 2>&1; then
+      nvm use 22 >/dev/null 2>&1 || nvm use default >/dev/null 2>&1 || true
+    fi
+    if is_node_22_or_newer && command -v npm >/dev/null 2>&1; then
+      NODE_BIN="$(command -v node)"
+      NPM_BIN="$(command -v npm)"
+      export NODE_BIN NPM_BIN
+      echo "[remote] node=$("$NODE_BIN" --version) npm=$("$NPM_BIN" --version) nvm=$NVM_DIR"
+      return 0
+    fi
+  done
+
+  echo "[remote] Node.js 22+ and npm are required; checked PATH, NVM_DIR, $HOME/.nvm, /home/ubuntu/.nvm, /home/ssm-user/.nvm, and /root/.nvm." >&2
+  return 127
+}
+activate_node_runtime
+RUN_BASE="$HOME/remote-runs"
 RUN_ROOT="$RUN_BASE/$JOB_REF"
 REQUEST_JSON="$RUN_ROOT/request.json"
 SOURCE_DIR="$RUN_ROOT/source"
@@ -499,7 +540,7 @@ echo "[remote] job=$JOB_REF request=s3://$BUCKET/$REQUEST_KEY"
 cleanup_failure() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    node - "$ARTIFACT_DIR/remote-status.json" "$JOB_REF" "$status" <<'NODE' || true
+    "$NODE_BIN" - "$ARTIFACT_DIR/remote-status.json" "$JOB_REF" "$status" <<'NODE' || true
 const fs = require('node:fs');
 const [path, jobRef, status] = process.argv.slice(2);
 fs.mkdirSync(require('node:path').dirname(path), { recursive: true });
@@ -512,7 +553,7 @@ fs.writeFileSync(path, JSON.stringify({
 }, null, 2) + '\\n');
 NODE
     if [ -f "$REQUEST_JSON" ]; then
-      PREFIX="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.artifactS3Prefix || '');" "$REQUEST_JSON" || true)"
+      PREFIX="$("$NODE_BIN" -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.artifactS3Prefix || '');" "$REQUEST_JSON" || true)"
       if [ -n "$PREFIX" ]; then
         aws s3 sync "$ARTIFACT_DIR/" "s3://$BUCKET/$PREFIX" --region "$REGION" --only-show-errors || true
       fi
@@ -522,9 +563,9 @@ NODE
 }
 trap cleanup_failure EXIT
 aws s3 cp "s3://$BUCKET/$REQUEST_KEY" "$REQUEST_JSON" --region "$REGION" --only-show-errors
-BUNDLE_KEY="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.sourceBundleKey);" "$REQUEST_JSON")"
-SOURCE_COMMIT="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.sourceCommit);" "$REQUEST_JSON")"
-ARTIFACT_PREFIX="$(node -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.artifactS3Prefix);" "$REQUEST_JSON")"
+BUNDLE_KEY="$("$NODE_BIN" -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.sourceBundleKey);" "$REQUEST_JSON")"
+SOURCE_COMMIT="$("$NODE_BIN" -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.sourceCommit);" "$REQUEST_JSON")"
+ARTIFACT_PREFIX="$("$NODE_BIN" -e "const fs=require('node:fs'); const r=JSON.parse(fs.readFileSync(process.argv[1], 'utf8')); process.stdout.write(r.artifactS3Prefix);" "$REQUEST_JSON")"
 aws s3 cp "s3://$BUCKET/$BUNDLE_KEY" "$RUN_ROOT/source.bundle" --region "$REGION" --only-show-errors
 rm -rf "$SOURCE_DIR"
 git clone "$RUN_ROOT/source.bundle" "$SOURCE_DIR"
@@ -532,8 +573,8 @@ cd "$SOURCE_DIR"
 git checkout --detach "$SOURCE_COMMIT"
 git status --short > "$ARTIFACT_DIR/logs/source-status.txt"
 cd "$SOURCE_DIR/dashboard"
-npm ci --include=dev
-node --import tsx/esm server/remoteRunnerCli.ts --request "$REQUEST_JSON" --run-root "$RUN_ROOT/work" --artifact-root "$ARTIFACT_DIR"
+"$NPM_BIN" ci --include=dev
+"$NODE_BIN" --import tsx/esm server/remoteRunnerCli.ts --request "$REQUEST_JSON" --run-root "$RUN_ROOT/work" --artifact-root "$ARTIFACT_DIR"
 find "$ARTIFACT_DIR" -type f ! -name output-manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > "$ARTIFACT_DIR/output-manifest.sha256"
 aws s3 sync "$ARTIFACT_DIR/" "s3://$BUCKET/$ARTIFACT_PREFIX" --region "$REGION" --only-show-errors
 trap - EXIT

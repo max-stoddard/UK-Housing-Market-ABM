@@ -1684,33 +1684,66 @@ try {
     'set -euo pipefail',
     'Expected Bash-only strict mode not to be interpreted by the SSM default shell'
   );
+  const manualScript = manualCommand?.script ?? '';
   assert.ok(
-    manualCommand?.script.includes('RUN_BASE="${HOME:-/var/tmp}/remote-runs"'),
-    'Expected remote runner working directory to tolerate SSM environments without HOME'
+    manualScript.includes('export HOME="${HOME:-/var/tmp/uk-housing-dashboard-ssm}"'),
+    'Expected remote runner to set a safe HOME when SSM leaves HOME unset'
+  );
+  assert.ok(
+    manualScript.includes('activate_node_runtime'),
+    'Expected remote runner to activate Node before using node or npm'
+  );
+  assert.ok(
+    manualScript.includes('/home/ubuntu/.nvm'),
+    'Expected remote runner to search the Ubuntu nvm install used by the EC2 runner'
+  );
+  assert.ok(
+    manualScript.indexOf('\nactivate_node_runtime\nRUN_BASE=') > 0 &&
+      manualScript.indexOf('cleanup_failure()') > manualScript.indexOf('\nactivate_node_runtime\nRUN_BASE='),
+    'Expected remote runner to activate Node before registering cleanup logic that writes failure status'
+  );
+  assert.ok(
+    manualScript.includes('RUN_BASE="$HOME/remote-runs"'),
+    'Expected remote runner working directory to use the safe HOME value'
   );
   assert.equal(
-    manualCommand?.script.includes('RUN_ROOT="$HOME/remote-runs/$JOB_REF"'),
+    manualScript.includes('RUN_ROOT="$HOME/remote-runs/$JOB_REF"'),
     false,
     'Expected remote runner working directory not to depend on HOME under set -u'
   );
-  assert.ok(manualCommand?.script.includes('remoteRunnerCli.ts'), 'Expected fixed SSM command to call the remote runner CLI');
+  assert.ok(
+    manualScript.includes('"$NODE_BIN" - "$ARTIFACT_DIR/remote-status.json"'),
+    'Expected failure status writer to use the activated Node binary'
+  );
+  assert.ok(
+    manualScript.includes('BUNDLE_KEY="$("$NODE_BIN" -e'),
+    'Expected request JSON parsing to use the activated Node binary'
+  );
+  assert.ok(
+    manualScript.includes('"$NPM_BIN" ci --include=dev'),
+    'Expected dependency installation to use the activated npm binary'
+  );
+  assert.ok(
+    manualScript.includes('"$NODE_BIN" --import tsx/esm server/remoteRunnerCli.ts'),
+    'Expected fixed SSM command to call the remote runner CLI with the activated Node binary'
+  );
   assert.equal(manualCommand?.requestKey.includes(':'), false, 'Expected remote request S3 keys to be sanitized');
   assert.ok(
-    manualCommand?.script.includes('aws s3 sync "$ARTIFACT_DIR/"'),
+    manualScript.includes('aws s3 sync "$ARTIFACT_DIR/"'),
     'Expected fixed SSM command to sync only the artifact directory'
   );
   assert.equal(
-    manualCommand?.script.includes('aws s3 sync "$SOURCE_DIR"'),
+    manualScript.includes('aws s3 sync "$SOURCE_DIR"'),
     false,
     'Expected fixed SSM command not to sync the source checkout'
   );
   assert.equal(
-    manualCommand?.script.includes('private-datasets'),
+    manualScript.includes('private-datasets'),
     false,
     'Expected fixed SSM command not to reference private dataset paths'
   );
   assert.equal(
-    manualCommand?.script.includes('/agents'),
+    manualScript.includes('/agents'),
     false,
     'Expected fixed SSM command not to sync operational agent paths'
   );
