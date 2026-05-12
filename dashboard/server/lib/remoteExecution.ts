@@ -556,7 +556,9 @@ activate_java_runtime() {
     [ -n "$sdkman_dir" ] || continue
     [ -s "$sdkman_dir/bin/sdkman-init.sh" ] || continue
     export SDKMAN_DIR="$sdkman_dir"
+    set +u
     . "$SDKMAN_DIR/bin/sdkman-init.sh"
+    set -u
     if is_java_25_or_newer; then
       JAVA_BIN="$(command -v java)"
       JAVA_HOME="\${JAVA_HOME:-$(cd "$(dirname "$JAVA_BIN")/.." && pwd)}"

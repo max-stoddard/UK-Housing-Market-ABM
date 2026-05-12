@@ -1705,6 +1705,10 @@ try {
     manualScript.includes('/home/ubuntu/.sdkman'),
     'Expected remote runner to search the Ubuntu SDKMAN install used by the EC2 runner'
   );
+  assert.ok(
+    manualScript.includes('set +u\n    . "$SDKMAN_DIR/bin/sdkman-init.sh"\n    set -u'),
+    'Expected remote runner to source SDKMAN with nounset disabled because SDKMAN reads optional variables'
+  );
   const nodeActivationCallIndex = manualScript.indexOf('\nactivate_node_runtime\nactivate_java_runtime()');
   const javaActivationCallIndex = manualScript.indexOf('\nactivate_java_runtime\nRUN_BASE=');
   assert.ok(
