@@ -42,11 +42,8 @@ from scripts.python.validation.model.schema import (
 )
 from scripts.python.validation.model.scoring import (
     classify_metric_status,
-    compute_metric_loss,
-    compute_outside_distance,
+    compute_metric_loss_audit,
     compute_overall_composite_loss,
-    normalize_by_loss_scale,
-    resolve_loss_scale,
 )
 from scripts.python.validation.model.validation_profiles import (
     ValidationProfile,
@@ -452,10 +449,18 @@ def build_validation_summary(
             "p25": p25,
             "p75": p75,
             "insideRate": None,
+            "lossFamily": target.loss_family,
+            "lossTransform": None,
             "lossScale": None,
             "lossScaleBasis": None,
+            "additiveScale": None,
+            "additiveScaleBasis": None,
             "normalizedDistance": None,
             "normalizedIqr": None,
+            "distanceComponent": None,
+            "spreadComponent": None,
+            "levelComponent": None,
+            "insideRateComponent": None,
             "metricLoss": None,
             "metricWeight": 0.0,
             "status": "unsupported",
@@ -488,38 +493,34 @@ def build_validation_summary(
                 raise RuntimeError(f"Missing target metadata for required metric {target.metric_id}")
         else:
             inside_rate = _inside_rate(seed_values=seed_values, lower=target.target_band.lower, upper=target.target_band.upper)
-            loss_scale, loss_scale_basis = resolve_loss_scale(
-                source_value=target.source_metadata.normalized_source_value if target.source_metadata else None,
-                lower_bound=target.target_band.lower,
-                upper_bound=target.target_band.upper,
-            )
-            normalized_distance = normalize_by_loss_scale(
-                raw_value=compute_outside_distance(
-                    seed_mean=seed_mean,
-                    lower_bound=target.target_band.lower,
-                    upper_bound=target.target_band.upper,
-                ),
-                loss_scale=loss_scale,
-            )
-            normalized_iqr = normalize_by_loss_scale(raw_value=p75 - p25, loss_scale=loss_scale)
-            metric_loss = compute_metric_loss(
+            source_value = target.source_metadata.normalized_source_value if target.source_metadata else None
+            loss_audit = compute_metric_loss_audit(
+                loss_family=target.loss_family,
                 seed_mean=seed_mean,
                 p25=p25,
                 p75=p75,
                 lower_bound=target.target_band.lower,
                 upper_bound=target.target_band.upper,
                 inside_rate=inside_rate,
-                loss_scale=loss_scale,
+                source_value=source_value,
             )
             metric_summary.update(
                 {
                     "targetBand": {"lower": target.target_band.lower, "upper": target.target_band.upper},
                     "insideRate": inside_rate,
-                    "lossScale": loss_scale,
-                    "lossScaleBasis": loss_scale_basis,
-                    "normalizedDistance": normalized_distance,
-                    "normalizedIqr": normalized_iqr,
-                    "metricLoss": metric_loss,
+                    "lossFamily": loss_audit.loss_family,
+                    "lossTransform": loss_audit.loss_transform,
+                    "lossScale": loss_audit.loss_scale,
+                    "lossScaleBasis": loss_audit.loss_scale_basis,
+                    "additiveScale": loss_audit.additive_scale,
+                    "additiveScaleBasis": loss_audit.additive_scale_basis,
+                    "normalizedDistance": loss_audit.normalized_distance,
+                    "normalizedIqr": loss_audit.normalized_iqr,
+                    "distanceComponent": loss_audit.distance_component,
+                    "spreadComponent": loss_audit.spread_component,
+                    "levelComponent": loss_audit.level_component,
+                    "insideRateComponent": loss_audit.inside_rate_component,
+                    "metricLoss": loss_audit.metric_loss,
                     "status": classify_metric_status(
                         seed_mean=seed_mean,
                         lower_bound=target.target_band.lower,
@@ -530,7 +531,7 @@ def build_validation_summary(
             )
             if target.requirement == "required":
                 metric_summary["metricWeight"] = 1.0
-                scored_metric_losses.append(metric_loss)
+                scored_metric_losses.append(loss_audit.metric_loss)
                 scored_metric_weights.append(1.0)
 
         summary_metrics.append(metric_summary)
@@ -664,22 +665,24 @@ def score_existing_summary_against_targets(
         if existing_metric.get("insideRate") is None:
             raise RuntimeError(f"Existing validation summary is missing insideRate for {metric_id}")
 
-        loss_scale, _ = resolve_loss_scale(
-            source_value=target.source_metadata.normalized_source_value if target.source_metadata else None,
+        source_value = (
+            float(existing_metric["sourceValue"])
+            if existing_metric.get("sourceValue") is not None
+            else target.source_metadata.normalized_source_value
+            if target.source_metadata
+            else None
+        )
+        loss_audit = compute_metric_loss_audit(
+            loss_family=target.loss_family,
+            seed_mean=float(existing_metric["seedMean"]),
+            p25=float(existing_metric["p25"]),
+            p75=float(existing_metric["p75"]),
             lower_bound=target.target_band.lower,
             upper_bound=target.target_band.upper,
+            inside_rate=float(existing_metric["insideRate"]),
+            source_value=source_value,
         )
-        scored_metric_losses.append(
-            compute_metric_loss(
-                seed_mean=float(existing_metric["seedMean"]),
-                p25=float(existing_metric["p25"]),
-                p75=float(existing_metric["p75"]),
-                lower_bound=target.target_band.lower,
-                upper_bound=target.target_band.upper,
-                inside_rate=float(existing_metric["insideRate"]),
-                loss_scale=loss_scale,
-            )
-        )
+        scored_metric_losses.append(loss_audit.metric_loss)
         scored_metric_weights.append(1.0)
 
     return compute_overall_composite_loss(
@@ -846,7 +849,7 @@ def _coerce_target_definition(metric_id: str, raw_target: object | None) -> Metr
     if not isinstance(raw_target, Mapping):
         raise RuntimeError(f"Missing target metadata for required metric {metric_id}")
 
-    required_fields = {"metric_id", "label", "requirement", "units", "source_label", "kind"}
+    required_fields = {"metric_id", "label", "requirement", "units", "source_label", "kind", "loss_family"}
     missing_fields = sorted(field for field in required_fields if field not in raw_target)
     if missing_fields:
         raise RuntimeError(f"Missing target metadata for required metric {metric_id}: {missing_fields}")
@@ -859,6 +862,7 @@ def _coerce_target_definition(metric_id: str, raw_target: object | None) -> Metr
         units=str(raw_target["units"]),
         source_label=str(raw_target["source_label"]),
         kind=str(raw_target["kind"]),
+        loss_family=str(raw_target["loss_family"]),
         source_metadata=_coerce_source_metadata(raw_target.get("source_metadata")),
         target_band=target_band,
         file_name=raw_target.get("file_name"),

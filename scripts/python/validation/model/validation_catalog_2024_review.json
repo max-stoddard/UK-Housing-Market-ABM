@@ -16,7 +16,7 @@
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt",
-      "docs/superpowers/specs/2026-04-13-2024-validation-fpc-source-verification-design.md"
+      "docs/validation/validation-catalog-2024-review.md"
     ],
     "source_locator": {
       "table": "Table A.2 plus the locked FPC support outcome documented in the design spec"
@@ -54,7 +54,7 @@
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt",
-      "docs/superpowers/specs/2026-04-13-2024-validation-fpc-source-verification-design.md"
+      "docs/validation/validation-catalog-2024-review.md"
     ],
     "source_locator": {
       "table": "Locked unsupported metric outcome in the FPC verification design spec"
@@ -128,7 +128,7 @@
     "repo_source_paths": [
       "scripts/python/validation/model/runner.py",
       "scripts/python/validation/model/scoring.py",
-      "docs/superpowers/specs/2026-04-13-2024-validation-framework-design.md",
+      "docs/validation/validation-catalog-2024-review.md",
       "docs/validation/validation-catalog-2024-review.md"
     ],
     "source_locator": {
@@ -757,8 +757,8 @@
     "current_value": "Framework-owned acceptance bands for the FPC-backed macro indicators.",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
-      "docs/superpowers/specs/2026-04-13-2024-validation-fpc-source-verification-design.md",
-      "docs/superpowers/plans/2026-04-13-2024-validation-fpc-source-verification-implementation.md",
+      "docs/validation/validation-catalog-2024-review.md",
+      "scripts/python/validation/model/catalog_review_2024.py",
       "docs/validation/validation-catalog-2024-review.md"
     ],
     "source_locator": {
@@ -806,7 +806,7 @@
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "scripts/python/validation/model/extractors.py",
-      "docs/superpowers/specs/2026-04-13-2024-validation-framework-design.md",
+      "docs/validation/validation-catalog-2024-review.md",
       "docs/validation/validation-catalog-2024-review.md"
     ],
     "source_locator": {

@@ -12,9 +12,19 @@ ValidationStatus = Literal["pass", "warn", "fail", "unsupported"]
 MetricRequirement = Literal["required", "diagnostic"]
 MetricKind = Literal["core_indicator", "output_series", "household_jsd"]
 MappingStatus = Literal["exact_match", "derived_match", "unsupported"]
-LossScaleBasis = Literal["source_value", "target_band_midpoint", "target_band_upper"]
+LossFamily = Literal["positive_level", "signed_additive", "bounded_low_is_better", "diagnostic"]
+LossScaleBasis = Literal[
+    "source_value",
+    "target_band_midpoint",
+    "target_band_upper",
+    "target_band_lower_abs",
+    "target_band_upper_abs",
+    "target_band_half_width",
+    "metric_floor",
+    "not_applicable",
+]
 
-VALIDATION_SCHEMA_VERSION = 3
+VALIDATION_SCHEMA_VERSION = 4
 VALIDATION_WINDOW_START = 200
 VALIDATION_WINDOW_END = 2000
 CANONICAL_VALIDATION_SEEDS = (1, 2, 3, 4, 5, 6, 7, 8)
@@ -44,6 +54,7 @@ class MetricDefinition:
     units: str
     source_label: str
     kind: MetricKind
+    loss_family: LossFamily
     source_metadata: "MetricSourceMetadata | None" = None
     target_band: TargetBand | None = None
     file_name: str | None = None
