@@ -1746,6 +1746,51 @@
           "decision_logic": "Objective=direct method justification; Why=the PIPR/HMLR formula replaces the legacy 2013 literature/ARLA source with official 2024 rent and price levels while documenting the unavailable literal UK rent numerator; Tradeoff=the numerator is Great Britain rather than UK, and the source-fidelity improvement does not directly fix the realized rental-yield validation metric."
         }
       ]
+    },
+    {
+      "version_id": "v4.20",
+      "snapshot_folder": "v4.20",
+      "validation_dataset": "r8",
+      "description": "Recalibrated HOUSE_PRICES_SCALE and HOUSE_PRICES_SHAPE from 2024 Land Registry Price Paid Data, replacing the prior 2025 PPD fit to avoid lookahead data in the 2024 baseline.",
+      "updated_data_sources": [
+        "ppd"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/ppd/house_price_lognormal_fit.py"
+      ],
+      "config_parameters": [
+        "HOUSE_PRICES_SCALE",
+        "HOUSE_PRICES_SHAPE"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "HOUSE_PRICES_SCALE",
+          "dataset_source": "input-data-versions/calibration-evidence/house-prices-v4.20/HousePricesV420Summary.json"
+        },
+        {
+          "config_parameter": "HOUSE_PRICES_SHAPE",
+          "dataset_source": "input-data-versions/calibration-evidence/house-prices-v4.20/HousePricesV420Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T17:32:42Z after cloning v4.19 to v4.20 and changing HOUSE_PRICES_SCALE from 12.5485368828 to 12.5351947066 and HOUSE_PRICES_SHAPE from 0.6805162153 to 0.7743402838. The retained house-price evidence bundle is input-data-versions/calibration-evidence/house-prices-v4.20/. The existing v4.19 values were reproduced exactly from private-datasets/ppd/pp-2025.csv with the focused status-A population-moment method. v4.20 applies the same method to private-datasets/ppd/pp-2024.csv, using 913,320 valid rows and promoting HOUSE_PRICES_SCALE=12.5351947066 and HOUSE_PRICES_SHAPE=0.7743402838. No raw private PPD rows are retained. overallCompositeLoss=0.604504 versus v4.19=0.583332 (delta +0.021172) under the current validation code. Required metrics passing: Advances to FTB, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: none. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, Household Debt to Income, House Price to Household Disposable Income, HPI Mean, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.19: none. This release should be treated as a source-fidelity correction that removes 2025 lookahead data from the 2024 baseline, not as a validation-loss improvement."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "HOUSE_PRICES_SCALE",
+            "HOUSE_PRICES_SHAPE"
+          ],
+          "improvement_summary": "Replaced the prior 2025 PPD house-price lognormal fit with the same focused status-A population-moment fit on 2024 PPD data.",
+          "why_changed": "To align house-price distribution parameters with the 2024 calibration target year and avoid using 2025 transaction data in the current baseline.",
+          "method_chosen": "Focused status-A lognormal fit with population standard deviation and no trimming, run on private-datasets/ppd/pp-2024.csv.",
+          "decision_logic": "Objective=source fidelity; Why=the 2024 baseline should not depend on 2025 transactions when a full annual 2024 PPD file is available and the existing method reproduces the previous 2025 values exactly; Tradeoff=the tracked 2024 validation composite worsens modestly under the current validation code, with no metric status changes."
+        }
+      ]
     }
   ]
 }

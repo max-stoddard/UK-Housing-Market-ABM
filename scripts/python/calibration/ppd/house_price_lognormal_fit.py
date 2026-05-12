@@ -227,10 +227,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--target-year",
         type=int,
-        default=2025,
+        default=2024,
         help=(
             "Target year placeholder for future year-conditional methods "
-            "(default: 2025)."
+            "(default: 2024)."
         ),
     )
     return parser

@@ -1450,3 +1450,37 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.19.json`
 - Version(s) affected:
   - `v4.19`
+
+### v4.20
+- Script path: `scripts/python/calibration/ppd/house_price_lognormal_fit.py`
+- Outputs/keys produced:
+  - `HOUSE_PRICES_SCALE`
+  - `HOUSE_PRICES_SHAPE`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.ppd.house_price_lognormal_fit private-datasets/ppd/pp-2025.csv --method focused_repro_default --target-year 2025`
+  - `python3 -m scripts.python.calibration.ppd.house_price_lognormal_fit private-datasets/ppd/pp-2024.csv --method focused_repro_default --target-year 2024`
+  - `bash input-data-versions/validate.sh v4.20 --output-dir tmp/validation/v4.20 --workers 20`
+- Expected result snippet:
+  - 2025 reproduction:
+    - `HOUSE_PRICES_SCALE = 12.5485368828`
+    - `HOUSE_PRICES_SHAPE = 0.6805162153`
+  - 2024 promoted values:
+    - `HOUSE_PRICES_SCALE = 12.5351947066`
+    - `HOUSE_PRICES_SHAPE = 0.7743402838`
+  - Tracked validation summary generated on `2026-05-12T17:32:42Z` with `overallCompositeLoss=0.6045043981851204`, compared with current `v4.19=0.5833322259841027`.
+  - Status changes versus `v4.19`: none.
+- Method chosen:
+  - Clone `v4.19` to `v4.20` and update only `HOUSE_PRICES_SCALE` and `HOUSE_PRICES_SHAPE`.
+  - Use the existing focused status-A PPD lognormal fit with population standard deviation and no trimming.
+  - Keep raw PPD rows out of tracked evidence; retain only derived row counts, commands, and parameter outputs under `input-data-versions/calibration-evidence/house-prices-v4.20/`.
+- Method-selection decision logic:
+  - `Objective=source fidelity; Why=the current 2024 baseline should not depend on 2025 PPD transactions when a full annual 2024 PPD file exists, and the existing method exactly reproduces the old 2025 config values before recalculation; Tradeoff=the 2024 validation composite worsens modestly under the current validation code, with no metric status changes.`
+- Rationale category:
+  - source-fidelity correction
+- Evidence links:
+  - `input-data-versions/calibration-evidence/house-prices-v4.20/README.md`
+  - `input-data-versions/calibration-evidence/house-prices-v4.20/HousePricesV420SourceValues.csv`
+  - `input-data-versions/calibration-evidence/house-prices-v4.20/HousePricesV420Summary.json`
+  - `input-data-versions/validation/v4.20.json`
+- Version(s) affected:
+  - `v4.20`

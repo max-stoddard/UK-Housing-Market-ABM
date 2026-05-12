@@ -1,0 +1,55 @@
+{
+  "version": "v4.20",
+  "createdDate": "2026-05-12",
+  "parameterKeys": [
+    "HOUSE_PRICES_SCALE",
+    "HOUSE_PRICES_SHAPE"
+  ],
+  "sourceRowsRetained": false,
+  "method": "focused_repro_default",
+  "methodDetails": "category=all|status=a_only|year=all_rows|std=population|trim=0",
+  "stdMode": "population",
+  "reproductionCheck": {
+    "sourceDataset": "private-datasets/ppd/pp-2025.csv",
+    "targetYear": 2025,
+    "totalRowsRead": 594319,
+    "validPrices": 594319,
+    "invalidEmptyPriceRows": 0,
+    "invalidTransferYearRows": 0,
+    "filteredNonAStatusRows": 0,
+    "rowsUsed": 594319,
+    "housePricesScale": 12.5485368828,
+    "housePricesShape": 0.6805162153,
+    "matchesV419Config": true
+  },
+  "selectedCalibration": {
+    "sourceDataset": "private-datasets/ppd/pp-2024.csv",
+    "targetYear": 2024,
+    "totalRowsRead": 913320,
+    "validPrices": 913320,
+    "invalidEmptyPriceRows": 0,
+    "invalidTransferYearRows": 0,
+    "filteredNonAStatusRows": 0,
+    "rowsUsed": 913320,
+    "housePricesScale": 12.5351947066,
+    "housePricesShape": 0.7743402838
+  },
+  "commands": [
+    "python3 -m scripts.python.calibration.ppd.house_price_lognormal_fit private-datasets/ppd/pp-2025.csv --method focused_repro_default --target-year 2025",
+    "python3 -m scripts.python.calibration.ppd.house_price_lognormal_fit private-datasets/ppd/pp-2024.csv --method focused_repro_default --target-year 2024",
+    "bash input-data-versions/validate.sh v4.20 --output-dir tmp/validation/v4.20 --workers 20"
+  ],
+  "validation": {
+    "summaryPath": "input-data-versions/validation/v4.20.json",
+    "generatedAt": "2026-05-12T17:32:42Z",
+    "overallCompositeLoss": 0.6045043981851204,
+    "comparisonVersion": "v4.19",
+    "comparisonOverallCompositeLoss": 0.5833322259841027,
+    "deltaVsComparison": 0.021172172201017636,
+    "statusChangesVsComparison": []
+  },
+  "notes": [
+    "No raw private PPD rows are retained in this evidence bundle.",
+    "The --target-year argument is metadata for the current production method; the annual source file constrains the selected sample."
+  ]
+}

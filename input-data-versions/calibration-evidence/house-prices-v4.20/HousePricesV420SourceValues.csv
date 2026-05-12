@@ -1,0 +1,3 @@
+scenario,ppd_csv,target_year,total_rows_read,valid_prices,invalid_empty_price_rows,invalid_transfer_year_rows,filtered_non_a_status_rows,rows_used,method,method_details,std_mode,house_prices_scale,house_prices_shape,notes
+v4_19_2025_reproduction,private-datasets/ppd/pp-2025.csv,2025,594319,594319,0,0,0,594319,focused_repro_default,category=all|status=a_only|year=all_rows|std=population|trim=0,population,12.5485368828,0.6805162153,Reproduces input-data-versions/v4.19/config.properties exactly.
+v4_20_2024_selected,private-datasets/ppd/pp-2024.csv,2024,913320,913320,0,0,0,913320,focused_repro_default,category=all|status=a_only|year=all_rows|std=population|trim=0,population,12.5351947066,0.7743402838,Selected v4.20 calibration using the same method on 2024 data.
