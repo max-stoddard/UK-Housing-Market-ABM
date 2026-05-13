@@ -166,6 +166,16 @@ process.on('exit', (code) => {
     console.error(`[smoke] process exited with code ${code} near: ${currentSmokeStep}`);
   }
 });
+process.on('uncaughtException', (error) => {
+  console.error(`[smoke] uncaught exception near: ${currentSmokeStep}`);
+  console.error(error);
+  process.exitCode = 1;
+});
+process.on('unhandledRejection', (reason) => {
+  console.error(`[smoke] unhandled rejection near: ${currentSmokeStep}`);
+  console.error(reason);
+  process.exitCode = 1;
+});
 
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
@@ -222,6 +232,25 @@ async function waitForModelRunStatus(
   const job = listModelRunJobs().find((item) => item.jobId === resolvedJobId);
   assert.equal(job?.status, expectedStatus, label);
   return job;
+}
+
+async function waitForSensitivityStatus(
+  paths: RuntimePaths | string,
+  experimentId: string,
+  expectedStatus: 'succeeded' | 'failed' | 'canceled',
+  label: string
+) {
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(paths, experimentId).experiment;
+    if (!['queued', 'running', expectedStatus].includes(detail.status)) {
+      const logs = getSensitivityExperimentLogs(paths, experimentId, 0, 200).lines.join('\n');
+      throw new Error(`${label} ended with status ${detail.status} before ${expectedStatus}.${logs ? `\n${logs}` : ''}`);
+    }
+    return detail.status === expectedStatus;
+  });
+  const detail = getSensitivityExperiment(paths, experimentId).experiment;
+  assert.equal(detail.status, expectedStatus, label);
+  return detail;
 }
 
 async function fetchText(url: string, init?: Parameters<typeof fetch>[1]): Promise<{
@@ -5298,10 +5327,12 @@ markSmokeStep('checking Windows-safe manual run paths');
 const windowsPathModelRunFixtureRoot = createModelRunFixtureRepo('dashboard model-runs modèle 用户-');
 
 try {
+  markSmokeStep('resetting Windows-safe manual run manager');
   __resetModelRunManagerForTests();
   const windowsPathLaunches: ModelLaunchRequest[] = [];
   let generatedConfigText = '';
   const windowsPathLauncher = createFakeLauncher('packaged', (request) => {
+    markSmokeStep('launching Windows-safe manual run process');
     windowsPathLaunches.push(request);
     generatedConfigText = fs.readFileSync(request.configPath, 'utf-8');
     const process = new FakeModelProcess();
@@ -5310,6 +5341,7 @@ try {
     }, 0);
     return process;
   });
+  markSmokeStep('submitting Windows-safe manual run');
   const windowsPathSubmit = submitModelRun(
     windowsPathModelRunFixtureRoot,
     {
@@ -5320,8 +5352,10 @@ try {
     },
     { launcher: windowsPathLauncher }
   );
+  markSmokeStep('asserting Windows-safe manual run submit response');
   assert.equal(windowsPathSubmit.accepted, true, 'Expected path-safety manual run submit to be accepted');
   assert.equal(windowsPathLaunches.length, 1, 'Expected path-safety manual run to launch once');
+  markSmokeStep('asserting Windows-safe manual run generated paths');
   assert.ok(
     windowsPathLaunches[0]?.configPath.includes('dashboard model-runs modèle 用户-'),
     'Expected manual generated config path to include spaces and non-ASCII path segments'
@@ -5335,16 +5369,19 @@ try {
     path.join(windowsPathModelRunFixtureRoot, 'input-data-versions', 'v1.0'),
     'manual run'
   );
+  markSmokeStep('waiting for Windows-safe manual run completion');
   await waitForModelRunStatus(
     windowsPathSubmit.job?.jobId,
     'succeeded',
     'Expected path-safety manual run to complete successfully'
   );
 } finally {
+  markSmokeStep('cleaning Windows-safe manual run fixture');
   __resetModelRunManagerForTests();
   fs.rmSync(windowsPathModelRunFixtureRoot, { recursive: true, force: true });
 }
 
+markSmokeStep('checking Windows-safe sensitivity run paths');
 const windowsPathSensitivityFixtureRoot = createModelRunFixtureRepo('dashboard sensitivity modèle 用户-');
 
 try {
@@ -5389,13 +5426,13 @@ try {
     'Expected path-safety sensitivity submit to be accepted'
   );
   const windowsPathSensitivityExperimentId = windowsPathSensitivitySubmit.experiment?.experimentId ?? '';
-  await waitUntil(() => {
-    const detail = getSensitivityExperiment(
-      windowsPathSensitivityFixtureRoot,
-      windowsPathSensitivityExperimentId
-    ).experiment;
-    return detail.status === 'succeeded';
-  });
+  markSmokeStep('waiting for Windows-safe sensitivity run completion');
+  await waitForSensitivityStatus(
+    windowsPathSensitivityFixtureRoot,
+    windowsPathSensitivityExperimentId,
+    'succeeded',
+    'Expected path-safety sensitivity run to complete successfully'
+  );
   assert.equal(generatedConfigTexts.length, 25, 'Expected path-safety sensitivity run to generate one config per point/seed run');
   for (const configText of generatedConfigTexts) {
     assertGeneratedDataPathsAreWindowsSafe(
@@ -5410,6 +5447,7 @@ try {
   fs.rmSync(windowsPathSensitivityFixtureRoot, { recursive: true, force: true });
 }
 
+markSmokeStep('checking desktop sensitivity runtime paths');
 const desktopSensitivityFixture = createDesktopRuntimeFixture('dashboard-sensitivity-runtime-smoke-');
 
 try {
