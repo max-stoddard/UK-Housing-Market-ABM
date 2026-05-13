@@ -16,7 +16,7 @@ const mavenBin = process.env.MAVEN_BIN?.trim() || path.join(repoRoot, process.pl
 const defaultOutputRoot = path.join(dashboardRoot, 'release', 'windows', 'resources');
 const modelJarName = 'housing-model-1.0-SNAPSHOT-windows-release.jar';
 const releaseLayoutVersion = 1;
-const releaseInputVersionAllowlist = new Set(['v0oo', 'v0', 'v4.19', 'v4.4']);
+const releaseInputVersionAllowlist = new Set(['v0o2', 'v0', 'v4.19', 'v4.4']);
 
 function usage() {
   return `Usage: node scripts/windows/assemble-release-resources.mjs [options]
@@ -227,9 +227,14 @@ function listFiles(root) {
 
 function parseVersionParts(version) {
   const normalized = version.replace(/^v/i, '').toLowerCase();
-  const suffixMatch = normalized.match(/o+$/u);
-  const suffixRank = suffixMatch?.[0].length ?? 0;
-  const numeric = suffixRank > 0 ? normalized.slice(0, -suffixRank) : normalized;
+  const numberedSuffixMatch = normalized.match(/o(\d+)$/u);
+  const suffixMatch = numberedSuffixMatch ? null : normalized.match(/o+$/u);
+  const suffixRank = numberedSuffixMatch ? 2 + Number.parseInt(numberedSuffixMatch[1] ?? '0', 10) : suffixMatch?.[0].length ?? 0;
+  const numeric = numberedSuffixMatch
+    ? normalized.slice(0, numberedSuffixMatch.index ?? normalized.length)
+    : suffixRank > 0
+      ? normalized.slice(0, -suffixRank)
+      : normalized;
   return numeric.split('.').map((part) => Number.parseInt(part, 10)).concat(suffixRank);
 }
 
@@ -254,7 +259,7 @@ function listCanonicalVersions(root) {
   return fs.readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter((name) => /^v\d+(?:\.\d+)*o*$/i.test(name))
+    .filter((name) => /^v\d+(?:\.\d+)*(?:o+|o\d+)?$/i.test(name))
     .filter((name) => name !== 'v1')
     .filter((name) => fs.existsSync(path.join(root, name, 'config.properties')))
     .sort(compareVersions);
@@ -444,7 +449,7 @@ function validateReleaseDataAllowlist(releaseDataRoot) {
   const versionDirs = fs.readdirSync(inputVersionsRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter((name) => /^v\d+(?:\.\d+)*o*$/i.test(name));
+    .filter((name) => /^v\d+(?:\.\d+)*(?:o+|o\d+)?$/i.test(name));
   if (versionDirs.includes('v1')) {
     fail('release-data must not include the non-canonical v1 input-data folder.');
   }

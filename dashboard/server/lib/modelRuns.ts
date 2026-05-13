@@ -941,6 +941,7 @@ function startNextQueuedJob(): void {
 
   let child: ChildProcessWithoutNullStreams;
   try {
+    queuedJob.launcher.prepare?.({ repoRoot: paths.repoRoot });
     child = queuedJob.launcher.launch({
       repoRoot: paths.repoRoot,
       configPath: queuedJob.configAbsolutePath,
@@ -953,7 +954,7 @@ function startNextQueuedJob(): void {
     queuedJob.job.signal = null;
     appendLogLine(
       queuedJob.logBuffer,
-      `[stderr] Failed to spawn model process: ${formatLauncherProcessError(queuedJob.launcher, error as Error)}`,
+      `[stderr] Failed to prepare or spawn model process: ${formatLauncherProcessError(queuedJob.launcher, error as Error)}`,
       MAX_LOG_LINES
     );
     runningJobId = null;

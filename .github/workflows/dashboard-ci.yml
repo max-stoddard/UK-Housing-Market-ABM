@@ -224,6 +224,41 @@ jobs:
       - name: Run Maven tests
         run: ./mvnw test
 
+  experiment-smoke-local:
+    runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+    if: |
+      needs.classify-changes.outputs.dashboard_checks_required == 'true' ||
+      needs.classify-changes.outputs.model_changed == 'true' ||
+      needs.classify-changes.outputs.source_bundle_changed == 'true'
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: dashboard/.nvmrc
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --include=dev
+
+      - name: Local experiment smoke
+        run: npm run test:experiment-smoke
+
   deploy-frontend:
     runs-on: ubuntu-latest
     needs:
@@ -498,3 +533,42 @@ jobs:
             --content-type application/json \
             --region "$AWS_REGION" \
             --metadata "git-sha=$GITHUB_SHA,git-ref=$GITHUB_REF_NAME,source-method=s3-git-bundle"
+
+  cloud-experiment-smoke:
+    runs-on: ubuntu-latest
+    needs:
+      - classify-changes
+      - dashboard-checks
+      - model-tests
+      - experiment-smoke-local
+      - deploy-frontend
+      - deploy-api
+      - deploy-source-bundle
+    if: |
+      always() &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.ref == 'refs/heads/master' &&
+      (needs.dashboard-checks.result == 'success' || needs.dashboard-checks.result == 'skipped') &&
+      (needs.model-tests.result == 'success' || needs.model-tests.result == 'skipped') &&
+      (needs.experiment-smoke-local.result == 'success' || needs.experiment-smoke-local.result == 'skipped') &&
+      (needs.deploy-frontend.result == 'success' || needs.deploy-frontend.result == 'skipped') &&
+      (needs.deploy-api.result == 'success' || needs.deploy-api.result == 'skipped') &&
+      (needs.deploy-source-bundle.result == 'success' || needs.deploy-source-bundle.result == 'skipped')
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      DASHBOARD_CLOUD_SMOKE_BASE_URL: ${{ vars.DASHBOARD_CLOUD_SMOKE_BASE_URL || 'https://d2fb77ex4myvdf.cloudfront.net' }}
+      DASHBOARD_SMOKE_USERNAME: ${{ secrets.DASHBOARD_SMOKE_USERNAME }}
+      DASHBOARD_SMOKE_PASSWORD: ${{ secrets.DASHBOARD_SMOKE_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: dashboard/.nvmrc
+
+      - name: Cloud experiment smoke
+        run: npm run test:cloud-experiment-smoke

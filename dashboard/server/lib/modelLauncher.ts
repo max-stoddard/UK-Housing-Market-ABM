@@ -1,4 +1,5 @@
 // Author: Max Stoddard
+import { spawnSync } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
 import path from 'node:path';
 import crossSpawn from 'cross-spawn';
@@ -29,8 +30,14 @@ export interface ModelLauncherMetadata {
 export interface ModelLauncher {
   mode: ModelLauncherMode;
   metadata: ModelLauncherMetadata;
+  prepare?: (request: Pick<ModelLaunchRequest, 'repoRoot'>) => void;
   buildCommand: (request: ModelLaunchRequest) => ModelLauncherCommand;
   launch: (request: ModelLaunchRequest) => ChildProcessWithoutNullStreams;
+}
+
+export interface PreparedMavenRuntime {
+  javaExe: string;
+  classpath: string;
 }
 
 function defaultMavenWrapperBin(repoRoot?: string): string {
@@ -42,6 +49,10 @@ export function getConfiguredMavenBin(repoRoot?: string): string {
   return process.env.DASHBOARD_MAVEN_BIN?.trim() || defaultMavenWrapperBin(repoRoot);
 }
 
+export function getConfiguredJavaBin(): string {
+  return process.env.DASHBOARD_JAVA_BIN?.trim() || process.env.DASHBOARD_PACKAGED_JAVA_EXE?.trim() || 'java';
+}
+
 export function spawnCommand(
   command: string,
   args: string[],
@@ -50,30 +61,57 @@ export function spawnCommand(
   return crossSpawn(command, args, { ...options, shell: false }) as ChildProcessWithoutNullStreams;
 }
 
-function quoteForExecArgs(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
+function shouldUseShellForCommand(command: string): boolean {
+  return process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
+}
+
+function runCheckedPreparationCommand(command: string, args: string[], cwd: string, description: string): string {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf-8',
+    shell: shouldUseShellForCommand(command)
+  });
+  const stdout = result.stdout ?? '';
+  const stderr = result.stderr ?? '';
+  const combinedOutput = `${stdout}\n${stderr}`.trim();
+  if (result.error) {
+    throw new Error(`Failed to ${description}: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const tail = combinedOutput ? `\n${combinedOutput.slice(-4_000)}` : '';
+    throw new Error(`Failed to ${description}: ${command} ${args.join(' ')} exited with status ${result.status ?? 'unknown'}.${tail}`);
+  }
+  return stdout.trim();
+}
+
+function parseClasspathOutput(output: string): string {
+  const classpath = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+  if (!classpath) {
+    throw new Error('Failed to resolve Maven runtime classpath: Maven returned empty classpath output.');
+  }
+  return classpath;
 }
 
 export function buildMavenModelLaunchCommand(
   mavenBin: string,
-  request: ModelLaunchRequest
+  request: ModelLaunchRequest,
+  preparedRuntime?: PreparedMavenRuntime
 ): ModelLauncherCommand {
-  const execArgs = [
-    '-configFile',
-    quoteForExecArgs(request.configPath),
-    '-outputFolder',
-    quoteForExecArgs(request.outputPath),
-    '-dev'
-  ].join(' ');
+  const javaExe = preparedRuntime?.javaExe ?? getConfiguredJavaBin();
+  const classpath = preparedRuntime?.classpath ?? '<prepared-classpath>';
 
   return {
-    command: mavenBin,
-    args: ['compile', 'exec:java', `-Dexec.args=${execArgs}`],
+    command: javaExe,
+    args: ['-cp', classpath, 'housing.Model', '-configFile', request.configPath, '-outputFolder', request.outputPath, '-dev'],
     options: {
       cwd: request.repoRoot,
       shell: false
     },
-    commandTemplate: `${mavenBin} compile exec:java -Dexec.args="-configFile <path> -outputFolder <path> -dev"`
+    commandTemplate: `${mavenBin} -q -DskipTests compile && ${javaExe} -cp <prepared-classpath> housing.Model -configFile <path> -outputFolder <path> -dev`
   };
 }
 
@@ -93,19 +131,51 @@ export function buildPackagedModelLaunchCommand(
   };
 }
 
-export function createMavenModelLauncher(mavenBin = getConfiguredMavenBin()): ModelLauncher {
+export function createMavenModelLauncher(mavenBin = getConfiguredMavenBin(), javaExe = getConfiguredJavaBin()): ModelLauncher {
+  const preparedByRepoRoot = new Map<string, PreparedMavenRuntime>();
   const metadata: ModelLauncherMetadata = {
     mode: 'maven',
     mavenBin,
-    commandTemplate: `${mavenBin} compile exec:java -Dexec.args="-configFile <path> -outputFolder <path> -dev"`
+    javaExe,
+    commandTemplate: `${mavenBin} -q -DskipTests compile && ${javaExe} -cp <prepared-classpath> housing.Model -configFile <path> -outputFolder <path> -dev`
+  };
+
+  const prepare = (request: Pick<ModelLaunchRequest, 'repoRoot'>): PreparedMavenRuntime => {
+    const repoRoot = path.resolve(request.repoRoot);
+    const cached = preparedByRepoRoot.get(repoRoot);
+    if (cached) {
+      return cached;
+    }
+
+    runCheckedPreparationCommand(mavenBin, ['-q', '-DskipTests', 'compile'], repoRoot, 'compile the model for dashboard execution');
+    const classpathOutput = runCheckedPreparationCommand(
+      mavenBin,
+      ['-q', '-Dexec.classpathScope=runtime', '-Dexec.executable=echo', '-Dexec.args=%classpath', 'exec:exec'],
+      repoRoot,
+      'resolve the model runtime classpath'
+    );
+    const preparedRuntime = {
+      javaExe,
+      classpath: parseClasspathOutput(classpathOutput)
+    };
+    preparedByRepoRoot.set(repoRoot, preparedRuntime);
+    return preparedRuntime;
   };
 
   return {
     mode: 'maven',
     metadata,
-    buildCommand: (request) => buildMavenModelLaunchCommand(mavenBin, request),
+    prepare: (request) => {
+      prepare(request);
+    },
+    buildCommand: (request) =>
+      buildMavenModelLaunchCommand(
+        mavenBin,
+        request,
+        preparedByRepoRoot.get(path.resolve(request.repoRoot)) ?? { javaExe, classpath: '<prepared-classpath>' }
+      ),
     launch: (request) => {
-      const command = buildMavenModelLaunchCommand(mavenBin, request);
+      const command = buildMavenModelLaunchCommand(mavenBin, request, prepare(request));
       return spawnCommand(command.command, command.args, command.options);
     }
   };

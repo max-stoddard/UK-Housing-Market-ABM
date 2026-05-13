@@ -2125,6 +2125,8 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
   };
 
   try {
+    record.launcher.prepare?.({ repoRoot: paths.repoRoot });
+
     const tasks = metadata.sampledPoints.flatMap((point) => seeds.map((seed) => ({ point, seed })));
     let nextTaskIndex = 0;
     let stopLaunching = false;

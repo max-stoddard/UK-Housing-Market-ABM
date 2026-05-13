@@ -22,8 +22,8 @@ dashboard/release/**
 input-data-versions/v[0-9]*/
 !input-data-versions/v0/
 !input-data-versions/v0/**
-!input-data-versions/v0oo/
-!input-data-versions/v0oo/**
+!input-data-versions/v0o2/
+!input-data-versions/v0o2/**
 !input-data-versions/v4.4/
 !input-data-versions/v4.4/**
 !input-data-versions/v4.19/

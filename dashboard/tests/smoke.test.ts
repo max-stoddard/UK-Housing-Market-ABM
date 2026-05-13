@@ -969,22 +969,25 @@ const launcherSmokeRequest: ModelLaunchRequest = {
   configPath: '/tmp/config path/config.properties',
   outputPath: '/tmp/output path'
 };
-const mavenLauncher = createMavenModelLauncher('mvn-fixture');
-const mavenCommand = buildMavenModelLaunchCommand('mvn-fixture', launcherSmokeRequest);
+const mavenLauncher = createMavenModelLauncher('mvn-fixture', 'java-fixture');
+const mavenCommand = buildMavenModelLaunchCommand('mvn-fixture', launcherSmokeRequest, {
+  javaExe: 'java-fixture',
+  classpath: '<prepared-classpath>'
+});
 assert.deepEqual(
   mavenLauncher.buildCommand(launcherSmokeRequest),
   mavenCommand,
   'Expected Maven launcher to use the shared Maven command builder'
 );
-assert.equal(mavenCommand.command, 'mvn-fixture', 'Expected Maven command to use configured Maven binary');
+assert.equal(mavenCommand.command, 'java-fixture', 'Expected Maven launcher child command to use Java after preparation');
 assert.deepEqual(
-  mavenCommand.args.slice(0, 2),
-  ['compile', 'exec:java'],
-  'Expected Maven launcher to preserve compile exec:java development flow'
+  mavenCommand.args.slice(0, 3),
+  ['-cp', '<prepared-classpath>', 'housing.Model'],
+  'Expected Maven launcher to use prepared Java classpath execution'
 );
 assert.ok(
-  mavenCommand.args[2]?.includes('-Dexec.args=-configFile "/tmp/config path/config.properties" -outputFolder "/tmp/output path" -dev'),
-  'Expected Maven launcher to pass explicit config/output paths through exec args'
+  mavenCommand.args.includes('/tmp/config path/config.properties') && mavenCommand.args.includes('/tmp/output path'),
+  'Expected Maven launcher to pass explicit config/output paths as Java arguments'
 );
 assert.equal(mavenCommand.options.cwd, launcherSmokeRequest.repoRoot, 'Expected Maven launcher to run from repo root');
 
@@ -1519,7 +1522,7 @@ DATA_INCOME_GIVEN_AGE = "src/main/resources/Income.csv"
 
 function writeModelRunFixtureInputData(inputDataRoot: string): void {
   fs.mkdirSync(inputDataRoot, { recursive: true });
-  const baselines = ['v0', 'v0oo', 'v1.0', 'v1.1'];
+  const baselines = ['v0', 'v0oo', 'v0o2', 'v1.0', 'v1.1'];
   baselines.forEach((baseline, index) => {
     const baselinePath = path.join(inputDataRoot, baseline);
     fs.mkdirSync(baselinePath, { recursive: true });
@@ -2343,7 +2346,7 @@ if (inProgressVersion) {
   );
 }
 const latestVersion = versions[versions.length - 1];
-const packagedVersionAllowlist = ['v0oo', 'v0', 'v4.19', 'v4.4'];
+const packagedVersionAllowlist = ['v0o2', 'v0', 'v4.19', 'v4.4'];
 const dockerIgnore = fs.readFileSync(path.join(repoRoot, '.dockerignore'), 'utf-8');
 const releaseResourceScript = fs.readFileSync(path.join(repoRoot, 'scripts/windows/assemble-release-resources.mjs'), 'utf-8');
 for (const version of packagedVersionAllowlist) {
@@ -2359,7 +2362,7 @@ const desktopDataFixture = createDesktopRuntimeFixture('dashboard-data-runtime-s
 try {
   assert.deepEqual(
     getVersions(desktopDataFixture.paths),
-    ['v0', 'v0oo', 'v1.0', 'v1.1'],
+    ['v0', 'v0oo', 'v0o2', 'v1.0', 'v1.1'],
     'Expected version discovery to read from the configured runtime data root'
   );
   assert.deepEqual(
@@ -2374,7 +2377,7 @@ try {
   );
   assert.equal(
     getModelRunOptions(desktopDataFixture.paths, undefined, true).defaultBaseline,
-    'v0oo',
+    'v0o2',
     'Expected model-run options to use runtime data root baselines without falling back to repo data'
   );
   assert.equal(
@@ -3981,8 +3984,8 @@ try {
     assert.equal(parameter?.type, 'boolean', `Expected ${key} to be exposed as a boolean run option`);
     assert.equal(parameter?.defaultValue, false, `Expected ${key} to default to false`);
   }
-  assert.equal(runOptions.defaultBaseline, 'v0oo', 'Expected optimised 2011 baseline to be the experiment default');
-  assert.equal(runOptions.requestedBaseline, 'v0oo', 'Expected requested baseline default to optimised 2011 snapshot');
+  assert.equal(runOptions.defaultBaseline, 'v0o2', 'Expected optimised 2011 baseline to be the experiment default');
+  assert.equal(runOptions.requestedBaseline, 'v0o2', 'Expected requested baseline default to optimised 2011 snapshot');
   assert.ok(
     runOptions.snapshots.some((snapshot) => snapshot.version === 'v1.1' && snapshot.status === 'in_progress'),
     'Expected in-progress snapshot status in options payload'
@@ -4001,7 +4004,7 @@ try {
   );
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 3).map((snapshot) => snapshot.version),
-    ['v0oo', 'v0', 'v1.0'],
+    ['v0o2', 'v0', 'v1.0'],
     'Expected experiment model options to prioritise optimised 2011, 2011, then latest 2024 model'
   );
   assert.deepEqual(

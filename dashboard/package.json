@@ -20,6 +20,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test:smoke": "node --import tsx/esm tests/smoke.test.ts",
+    "test:experiment-smoke": "node --import tsx/esm tests/experiment-smoke.test.ts",
+    "test:cloud-experiment-smoke": "node tests/cloud-experiment-smoke.mjs",
     "test:release-launch": "node --import tsx/esm tests/model-launch-regression.test.ts",
     "release:resources": "node ../scripts/windows/assemble-release-resources.mjs",
     "release:resources:check": "node ../scripts/windows/assemble-release-resources.mjs --check",
