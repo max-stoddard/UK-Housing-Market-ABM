@@ -5,9 +5,14 @@ export function parseVersionParts(version: string): number[] {
   const normalized = version
     .replace(/^v/i, '')
     .toLowerCase();
-  const suffixMatch = normalized.match(/o+$/u);
-  const suffixRank = suffixMatch?.[0].length ?? 0;
-  const numeric = suffixRank > 0 ? normalized.slice(0, -suffixRank) : normalized;
+  const numberedSuffixMatch = normalized.match(/o(\d+)$/u);
+  const suffixMatch = numberedSuffixMatch ? null : normalized.match(/o+$/u);
+  const suffixRank = numberedSuffixMatch ? 2 + Number.parseInt(numberedSuffixMatch[1] ?? '0', 10) : suffixMatch?.[0].length ?? 0;
+  const numeric = numberedSuffixMatch
+    ? normalized.slice(0, numberedSuffixMatch.index ?? normalized.length)
+    : suffixRank > 0
+      ? normalized.slice(0, -suffixRank)
+      : normalized;
   return numeric
     .split('.')
     .map((part) => Number.parseInt(part, 10))
@@ -39,7 +44,7 @@ export function listVersions(inputDataDir: string): string[] {
     .readdirSync(inputDataDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
-    .filter((name) => /^v\d+(?:\.\d+)*o*$/i.test(name))
+    .filter((name) => /^v\d+(?:\.\d+)*(?:o+|o\d+)?$/i.test(name))
     .filter((name) => name !== 'v1')
     .sort(compareVersions)
     .filter((name) => fs.existsSync(path.join(inputDataDir, name, 'config.properties')));

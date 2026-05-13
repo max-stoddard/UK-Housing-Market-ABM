@@ -2,6 +2,7 @@ import type { KpiMetricValues } from '../../../shared/types';
 
 const KPI_EPSILON = 1e-12;
 const DEFAULT_WINDOW_SIZE = 120;
+const POST_BURN_IN_START_INDEX = 200;
 
 function percentile(sortedValues: number[], percentileValue: number): number | null {
   if (sortedValues.length === 0) {
@@ -39,6 +40,13 @@ export function selectTailWindow(values: readonly number[], windowSize = DEFAULT
     return [];
   }
   return values.slice(Math.max(0, values.length - windowSize));
+}
+
+export function selectPost200Window(values: readonly number[], startIndex = POST_BURN_IN_START_INDEX): number[] {
+  if (values.length <= startIndex) {
+    return [];
+  }
+  return values.slice(startIndex);
 }
 
 export function computeKpiFromValues(values: readonly number[]): KpiMetricValues {
@@ -85,3 +93,6 @@ export function computeTail120Kpi(values: readonly number[]): KpiMetricValues {
   return computeKpiFromValues(selectTailWindow(values, DEFAULT_WINDOW_SIZE));
 }
 
+export function computePost200Kpi(values: readonly number[]): KpiMetricValues {
+  return computeKpiFromValues(selectPost200Window(values));
+}

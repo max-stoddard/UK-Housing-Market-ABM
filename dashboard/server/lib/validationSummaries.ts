@@ -12,7 +12,7 @@ import { resolveRuntimePaths, type RuntimePathInput } from './runtimePaths';
 
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
-const V0_FAMILY_REFERENCE_VERSIONS = ['v0', 'v0o', 'v0oo'] as const;
+const V0_FAMILY_REFERENCE_VERSIONS = ['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2'] as const;
 const V0_FAMILY_REFERENCE_VERSION_SET = new Set<string>(V0_FAMILY_REFERENCE_VERSIONS);
 const V0_REFERENCE_HPI_STD_BAND_NOTE =
   'Intentionally benchmarked to the same official UK IndexSA population std over 2005-01 through 2024-12 used by the tracked 2024 view; this 2011 reference summary only changes the displayed comparison window.';

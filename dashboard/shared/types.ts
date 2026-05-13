@@ -766,7 +766,7 @@ export interface SensitivityExperimentResultsPayload {
 export interface SensitivityExperimentChartsPayload {
   experimentId: string;
   parameter: SensitivityExperimentParameterSelection;
-  windowType: 'tail_120';
+  windowType: 'tail_120' | 'post_200';
   tornado: SensitivityTornadoBar[];
   deltaTrend: SensitivityDeltaTrendSeries[];
 }

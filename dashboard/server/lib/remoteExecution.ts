@@ -1008,7 +1008,7 @@ export class RemoteExecutionManager {
     return summary?.charts ?? {
       experimentId,
       parameter: metadata.parameter,
-      windowType: 'tail_120',
+      windowType: 'post_200',
       tornado: [],
       deltaTrend: []
     };

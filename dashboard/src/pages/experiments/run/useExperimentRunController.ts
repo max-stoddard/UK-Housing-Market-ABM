@@ -20,9 +20,18 @@ import {
   submitModelRun,
   submitSensitivityExperiment
 } from '../../../lib/api';
+import {
+  DEFAULT_EXPERIMENT_BASE_POLICY_ID,
+  buildDefaultSensitivityRange,
+  buildSensitivityGeneralOverridesFromForm,
+  getDefaultExperimentBasePolicy,
+  getPackageBaselineValues,
+  isSameValue,
+  parseFormValue,
+  toInitialFormValues,
+  type FormValue
+} from '../../../lib/experimentRunDefaults';
 import { useExperimentLogs } from '../../run-experiments/useExperimentLogs';
-
-export type FormValue = string | boolean;
 
 export interface ExperimentRunController {
   options: ModelRunOptionsPayload | null;
@@ -98,24 +107,6 @@ function parseJobRefId(jobRef: string | null): string {
   return match?.[2] ?? jobRef;
 }
 
-function toInitialFormValues(
-  parameters: ModelRunParameterDefinition[],
-  basePolicy: BasePolicyOption | null
-): Record<string, FormValue> {
-  const values: Record<string, FormValue> = {};
-  for (const parameter of parameters) {
-    const basePolicyValue = basePolicy?.values[parameter.key];
-    if (typeof basePolicyValue === 'number') {
-      values[parameter.key] = String(basePolicyValue);
-    } else if (parameter.type === 'boolean') {
-      values[parameter.key] = Boolean(parameter.defaultValue);
-    } else {
-      values[parameter.key] = String(parameter.defaultValue);
-    }
-  }
-  return values;
-}
-
 function applyBasePolicyToFormValues(
   parameters: ModelRunParameterDefinition[],
   basePolicy: BasePolicyOption,
@@ -129,90 +120,6 @@ function applyBasePolicyToFormValues(
     }
   }
   return nextValues;
-}
-
-function parseFormValue(parameter: ModelRunParameterDefinition, value: FormValue): number | boolean {
-  if (parameter.type === 'boolean') {
-    if (typeof value !== 'boolean') {
-      throw new Error(`Parameter ${parameter.key} must be boolean.`);
-    }
-    return value;
-  }
-
-  if (typeof value !== 'string') {
-    throw new Error(`Parameter ${parameter.key} must be numeric.`);
-  }
-
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) {
-    throw new Error(`Parameter ${parameter.key} must be numeric.`);
-  }
-
-  if (parameter.type === 'integer' && !Number.isInteger(parsed)) {
-    throw new Error(`Parameter ${parameter.key} must be an integer.`);
-  }
-
-  return parsed;
-}
-
-function isSameValue(left: number | boolean, right: number | boolean): boolean {
-  if (typeof left === 'boolean' || typeof right === 'boolean') {
-    return left === right;
-  }
-  return Math.abs(left - right) < 1e-12;
-}
-
-function getPackageBaselineValues(
-  policyPackage: SensitivityPolicyPackageDefinition,
-  basePolicy: BasePolicyOption | null
-): number[] {
-  if (!basePolicy) {
-    return [];
-  }
-  return policyPackage.parameterKeys
-    .map((key) => basePolicy.values[key])
-    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-}
-
-function getRepresentativePackageBaseline(
-  policyPackage: SensitivityPolicyPackageDefinition,
-  basePolicy: BasePolicyOption | null
-): number {
-  const values = getPackageBaselineValues(policyPackage, basePolicy);
-  if (values.length === 0) {
-    return Number.NaN;
-  }
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function buildDefaultSensitivityRange(
-  policyPackage: SensitivityPolicyPackageDefinition,
-  basePolicy: BasePolicyOption | null
-): { min: string; max: string } {
-  const baseline = getRepresentativePackageBaseline(policyPackage, basePolicy);
-  if (!Number.isFinite(baseline)) {
-    return { min: '', max: '' };
-  }
-
-  if (policyPackage.type === 'integer') {
-    if (baseline === 0) {
-      return { min: '-1', max: '1' };
-    }
-    const delta = Math.max(1, Math.round(Math.abs(baseline) * 0.1));
-    return {
-      min: String(Math.round(baseline - delta)),
-      max: String(Math.round(baseline + delta))
-    };
-  }
-
-  if (Math.abs(baseline) < 1e-12) {
-    return { min: '-0.1', max: '0.1' };
-  }
-
-  return {
-    min: String(Number((baseline * 0.9).toFixed(6))),
-    max: String(Number((baseline * 1.1).toFixed(6)))
-  };
 }
 
 function estimateSensitivityPointCount(
@@ -290,14 +197,14 @@ export function useExperimentRunController({
 }: UseExperimentRunControllerOptions): ExperimentRunController {
   const [options, setOptions] = useState<ModelRunOptionsPayload | null>(null);
   const [selectedBaseline, setSelectedBaseline] = useState<string>('');
-  const [basePolicy, setBasePolicyState] = useState<BasePolicyId>('2011');
+  const [basePolicy, setBasePolicyState] = useState<BasePolicyId>(DEFAULT_EXPERIMENT_BASE_POLICY_ID);
 
   const [title, setTitle] = useState<string>('');
   const [formValues, setFormValues] = useState<Record<string, FormValue>>({});
   const [warnings, setWarnings] = useState<ModelRunWarning[]>([]);
 
   const [sensitivityTitle, setSensitivityTitle] = useState<string>('');
-  const [sensitivityBasePolicy, setSensitivityBasePolicyState] = useState<BasePolicyId>('2011');
+  const [sensitivityBasePolicy, setSensitivityBasePolicyState] = useState<BasePolicyId>(DEFAULT_EXPERIMENT_BASE_POLICY_ID);
   const [sensitivityPolicyPackageId, setSensitivityPolicyPackageId] = useState<string>('');
   const [sensitivityMin, setSensitivityMin] = useState<string>('');
   const [sensitivityMax, setSensitivityMax] = useState<string>('');
@@ -366,7 +273,7 @@ export function useExperimentRunController({
 
     try {
       const payload = await fetchModelRunOptions(requestedBaseline);
-      const defaultBasePolicy = payload.defaultBasePolicy;
+      const defaultBasePolicy = getDefaultExperimentBasePolicy(payload);
       const defaultBasePolicyOption = payload.basePolicies.find((item) => item.id === defaultBasePolicy) ?? null;
       const initialValues = toInitialFormValues(payload.parameters, defaultBasePolicyOption);
       const initialSensitivityValues = { ...initialValues, N_SIMS: '5' };
@@ -675,21 +582,7 @@ export function useExperimentRunController({
       throw new Error('Run options are not loaded yet.');
     }
 
-    const overrides: Record<string, number | boolean> = {};
-
-    for (const parameter of options.parameters) {
-      if (parameter.group !== 'General model control' || parameter.key === 'SEED') {
-        continue;
-      }
-
-      const rawValue = sensitivityFormValues[parameter.key];
-      const parsedValue = parseFormValue(parameter, rawValue);
-      if (!isSameValue(parsedValue, parameter.defaultValue)) {
-        overrides[parameter.key] = parsedValue;
-      }
-    }
-
-    return overrides;
+    return buildSensitivityGeneralOverridesFromForm(options.parameters, sensitivityFormValues);
   };
 
   const onSubmitRun = async (confirmWarnings: boolean) => {

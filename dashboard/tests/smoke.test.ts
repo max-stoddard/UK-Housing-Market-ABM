@@ -143,7 +143,14 @@ import {
 import { ManualRunSetupCard } from '../src/pages/run-experiments/ManualRunSetupCard.js';
 import { SensitivitySetupCard } from '../src/pages/run-experiments/SensitivitySetupCard.js';
 import { assertSettingHelpCopy } from '../src/pages/run-experiments/settingHelp.js';
-import { computeKpiFromValues } from '../server/lib/stats/kpi.js';
+import {
+  DEFAULT_EXPERIMENT_BASE_POLICY_ID,
+  buildDefaultSensitivityRange,
+  buildSensitivityGeneralOverridesFromForm,
+  toInitialFormValues
+} from '../src/lib/experimentRunDefaults.js';
+import { buildDeltaTrendOption } from '../src/lib/sensitivityChartOptions.js';
+import { computeKpiFromValues, selectPost200Window } from '../server/lib/stats/kpi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -261,6 +268,13 @@ assert.equal(kpiZeroMean.cv, null, 'Expected KPI CV to be null when mean is near
 
 const kpiSmallWindow = computeKpiFromValues([1, 2]);
 assertClose(kpiSmallWindow.range ?? NaN, 0.9, 1e-9, 'Expected KPI percentile interpolation for small window');
+
+const indexedValues = Array.from({ length: 205 }, (_value, index) => index);
+assert.deepEqual(
+  selectPost200Window(indexedValues),
+  [200, 201, 202, 203, 204],
+  'Expected post-200 KPI selection to discard values before model time 200'
+);
 
 const groupedIndicators = groupIndicatorsBySource([
   {
@@ -504,6 +518,12 @@ assert.equal(
 );
 
 assert.equal(
+  extractVersionFromResultsRunId('v0o2-output'),
+  'v0o2',
+  'Expected numbered output-calibration result ids to map back to their calibration version'
+);
+
+assert.equal(
   extractVersionFromResultsRunId('policy-demo-v4.0-output'),
   '',
   'Expected non-canonical results run ids not to resolve to calibration versions'
@@ -656,6 +676,28 @@ const gapOnlyOverlaySeries = (gapOnlyOverlayOption.series as Array<Record<string
 assert.equal(gapOnlyOverlaySeries.length, 2, 'Expected gap-only overlay payload to still include both plotted series');
 assert.equal(gapOnlyOverlaySeries[0]?.markLine?.data?.[0]?.yAxis, 15, 'Expected gap-only overlay baseline mean to still render');
 assert.equal(gapOnlyOverlaySeries[1]?.markLine, undefined, 'Expected gap-only overlay series not to render a mean line');
+
+const deltaTrendOption = buildDeltaTrendOption(
+  {
+    indicatorId: 'core_ooLTI',
+    title: 'Owner-Occupier LTI',
+    units: 'ratio',
+    points: [
+      { parameterValue: 4, deltaByKpi: { mean: 10, cv: null, annualisedTrend: null, range: 2 } },
+      { parameterValue: 4.5, deltaByKpi: { mean: 12, cv: null, annualisedTrend: null, range: 3 } },
+      { parameterValue: 5, deltaByKpi: { mean: 14, cv: null, annualisedTrend: null, range: 4 } }
+    ]
+  },
+  'Soft max LTI FTB + HM',
+  'mean'
+) as { xAxis: { min: number; max: number; scale?: boolean }; yAxis: { min: number; max: number; scale?: boolean } };
+assert.equal(deltaTrendOption.xAxis.scale, true, 'Expected delta trend x axis to use data scaling');
+assert.equal(deltaTrendOption.yAxis.scale, true, 'Expected delta trend y axis to use data scaling');
+assert.ok(deltaTrendOption.xAxis.min < 4 && deltaTrendOption.xAxis.max > 5, 'Expected delta trend x axis to pad data domain');
+assert.ok(
+  deltaTrendOption.yAxis.min > 0 && deltaTrendOption.yAxis.max > 14,
+  'Expected delta trend y axis to span positive data without forcing zero'
+);
 
 const latestManualStatusMarkup = renderToStaticMarkup(
   createElement(ManualSelectionStatusPills, {
@@ -2201,8 +2243,12 @@ assert.ok(versions.length > 0, 'Expected at least one version folder');
 assert.ok(!versions.includes('v1'), 'v1 should be excluded after cleanup');
 assert.equal(versions[0], 'v0', 'Oldest version should be v0');
 assert.deepEqual(parseVersionParts('v0oo'), [0, 2], 'Repeated output suffixes should count in version sorting');
+assert.deepEqual(parseVersionParts('v0o1'), [0, 3], 'Numbered output suffixes should sort after legacy oo campaigns');
+assert.deepEqual(parseVersionParts('v0o2'), [0, 4], 'Numbered output suffixes should preserve campaign order');
 assert.deepEqual(parseVersionParts('v4.14oo'), [4, 14, 2], 'Dotted repeated output suffixes should count in version sorting');
 assert.ok(compareVersions('v0o', 'v0oo') < 0, 'v0o should sort before v0oo');
+assert.ok(compareVersions('v0oo', 'v0o1') < 0, 'v0oo should sort before v0o1');
+assert.ok(compareVersions('v0o1', 'v0o2') < 0, 'v0o1 should sort before v0o2');
 assert.ok(compareVersions('v4.14o', 'v4.14oo') < 0, 'v4.14o should sort before v4.14oo');
 assert.deepEqual(listVersions(path.join(repoRoot, 'input-data-versions')), versions, 'Version service should expose raw sorted version folders');
 for (const version of ['v0o', 'v0oo', 'v4.14oo']) {
@@ -2236,6 +2282,11 @@ assert.equal(
   formatVersionOptionLabel('v0o', buildVersionLabelState('v0o', latestStableVersion, new Set(inProgressVersions))),
   'v0o',
   'Expected v0o select labels to remain a raw legacy version label'
+);
+assert.equal(
+  formatVersionOptionLabel('v0o2', buildVersionLabelState('v0o2', latestStableVersion, new Set(inProgressVersions))),
+  'Optimised 2011 model',
+  'Expected v0o2 select labels to use the standard optimised model name'
 );
 assert.equal(
   formatVersionOptionLabel('v0oo', buildVersionLabelState('v0oo', latestStableVersion, new Set(inProgressVersions))),
@@ -3937,6 +3988,17 @@ try {
     'Expected in-progress snapshot status in options payload'
   );
   const orderedExperimentSnapshots = orderExperimentModelOptions(runOptions.snapshots);
+  const promotedExperimentSnapshots = orderExperimentModelOptions([
+    { version: 'v1.0', status: 'stable' },
+    { version: 'v0o2', status: 'stable' },
+    { version: 'v0oo', status: 'stable' },
+    { version: 'v0', status: 'stable' }
+  ]);
+  assert.deepEqual(
+    promotedExperimentSnapshots.slice(0, 3).map((snapshot) => snapshot.version),
+    ['v0o2', 'v0', 'v1.0'],
+    'Expected experiment model options to prefer v0o2 once the new 2011-only campaign is present'
+  );
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 3).map((snapshot) => snapshot.version),
     ['v0oo', 'v0', 'v1.0'],
@@ -3954,12 +4016,6 @@ try {
   );
 
   assertSettingHelpCopy();
-  const runFormValues = Object.fromEntries(
-    runOptions.parameters.map((parameter) => [
-      parameter.key,
-      typeof parameter.defaultValue === 'boolean' ? parameter.defaultValue : String(parameter.defaultValue)
-    ])
-  );
   const policyParameters = runOptions.parameters.filter((parameter) => parameter.group === 'Central Bank policy');
   const centralBankPolicyKeys = policyParameters.map((parameter) => parameter.key);
   assert.deepEqual(
@@ -3967,6 +4023,8 @@ try {
     ['2011', '2024'],
     'Expected run options to expose the supported base policies'
   );
+  const defaultExperimentPolicy = runOptions.basePolicies.find((policy) => policy.id === DEFAULT_EXPERIMENT_BASE_POLICY_ID) ?? null;
+  assert.ok(defaultExperimentPolicy, 'Expected dashboard experiment setup to have a 2024 default policy option');
   assert.equal(runOptions.defaultBasePolicy, '2011', 'Expected legacy calibration snapshots to default to 2011 policy');
   assert.equal(
     getModelRunOptions(modelRunFixtureRoot, 'v1.0', true).defaultBasePolicy,
@@ -4015,6 +4073,25 @@ try {
     ['CENTRAL_BANK_LTI_SOFT_MAX_FTB', 'CENTRAL_BANK_LTI_SOFT_MAX_HM'],
     'Expected sensitivity setup to default to the paired FTB + HM soft LTI package'
   );
+  assert.ok(selectedSensitivityPackage, 'Expected default sensitivity package to be available for range checks');
+  const defaultExperimentFormValues = toInitialFormValues(runOptions.parameters, defaultExperimentPolicy);
+  const recordBooleanKeys = runOptions.parameters
+    .filter((parameter) => parameter.type === 'boolean' && parameter.key.startsWith('record'))
+    .map((parameter) => parameter.key);
+  assert.equal(defaultExperimentFormValues.recordCoreIndicators, true, 'Expected core indicators to stay enabled by default');
+  for (const key of recordBooleanKeys.filter((recordKey) => recordKey !== 'recordCoreIndicators')) {
+    assert.equal(defaultExperimentFormValues[key], false, `Expected ${key} to be disabled by default`);
+  }
+  assert.deepEqual(
+    buildDefaultSensitivityRange(selectedSensitivityPackage, defaultExperimentPolicy),
+    { min: '4', max: '5' },
+    'Expected default paired soft-LTI sensitivity range to use 4..5 under 2024 policy'
+  );
+  const sensitivitySeedOneOverrides = buildSensitivityGeneralOverridesFromForm(runOptions.parameters, {
+    ...defaultExperimentFormValues,
+    N_SIMS: '1'
+  });
+  assert.equal(sensitivitySeedOneOverrides.N_SIMS, 1, 'Expected sensitivity submit overrides to include N_SIMS=1');
   const noop = () => {};
   const manualSetupMarkup = renderToStaticMarkup(
     createElement(
@@ -4026,14 +4103,14 @@ try {
         selectedBaseline: runOptions.requestedBaseline,
         onBaselineChange: noop,
         basePolicies: runOptions.basePolicies,
-        basePolicy: runOptions.defaultBasePolicy,
+        basePolicy: DEFAULT_EXPERIMENT_BASE_POLICY_ID,
         onBasePolicyChange: noop,
         snapshots: runOptions.snapshots,
         title: '',
         onTitleChange: noop,
         parameters: runOptions.parameters,
         policyParameters,
-        formValues: runFormValues,
+        formValues: defaultExperimentFormValues,
         onFormValueChange: noop,
         warnings: [],
         isSubmitting: false,
@@ -4051,19 +4128,19 @@ try {
       onBaselineChange: noop,
       snapshots: runOptions.snapshots,
       basePolicies: runOptions.basePolicies,
-      basePolicy: runOptions.defaultBasePolicy,
+      basePolicy: DEFAULT_EXPERIMENT_BASE_POLICY_ID,
       onBasePolicyChange: noop,
       policyPackages: runOptions.sensitivityPolicyPackages,
       policyPackageId: selectedSensitivityPackage?.id ?? '',
       onPolicyPackageChange: noop,
-      minValue: '0',
-      maxValue: '1',
+      minValue: '4',
+      maxValue: '5',
       onMinValueChange: noop,
       onMaxValueChange: noop,
       sampleCount: '5',
       onSampleCountChange: noop,
       parameters: runOptions.parameters,
-      formValues: runFormValues,
+      formValues: defaultExperimentFormValues,
       onFormValueChange: noop,
       maxWorkers: '2',
       onMaxWorkersChange: noop,
@@ -4852,6 +4929,45 @@ try {
   fs.rmSync(desktopSensitivityFixture.root, { recursive: true, force: true });
 }
 
+const seedWarningFixtureRoot = createModelRunFixtureRepo();
+try {
+  __resetSensitivityRunsForTests();
+  const seedWarningRunOptions = getModelRunOptions(seedWarningFixtureRoot, 'v1.0', true);
+  const seedWarningPolicy =
+    seedWarningRunOptions.basePolicies.find((policy) => policy.id === DEFAULT_EXPERIMENT_BASE_POLICY_ID) ?? null;
+  const seedWarningFormValues = toInitialFormValues(seedWarningRunOptions.parameters, seedWarningPolicy);
+  const seedWarningOverrides = buildSensitivityGeneralOverridesFromForm(seedWarningRunOptions.parameters, {
+    ...seedWarningFormValues,
+    N_SIMS: '1'
+  });
+  __setSensitivityRunSpawnForTests((_repoRoot, configPath, outputPath) => {
+    const config = parseConfigFile(configPath);
+    const softMaxFtb = Number.parseFloat(config.get('CENTRAL_BANK_LTI_SOFT_MAX_FTB') ?? '0');
+    writeSensitivityCoreOutputs(outputPath, softMaxFtb);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      process.succeed();
+    }, 0);
+    return process as never;
+  });
+  const seedOneSubmit = submitSensitivityExperiment(seedWarningFixtureRoot, {
+    baseline: 'v1.0',
+    basePolicy: DEFAULT_EXPERIMENT_BASE_POLICY_ID,
+    policyPackageId: DEFAULT_SENSITIVITY_POLICY_PACKAGE_ID,
+    min: 4,
+    max: 5,
+    overrides: seedWarningOverrides,
+    confirmWarnings: false
+  });
+  assert.equal(seedOneSubmit.accepted, true, 'Expected N_SIMS=1 sensitivity submit to be accepted without seed warning');
+  assert.ok(
+    seedOneSubmit.warnings.every((warning) => warning.code !== 'multiple_simulations'),
+    'Expected N_SIMS=1 sensitivity submit not to warn about five seeds per sampled point'
+  );
+} finally {
+  __resetSensitivityRunsForTests();
+}
+
 const sensitivityFixtureRoot = createModelRunFixtureRepo();
 const sensitivityProcesses: FakeModelProcess[] = [];
 
@@ -5108,10 +5224,16 @@ try {
     1e-9,
     'Expected KPI delta to be stored as percent difference from baseline'
   );
+  assertClose(
+    baselineMean,
+    62.195,
+    1e-9,
+    'Expected sensitivity KPI means to use core indicator values from model time 200 onward'
+  );
 
   const successCharts = getSensitivityExperimentCharts(sensitivityFixtureRoot, successExperimentId);
   assert.ok(successCharts.tornado.length > 0, 'Expected tornado chart payload to include indicators');
-  assert.equal(successCharts.windowType, 'tail_120', 'Expected sensitivity charts payload to include tail_120 window');
+  assert.equal(successCharts.windowType, 'post_200', 'Expected sensitivity charts payload to include post_200 window');
   assert.equal(
     Object.prototype.hasOwnProperty.call(successCharts.tornado[0] ?? {}, 'maxAbsDeltaByKpi'),
     true,

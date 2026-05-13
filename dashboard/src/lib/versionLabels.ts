@@ -9,17 +9,22 @@ export interface VersionLabelState {
   kinds: VersionLabelKind[];
 }
 
-const RESULTS_RUN_VERSION_PATTERN = /^(v\d+(?:\.\d+)*)-output$/;
-const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo']);
+const RESULTS_RUN_VERSION_PATTERN = /^(v\d+(?:\.\d+)*(?:o+|o\d+)?)-output$/i;
+const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2']);
 const BEST_2024_VERSION = 'v4.4';
 const FIRST_2024_VERSION = 'v1.0';
 const LAST_PREFIXED_2024_VERSION = 'v4.18';
 
 function parseVersionParts(version: string): number[] {
   const normalized = version.replace(/^v/i, '').toLowerCase();
-  const suffixMatch = normalized.match(/o+$/u);
-  const suffixRank = suffixMatch?.[0].length ?? 0;
-  const numeric = suffixRank > 0 ? normalized.slice(0, -suffixRank) : normalized;
+  const numberedSuffixMatch = normalized.match(/o(\d+)$/u);
+  const suffixMatch = numberedSuffixMatch ? null : normalized.match(/o+$/u);
+  const suffixRank = numberedSuffixMatch ? 2 + Number.parseInt(numberedSuffixMatch[1] ?? '0', 10) : suffixMatch?.[0].length ?? 0;
+  const numeric = numberedSuffixMatch
+    ? normalized.slice(0, numberedSuffixMatch.index ?? normalized.length)
+    : suffixRank > 0
+      ? normalized.slice(0, -suffixRank)
+      : normalized;
   return numeric
     .split('.')
     .map((part) => Number.parseInt(part, 10))
@@ -117,6 +122,10 @@ export function formatModelVersionBaseLabel(version: string, state?: Pick<Versio
     return 'Optimised 2011 model';
   }
 
+  if (version === 'v0o2') {
+    return 'Optimised 2011 model';
+  }
+
   if (LEGACY_2011_VERSIONS.has(version)) {
     return version;
   }
@@ -142,6 +151,10 @@ export function formatCalibrationVersionTitleLabel(version: string, state?: Pick
   }
 
   if (version === 'v0oo') {
+    return 'Optimised 2011 model';
+  }
+
+  if (version === 'v0o2') {
     return 'Optimised 2011 model';
   }
 

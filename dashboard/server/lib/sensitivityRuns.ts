@@ -64,7 +64,7 @@ import {
   writeSensitivityRunManifest,
   type SensitivityRunManifestPoint
 } from './runManifest';
-import { buildEmptyKpiValues, computeTail120Kpi } from './stats/kpi';
+import { buildEmptyKpiValues, computePost200Kpi } from './stats/kpi';
 
 const EXPERIMENTS_DIR = path.join('experiments', 'sensitivity');
 const TMP_EXPERIMENT_RUNS_DIR = 'dashboard-sensitivity-runs';
@@ -74,6 +74,7 @@ const CANCEL_KILL_TIMEOUT_MS = 10_000;
 const MAX_LOG_LINES = 10_000;
 const TERMINAL_STATUSES = new Set<SensitivityExperimentStatus>(['succeeded', 'failed', 'canceled']);
 const KPI_KEYS = ['mean', 'cv', 'annualisedTrend', 'range'] as const;
+const SENSITIVITY_RESULTS_WINDOW_TYPE = 'post_200' as const;
 const BASELINE_EPSILON = 1e-12;
 const FORCED_STARTING_SEED = 1;
 const DEFAULT_MAX_WORKERS_CAP = 20;
@@ -571,7 +572,7 @@ function normalizeChartsPayload(
   return {
     experimentId,
     parameter,
-    windowType: 'tail_120',
+    windowType: candidate.windowType === 'post_200' ? 'post_200' : 'tail_120',
     tornado,
     deltaTrend
   };
@@ -612,7 +613,7 @@ function emptyCharts(
   return {
     experimentId,
     parameter,
-    windowType: 'tail_120',
+    windowType: SENSITIVITY_RESULTS_WINDOW_TYPE,
     tornado: POLICY_CORE_INDICATORS.map((indicator) => ({
       indicatorId: indicator.id,
       title: indicator.title,
@@ -1075,7 +1076,7 @@ function getPointIndicatorKpis(outputPath: string): SensitivityIndicatorPointMet
       indicatorId: indicator.id,
       title: indicator.title,
       units: indicator.units,
-      kpi: computeTail120Kpi(values),
+      kpi: computePost200Kpi(values),
       deltaFromBaseline: buildEmptyKpiValues()
     };
   });
@@ -1265,7 +1266,7 @@ function ensureLoaded(pathsInput: RuntimePathInput): void {
       const persistedSummary = readSummary(paths, experimentId, metadata.parameter);
       const results = persistedSummary?.results ?? emptyResults(experimentId);
       addDeltaAgainstBaseline(results);
-      const charts = buildChartsFromResults(experimentId, metadata.parameter, results);
+      const charts = persistedSummary?.charts ?? buildChartsFromResults(experimentId, metadata.parameter, results);
 
       const record: ExperimentRecord = {
         runtimePaths: paths,
@@ -2071,7 +2072,7 @@ function buildChartsFromResults(
   return {
     experimentId,
     parameter,
-    windowType: 'tail_120',
+    windowType: SENSITIVITY_RESULTS_WINDOW_TYPE,
     tornado,
     deltaTrend
   };

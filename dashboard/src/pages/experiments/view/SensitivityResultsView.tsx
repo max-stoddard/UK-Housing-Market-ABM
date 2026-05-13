@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
   KpiMetricKey,
-  SensitivityDeltaTrendSeries,
   SensitivityExperimentChartsPayload,
   SensitivityExperimentMetadata,
   SensitivityExperimentResultsPayload,
@@ -21,6 +20,7 @@ import {
   fetchSensitivityExperiments,
   isRetryableApiError
 } from '../../../lib/api';
+import { buildDeltaTrendOption } from '../../../lib/sensitivityChartOptions';
 import { buildExperimentsPath } from '../routeState';
 import { DEFAULT_EXPERIMENT_ROUTE_STATE } from '../types';
 
@@ -137,49 +137,6 @@ function buildTornadoOption(charts: SensitivityExperimentChartsPayload, kpi: Kpi
         itemStyle: {
           color: '#0b7285'
         }
-      }
-    ]
-  };
-}
-
-function buildDeltaTrendOption(series: SensitivityDeltaTrendSeries, parameterTitle: string, kpi: KpiMetricKey): EChartsOption {
-  return {
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      valueFormatter: (value: unknown) => {
-        if (typeof value !== 'number' || Number.isNaN(value)) {
-          return 'n/a';
-        }
-        return `${value.toLocaleString('en-GB', { maximumFractionDigits: 6 })}%`;
-      }
-    },
-    grid: {
-      left: 80,
-      right: 24,
-      top: 20,
-      bottom: 48
-    },
-    xAxis: {
-      type: 'value',
-      name: parameterTitle,
-      nameGap: 30,
-      nameLocation: 'middle'
-    },
-    yAxis: {
-      type: 'value',
-      name: `% diff ${KPI_OPTIONS.find((option) => option.key === kpi)?.label ?? kpi}`,
-      nameLocation: 'middle',
-      nameGap: 48
-    },
-    series: [
-      {
-        type: 'line',
-        showSymbol: true,
-        connectNulls: false,
-        data: series.points
-          .filter((point) => point.parameterValue !== null)
-          .map((point) => [point.parameterValue, point.deltaByKpi[kpi]])
       }
     ]
   };
