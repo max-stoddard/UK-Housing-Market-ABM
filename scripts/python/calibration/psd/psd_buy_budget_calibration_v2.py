@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Calibrate BUY* parameters (v2.1) from modern PSD 2024 + PPD 2024/2025.
+Calibrate BUY* parameters (v2.1) from modern PSD 2024 + PPD.
 
 This production script uses realism-constrained quantile fitting with:
 - BUY_MU hard lock to 0,
@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import time
 from pathlib import Path
 
@@ -34,6 +35,7 @@ from scripts.python.helpers.psd.buy_budget_quantile_v2 import (
     GUARDRAIL_MODE_FAIL,
     HARD_P95_MULTIPLE_CAP,
     P95_SOFT_CAP_DEFAULT,
+    PPD_STATUS_A_ONLY,
     PPD_STATUS_BOTH,
     PPD_STATUS_CHOICES,
     QuantileFitSpec,
@@ -42,6 +44,7 @@ from scripts.python.helpers.psd.buy_budget_quantile_v2 import (
     SoftTargetCurve,
     TAIL_FAMILY_CHOICES,
     TAIL_FAMILY_PARETO,
+    YEAR_POLICY_2024_ONLY,
     YEAR_POLICY_BOTH,
     YEAR_POLICY_CHOICES,
     apply_fit_degradation,
@@ -152,8 +155,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ppd-csv-2025",
-        default="private-datasets/ppd/pp-2025.csv",
-        help="Path to PPD 2025 CSV.",
+        default=None,
+        help="Path to PPD 2025 CSV. Required only for 2025_only, pooled_2024_2025, or both year policies.",
     )
     parser.add_argument(
         "--target-year-psd",
@@ -163,15 +166,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ppd-status-mode",
-        default=PPD_STATUS_BOTH,
+        default=PPD_STATUS_A_ONLY,
         choices=PPD_STATUS_CHOICES,
-        help="PPD status mode variants to evaluate (default: both).",
+        help="PPD status mode variants to evaluate (default: a_only).",
     )
     parser.add_argument(
         "--year-policy",
-        default=YEAR_POLICY_BOTH,
+        default=YEAR_POLICY_2024_ONLY,
         choices=YEAR_POLICY_CHOICES,
-        help="Year policy variants to evaluate (default: both).",
+        help="Year policy variants to evaluate (default: 2024_only).",
     )
     parser.add_argument(
         "--guardrail-mode",
@@ -277,6 +280,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=4.0,
         help="Weight of PPD mean anchor in constrained quantile fit (default: 4.0).",
+    )
+    parser.add_argument(
+        "--fixed-exponent",
+        type=float,
+        default=1.0,
+        help="Fixed BUY_EXPONENT for 2024_only raked-quantile fitting (default: 1.0).",
     )
     parser.add_argument(
         "--income-open-upper-k",
@@ -422,6 +431,23 @@ def _write_summary_json(*, output_dir: str, selected, eligible, rejected, baseli
             "objective_sigma": selected.objective.objective_sigma,
             "objective_median_curve": selected.objective.objective_median_curve,
             "unknown_income_share": selected.diagnostics.get("unknown_income_share"),
+            "source_year_psd": selected.diagnostics.get("source_year_psd"),
+            "source_year_ppd": selected.diagnostics.get("source_year_ppd"),
+            "ppd_2025_loaded": selected.diagnostics.get("ppd_2025_loaded"),
+            "ppd_rows_used_raked": selected.diagnostics.get("ppd_rows_used_raked"),
+            "quantile_residuals_log": [
+                {
+                    "level": level,
+                    "targetPrice": target,
+                    "modelPrice": model,
+                    "residualLogPrice": math.log(target) - math.log(model),
+                }
+                for level, target, model in zip(
+                    selected.diagnostics.get("quantile_levels", []),
+                    selected.observed_price_quantiles,
+                    selected.modeled_median_quantiles,
+                )
+            ],
         },
         "eligible_variant_count": len(eligible),
         "rejected_variant_count": len(rejected),
@@ -453,6 +479,15 @@ def _reference_rows() -> dict[str, dict[str, float]]:
     return out
 
 
+def _resolve_ppd_paths(args: argparse.Namespace) -> tuple[Path, ...]:
+    ppd_2024 = Path(args.ppd_csv_2024)
+    if args.year_policy == YEAR_POLICY_2024_ONLY:
+        return (ppd_2024,)
+    if args.ppd_csv_2025 is None:
+        raise SystemExit(f"--ppd-csv-2025 is required when --year-policy {args.year_policy}.")
+    return (ppd_2024, Path(args.ppd_csv_2025))
+
+
 def _print_near_miss_candidates(results, fit_degradation_max: float, limit: int = 5) -> None:
     ordered = rank_variants(results)
     print("Top near-miss variants:")
@@ -474,7 +509,7 @@ def main() -> None:
     args = build_arg_parser().parse_args()
 
     quarterly_path = Path(args.quarterly_csv)
-    ppd_paths = (Path(args.ppd_csv_2024), Path(args.ppd_csv_2025))
+    ppd_paths = _resolve_ppd_paths(args)
     missing = [str(path) for path in (quarterly_path, *ppd_paths) if not path.exists()]
     if missing:
         raise SystemExit("Missing input file(s): " + ", ".join(missing))
@@ -485,6 +520,8 @@ def main() -> None:
         raise SystemExit("quantile-grid-size must be positive.")
     if args.ppd_mean_anchor_weight < 0.0:
         raise SystemExit("ppd-mean-anchor-weight must be non-negative.")
+    if args.fixed_exponent <= 0.0:
+        raise SystemExit("fixed-exponent must be positive.")
     if args.workers <= 0:
         raise SystemExit("workers must be positive.")
     if args.hard_p95_cap <= 1.0:
@@ -508,6 +545,7 @@ def main() -> None:
         sigma_warning_low=args.sigma_warning_low,
         sigma_warning_high=args.sigma_warning_high,
         median_target_curve=median_target_curve,
+        fixed_exponent=args.fixed_exponent if args.year_policy == YEAR_POLICY_2024_ONLY else None,
     )
 
     print("[stage] Starting v2.1 production calibration", flush=True)
@@ -596,7 +634,7 @@ def main() -> None:
     print("PSD BUY* production calibration (v2.1)")
     print(f"Quarterly PSD: {args.quarterly_csv}")
     print(f"PPD 2024: {args.ppd_csv_2024}")
-    print(f"PPD 2025: {args.ppd_csv_2025}")
+    print(f"PPD 2025: {args.ppd_csv_2025 if args.ppd_csv_2025 is not None else 'not loaded'}")
     print(f"Target year PSD: {args.target_year_psd}")
     print(f"Status mode: {args.ppd_status_mode}")
     print(f"Year policy: {args.year_policy}")

@@ -22,6 +22,7 @@ from scripts.python.calibration.output.candidate_runs import (
     parse_config_parameters,
     parse_seed_list,
     update_config_properties,
+    validate_version_name,
 )
 from scripts.python.calibration.output.esmda import (
     DEFAULT_PARAMETER_SPECS,
@@ -42,7 +43,9 @@ from scripts.python.calibration.output.four_parameter_esmda import (
     DEFAULT_RNG_SEED,
     LOSS_HANDLING_NOTE,
     build_arg_parser,
+    build_local_refinement_candidates,
     run_calibration,
+    select_guardrailed_member,
 )
 from scripts.python.calibration.output.validation_bridge import (
     FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
@@ -58,7 +61,7 @@ from scripts.python.calibration.output.validation_bridge import (
 
 
 class TestFourParameterEsmdaWorkflow(unittest.TestCase):
-    def test_parser_defaults_to_four_seed_twenty_worker_esmda(self) -> None:
+    def test_parser_defaults_to_eight_seed_twenty_worker_esmda(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):
             with self.assertRaises(SystemExit):
                 build_arg_parser().parse_args([])
@@ -70,7 +73,7 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         self.assertEqual(args.validation_year, 2024)
         self.assertEqual(args.validation_objective, FAMILY_AWARE_METRIC_LOSS_OBJECTIVE)
         self.assertAlmostEqual(args.validation_loss_error_std, 1.0)
-        self.assertEqual(args.seeds, "1,2,3,4")
+        self.assertEqual(args.seeds, "1,2,3,4,5,6,7,8")
         self.assertEqual(args.workers, 20)
         self.assertEqual(args.ensemble_size, DEFAULT_ENSEMBLE_SIZE)
         self.assertEqual(args.assimilation_steps, DEFAULT_ASSIMILATION_STEPS)
@@ -82,6 +85,10 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
             with self.subTest(raw=raw):
                 with self.assertRaises(ValueError):
                     parse_seed_list(raw)
+
+    def test_validate_version_name_accepts_new_v0_output_campaign_names(self) -> None:
+        self.assertEqual(validate_version_name("v0o1"), "v0o1")
+        self.assertEqual(validate_version_name("v0o2"), "v0o2")
 
     def test_parameter_transforms_round_trip_inside_bounds(self) -> None:
         values = {
@@ -159,12 +166,21 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
 
         self.assertEqual([len(batch) for batch in batches], [5, 5, 2])
 
+    def test_scheduler_uses_available_workers_for_eight_seed_candidates(self) -> None:
+        batches = build_candidate_batches(list(range(10)), seed_count=8, workers=20)
+
+        self.assertEqual([len(batch) for batch in batches], [3, 3, 3, 1])
+
     def test_validation_profiles_use_r8_for_2024_and_w3_for_2011_v0(self) -> None:
         profile_2024 = resolve_calibration_validation_profile(version="v4.14o", validation_year=2024)
         profile_2011 = resolve_calibration_validation_profile(version="v0o", validation_year=2011)
+        profile_2011_v0o1 = resolve_calibration_validation_profile(version="v0o1", validation_year=2011)
+        profile_2011_v0o2 = resolve_calibration_validation_profile(version="v0o2", validation_year=2011)
 
         self.assertEqual(summarize_validation_profile(profile_2024)["wasDataset"], "R8")
         self.assertEqual(summarize_validation_profile(profile_2011)["wasDataset"], "W3")
+        self.assertIs(profile_2011_v0o1, profile_2011)
+        self.assertIs(profile_2011_v0o2, profile_2011)
         with self.assertRaises(ValueError):
             resolve_calibration_validation_profile(version="v4.14o", validation_year=2011)
 
@@ -284,6 +300,51 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
             self.assertIn("MARKET_AVERAGE_PRICE_DECAY = 0.62", output_config)
             self.assertIn("BTL_PROBABILITY_MULTIPLIER = 0.435", output_config)
             self.assertTrue((output_dir / "Other.csv").exists())
+
+    def test_local_refinement_candidates_are_snapped_and_deduplicated(self) -> None:
+        candidates = build_local_refinement_candidates(
+            [
+                {
+                    PSYCHOLOGICAL_COST_OF_RENTING: 0.427,
+                    SENSITIVITY_RENT_OR_PURCHASE: 0.001234,
+                    BTL_CHOICE_INTENSITY: 124.0,
+                    MARKET_AVERAGE_PRICE_DECAY: 0.613,
+                }
+            ],
+            radius=1,
+            max_candidates=20,
+        )
+
+        self.assertEqual(
+            candidates[0],
+            {
+                PSYCHOLOGICAL_COST_OF_RENTING: 0.45,
+                SENSITIVITY_RENT_OR_PURCHASE: 0.0012,
+                BTL_CHOICE_INTENSITY: 120.0,
+                MARKET_AVERAGE_PRICE_DECAY: 0.62,
+            },
+        )
+        self.assertEqual(len(candidates), len({tuple(sorted(candidate.items())) for candidate in candidates}))
+
+    def test_guardrails_reject_non_improving_lowest_loss_and_promote_accepted_candidate(self) -> None:
+        baseline = self._member_result(member_id=0, loss=1.0, fail_count=3, movement=0.0, strategic_metric_loss=0.1)
+        rejected_boundary = self._member_result(
+            member_id=1,
+            loss=0.7,
+            fail_count=3,
+            movement=0.2,
+            strategic_metric_loss=0.4,
+        )
+        accepted = self._member_result(member_id=2, loss=0.8, fail_count=3, movement=0.2, strategic_metric_loss=0.1)
+
+        promotion = select_guardrailed_member(
+            candidates=[rejected_boundary, accepted],
+            baseline_member=baseline,
+        )
+
+        self.assertTrue(promotion["accepted"])
+        self.assertTrue(promotion["lowestLossRejected"])
+        self.assertEqual(promotion["promotedMember"].member_id, 2)
 
     def test_cli_dry_run_writes_metadata_without_creating_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -411,10 +472,11 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     summary = run_calibration(args, repo_root=repo_root)
 
-            self.assertEqual(execute_iterations, [0, 1])
+            self.assertEqual(execute_iterations, [0, 1, 2])
             self.assertEqual(update_mock.call_count, 1)
-            self.assertEqual(summary["selected"]["iteration"], 1)
-            self.assertEqual(summary["selected"]["memberId"], 1)
+            self.assertEqual(summary["selected"]["iteration"], 2)
+            self.assertEqual(summary["validationObjective"], FAMILY_AWARE_METRIC_LOSS_OBJECTIVE)
+            self.assertEqual(summary["assimilationTransform"], "schema4_metric_loss")
 
     def test_parameter_spec_rejects_invalid_log_bounds(self) -> None:
         with self.assertRaises(ValueError):
@@ -448,6 +510,37 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
             BTL_CHOICE_INTENSITY: 100.0,
             MARKET_AVERAGE_PRICE_DECAY: 0.5,
         }
+
+    def _member_result(
+        self,
+        *,
+        member_id: int,
+        loss: float,
+        fail_count: int,
+        movement: float,
+        parameters: dict[str, float] | None = None,
+        strategic_metric_loss: float | None = None,
+    ) -> MemberValidationResult:
+        metrics = [
+            {
+                "metricId": "core_advancesToBTL" if index == 0 else f"metric_{index}",
+                "requirement": "required",
+                "status": "pass" if index >= fail_count else "fail",
+                "metricLoss": strategic_metric_loss if index == 0 and strategic_metric_loss is not None else loss,
+            }
+            for index in range(4)
+        ]
+        return MemberValidationResult(
+            iteration=99,
+            member_id=member_id,
+            parameters=parameters or self._default_parameter_values(),
+            summary={"overallCompositeLoss": loss, "metrics": metrics},
+            observation_vector=(loss,),
+            ranking_loss=loss,
+            ranking_objective=FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
+            normalized_source_movement=movement,
+            seed_results=(),
+        )
 
     def _minimal_config_text(self) -> str:
         return (

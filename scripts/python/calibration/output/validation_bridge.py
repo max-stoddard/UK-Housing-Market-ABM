@@ -25,7 +25,7 @@ from scripts.python.validation.model.validation_profiles import (
 
 VALIDATION_YEAR_2011 = 2011
 VALIDATION_YEAR_2024 = 2024
-V0_2011_ALLOWED_SOURCE_VERSIONS = {"v0", "v0o", "v0oo"}
+V0_2011_ALLOWED_SOURCE_VERSIONS = {"v0", "v0o", "v0oo", "v0o1", "v0o2"}
 FAMILY_AWARE_METRIC_LOSS_OBJECTIVE = "family_aware_metric_loss"
 TARGET_NORMALIZED_ADDITIVE_OBJECTIVE = "target_normalized_additive"
 DEFAULT_VALIDATION_OBJECTIVE = FAMILY_AWARE_METRIC_LOSS_OBJECTIVE

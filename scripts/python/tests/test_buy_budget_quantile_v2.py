@@ -14,11 +14,14 @@ from scripts.python.helpers.psd.buy_budget_quantile_v2 import (
     PPD_STATUS_BOTH,
     QuantileFitSpec,
     TAIL_FAMILY_PARETO,
+    YEAR_POLICY_2024_ONLY,
     YEAR_POLICY_BOTH,
     build_objective_weight_profiles,
     budget_median_multiple,
     evaluate_guardrails,
     evaluate_variants,
+    fit_years_from_policy,
+    select_production_variant,
 )
 
 
@@ -138,6 +141,9 @@ class TestBuyBudgetQuantileV2(unittest.TestCase):
         self.assertFalse(bad_exponent.passed)
         self.assertTrue(any("BUY_EXPONENT" in item for item in bad_exponent.hard_failures))
 
+    def test_2024_only_year_policy(self) -> None:
+        self.assertEqual(fit_years_from_policy(YEAR_POLICY_2024_ONLY), (2024,))
+
     def test_evaluate_variants_mu_locked_and_pareto_alpha_changes_tail(self) -> None:
         quarterly = self._synthetic_quarterly()
         ppd_2024 = self._synthetic_ppd_2024()
@@ -178,6 +184,89 @@ class TestBuyBudgetQuantileV2(unittest.TestCase):
         tail_max_low_alpha = max(by_alpha[1.2].tail_income_values)
         tail_max_high_alpha = max(by_alpha[3.0].tail_income_values)
         self.assertGreater(tail_max_low_alpha, tail_max_high_alpha)
+
+    def test_2024_only_raked_estimator_uses_no_2025_ppd(self) -> None:
+        quarterly = self._synthetic_quarterly()
+        ppd_2024 = self._synthetic_ppd_2024()
+        try:
+            results = evaluate_variants(
+                quarterly_csv=quarterly,
+                target_year_psd=2024,
+                ppd_paths=(ppd_2024,),
+                status_mode=PPD_STATUS_A_ONLY,
+                year_policy=YEAR_POLICY_2024_ONLY,
+                guardrail_mode=GUARDRAIL_MODE_WARN,
+                spec=QuantileFitSpec(
+                    within_bin_points=9,
+                    quantile_grid_size=500,
+                    ppd_mean_anchor_weight=3.0,
+                    fixed_exponent=1.0,
+                ),
+                objective_weight_profiles=build_objective_weight_profiles(
+                    w_anchor_values=(1.0,),
+                    w_p95_values=(1.0,),
+                    w_sigma_values=(1.0,),
+                    w_curve_values=(1.0,),
+                ),
+                tail_family=TAIL_FAMILY_PARETO,
+                pareto_alpha_values=(1.8,),
+                income_open_upper_k=180.0,
+                property_open_upper_k=900.0,
+            )
+        finally:
+            quarterly.unlink(missing_ok=True)
+            ppd_2024.unlink(missing_ok=True)
+
+        self.assertEqual(len(results), 1)
+        selected = results[0]
+        self.assertTrue(selected.guardrails.passed, selected.guardrails.hard_failures)
+        self.assertEqual(selected.year_policy, YEAR_POLICY_2024_ONLY)
+        self.assertEqual(selected.fit_years, (2024,))
+        self.assertEqual(selected.buy_mu, 0.0)
+        self.assertEqual(selected.buy_exponent, 1.0)
+        self.assertGreater(selected.buy_scale, 0.0)
+        self.assertGreaterEqual(selected.buy_sigma, 0.1)
+        self.assertLessEqual(selected.buy_sigma, 0.8)
+        self.assertEqual(selected.diagnostics["source_year_psd"], 2024.0)
+        self.assertEqual(selected.diagnostics["source_year_ppd"], 2024.0)
+        self.assertEqual(selected.diagnostics["ppd_2025_loaded"], 0.0)
+
+    def test_2024_only_rejects_when_2025_ppd_loaded(self) -> None:
+        quarterly = self._synthetic_quarterly()
+        ppd_2024 = self._synthetic_ppd_2024()
+        ppd_2025 = self._synthetic_ppd_2025()
+        try:
+            results = evaluate_variants(
+                quarterly_csv=quarterly,
+                target_year_psd=2024,
+                ppd_paths=(ppd_2024, ppd_2025),
+                status_mode=PPD_STATUS_A_ONLY,
+                year_policy=YEAR_POLICY_2024_ONLY,
+                guardrail_mode=GUARDRAIL_MODE_WARN,
+                spec=QuantileFitSpec(
+                    within_bin_points=9,
+                    quantile_grid_size=500,
+                    ppd_mean_anchor_weight=3.0,
+                    fixed_exponent=1.0,
+                ),
+                objective_weight_profiles=build_objective_weight_profiles(
+                    w_anchor_values=(1.0,),
+                    w_p95_values=(1.0,),
+                    w_sigma_values=(1.0,),
+                    w_curve_values=(1.0,),
+                ),
+                tail_family=TAIL_FAMILY_PARETO,
+                pareto_alpha_values=(1.8,),
+                income_open_upper_k=180.0,
+                property_open_upper_k=900.0,
+            )
+            with self.assertRaises(ValueError):
+                select_production_variant(results)
+            self.assertTrue(any("PPD 2025" in failure for failure in results[0].guardrails.hard_failures))
+        finally:
+            quarterly.unlink(missing_ok=True)
+            ppd_2024.unlink(missing_ok=True)
+            ppd_2025.unlink(missing_ok=True)
 
     def test_method_search_script_creates_artifacts(self) -> None:
         quarterly = self._synthetic_quarterly()
@@ -281,6 +370,58 @@ class TestBuyBudgetQuantileV2(unittest.TestCase):
             quarterly.unlink(missing_ok=True)
             ppd_2024.unlink(missing_ok=True)
             ppd_2025.unlink(missing_ok=True)
+
+    def test_calibration_script_2024_only_does_not_require_2025_ppd(self) -> None:
+        quarterly = self._synthetic_quarterly()
+        ppd_2024 = self._synthetic_ppd_2024()
+        output_dir = Path(tempfile.mkdtemp(prefix="buy_v2_2024_only_calibration_"))
+        try:
+            cmd = [
+                sys.executable,
+                "-m",
+                "scripts.python.calibration.psd.psd_buy_budget_calibration_v2",
+                "--quarterly-csv",
+                str(quarterly),
+                "--ppd-csv-2024",
+                str(ppd_2024),
+                "--ppd-status-mode",
+                "a_only",
+                "--year-policy",
+                "2024_only",
+                "--guardrail-mode",
+                "fail",
+                "--objective-weight-grid-profile",
+                "minimal",
+                "--pareto-alpha-grid",
+                "1.8",
+                "--fit-degradation-max",
+                "2.0",
+                "--within-bin-points",
+                "9",
+                "--quantile-grid-size",
+                "500",
+                "--ppd-mean-anchor-weight",
+                "3.0",
+                "--fixed-exponent",
+                "1.0",
+                "--income-open-upper-k",
+                "180",
+                "--property-open-upper-k",
+                "900",
+                "--output-dir",
+                str(output_dir),
+            ]
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+            json_path = output_dir / "PsdBuyBudgetCalibrationV2Summary.json"
+            self.assertTrue(json_path.exists())
+            text = json_path.read_text(encoding="utf-8")
+            self.assertIn('"year_policy": "2024_only"', text)
+            self.assertIn('"buy_mu": 0.0', text)
+            self.assertIn('"ppd_2025_loaded": 0.0', text)
+        finally:
+            quarterly.unlink(missing_ok=True)
+            ppd_2024.unlink(missing_ok=True)
 
     def test_method_search_plot_outputs_when_matplotlib_available(self) -> None:
         try:

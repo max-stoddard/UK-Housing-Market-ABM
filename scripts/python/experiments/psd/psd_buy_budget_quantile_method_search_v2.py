@@ -57,6 +57,7 @@ from scripts.python.helpers.psd.buy_budget_quantile_v2 import (
     SoftTargetCurve,
     TAIL_FAMILY_CHOICES,
     TAIL_FAMILY_PARETO,
+    YEAR_POLICY_2024_ONLY,
     YEAR_POLICY_BOTH,
     YEAR_POLICY_CHOICES,
     build_objective_weight_profiles,
@@ -166,8 +167,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--ppd-csv-2025",
-        default="private-datasets/ppd/pp-2025.csv",
-        help="Path to PPD 2025 CSV.",
+        default=None,
+        help="Path to PPD 2025 CSV. Required only for 2025_only, pooled_2024_2025, or both year policies.",
     )
     parser.add_argument(
         "--target-year-psd",
@@ -183,9 +184,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--year-policy",
-        default=YEAR_POLICY_BOTH,
+        default=YEAR_POLICY_2024_ONLY,
         choices=YEAR_POLICY_CHOICES,
-        help="PPD year policy for fit anchoring.",
+        help="PPD year policy for fit anchoring (default: 2024_only).",
     )
     parser.add_argument(
         "--guardrail-mode",
@@ -305,6 +306,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Weight of PPD mean anchor in constrained quantile fit (default: 4.0).",
     )
     parser.add_argument(
+        "--fixed-exponent",
+        type=float,
+        default=1.0,
+        help="Fixed BUY_EXPONENT for 2024_only raked-quantile fitting (default: 1.0).",
+    )
+    parser.add_argument(
         "--income-open-upper-k",
         type=float,
         default=200.0,
@@ -334,6 +341,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Parallel workers for variant evaluation (default: 16).",
     )
     return parser
+
+
+def _resolve_ppd_paths(args: argparse.Namespace) -> tuple[Path, ...]:
+    ppd_2024 = Path(args.ppd_csv_2024)
+    if args.year_policy == YEAR_POLICY_2024_ONLY:
+        return (ppd_2024,)
+    if args.ppd_csv_2025 is None:
+        raise SystemExit(f"--ppd-csv-2025 is required when --year-policy {args.year_policy}.")
+    return (ppd_2024, Path(args.ppd_csv_2025))
 
 
 def _load_reference_rows() -> dict[str, dict[str, float]]:
@@ -525,7 +541,7 @@ def main() -> None:
     args = build_arg_parser().parse_args()
 
     quarterly_path = Path(args.quarterly_csv)
-    ppd_paths = (Path(args.ppd_csv_2024), Path(args.ppd_csv_2025))
+    ppd_paths = _resolve_ppd_paths(args)
     missing = [str(path) for path in (quarterly_path, *ppd_paths) if not path.exists()]
     if missing:
         raise SystemExit("Missing input file(s): " + ", ".join(missing))
@@ -536,6 +552,8 @@ def main() -> None:
         raise SystemExit("quantile-grid-size must be positive.")
     if args.ppd_mean_anchor_weight < 0.0:
         raise SystemExit("ppd-mean-anchor-weight must be non-negative.")
+    if args.fixed_exponent <= 0.0:
+        raise SystemExit("fixed-exponent must be positive.")
     if args.top_k <= 0:
         raise SystemExit("top-k must be positive.")
     if args.plot_top_k <= 0:
@@ -561,6 +579,7 @@ def main() -> None:
         sigma_warning_low=args.sigma_warning_low,
         sigma_warning_high=args.sigma_warning_high,
         median_target_curve=median_target_curve,
+        fixed_exponent=args.fixed_exponent if args.year_policy == YEAR_POLICY_2024_ONLY else None,
     )
 
     print("[stage] Starting v2.1 constrained-quantile search", flush=True)

@@ -19,7 +19,7 @@ from scripts.python.validation.model.runner import (
 )
 from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
-VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*o*$", re.IGNORECASE)
+VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*(?:o+|o\d+)?$", re.IGNORECASE)
 
 
 def parse_args() -> argparse.Namespace:
@@ -56,9 +56,15 @@ def parse_seed_list(seed_text: str) -> list[int]:
 
 def parse_version_parts(version: str) -> list[int]:
     normalized = version.lower().removeprefix("v")
-    suffix_rank = len(normalized) - len(normalized.rstrip("o"))
-    if suffix_rank:
-        normalized = normalized[:-suffix_rank]
+    suffix_rank = 0
+    numbered_suffix = re.search(r"o(\d+)$", normalized)
+    if numbered_suffix is not None:
+        suffix_rank = 2 + int(numbered_suffix.group(1))
+        normalized = normalized[: numbered_suffix.start()]
+    else:
+        suffix_rank = len(normalized) - len(normalized.rstrip("o"))
+        if suffix_rank:
+            normalized = normalized[:-suffix_rank]
     return [int(part) for part in normalized.split(".")] + [suffix_rank]
 
 

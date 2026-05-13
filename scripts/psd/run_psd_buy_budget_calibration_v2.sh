@@ -15,10 +15,9 @@ workers="${PSD_BUY_V2_WORKERS:-16}"
 python3 -m scripts.python.calibration.psd.psd_buy_budget_calibration_v2 \
   --quarterly-csv private-datasets/psd/2024/psd-quarterly-2024.csv \
   --ppd-csv-2024 private-datasets/ppd/pp-2024.csv \
-  --ppd-csv-2025 private-datasets/ppd/pp-2025.csv \
   --target-year-psd 2024 \
-  --ppd-status-mode both \
-  --year-policy both \
+  --ppd-status-mode a_only \
+  --year-policy 2024_only \
   --guardrail-mode fail \
   --hard-p95-cap 15 \
   --exponent-max 1.0 \
@@ -30,6 +29,7 @@ python3 -m scripts.python.calibration.psd.psd_buy_budget_calibration_v2 \
   --within-bin-points 11 \
   --quantile-grid-size 4000 \
   --ppd-mean-anchor-weight 4.0 \
+  --fixed-exponent 1.0 \
   --income-open-upper-k 200 \
   --property-open-upper-k 2000 \
   --workers "${workers}" \

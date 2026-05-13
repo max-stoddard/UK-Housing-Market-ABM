@@ -24,6 +24,7 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR, ROUND_HALF_UP
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -38,7 +39,8 @@ from scripts.python.helpers.common.paths import repo_root as default_repo_root
 
 BTL_PROBABILITY_MULTIPLIER = "BTL_PROBABILITY_MULTIPLIER"
 DEFAULT_TARGET = 0.0515255103048705
-DEFAULT_SEEDS = (1, 2, 3, 4)
+DEFAULT_TARGET_DESCRIPTION = "Weighted WAS R8 positive gross rental income household share."
+DEFAULT_SEEDS = (1, 2, 3, 4, 5, 6, 7, 8)
 DEFAULT_WORKERS = 20
 DEFAULT_PRECISION = 0.005
 DEFAULT_COARSE_MIN = 0.05
@@ -50,7 +52,7 @@ DEFAULT_WINDOW_START = 200
 DEFAULT_TARGET_TOLERANCE = 1.0e-12
 DEFAULT_OUTPUT_ROOT = "tmp/output-calibration"
 EVIDENCE_DIR_TEMPLATE = "input-data-versions/calibration-evidence/output-btl-probability-multiplier-{output_version}"
-VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*o?$", re.IGNORECASE)
+VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*(?:o+|o\d+)?$", re.IGNORECASE)
 
 REQUIRED_RUN_OVERRIDES = {
     "N_STEPS": str(DEFAULT_N_STEPS),
@@ -110,7 +112,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--seeds",
         default=",".join(str(seed) for seed in DEFAULT_SEEDS),
-        help="Comma-separated seed block used for every candidate (default: 1,2,3,4).",
+        help="Comma-separated seed block used for every candidate (default: 1,2,3,4,5,6,7,8).",
     )
     parser.add_argument(
         "--workers",
@@ -133,6 +135,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_TARGET,
         help=f"Survey-side weighted R8 prevalence target (default: {DEFAULT_TARGET}).",
+    )
+    parser.add_argument(
+        "--target-description",
+        default=DEFAULT_TARGET_DESCRIPTION,
+        help="Human-readable provenance label for the survey-side target.",
     )
     parser.add_argument(
         "--output-root",
@@ -250,6 +257,7 @@ def config_text_hash(config_text: str) -> str:
 def btl_probability_multiplier_comment(
     *,
     target: float,
+    target_description: str,
     selected_multiplier: float,
     selected_share: float | None = None,
 ) -> list[str]:
@@ -262,8 +270,8 @@ def btl_probability_multiplier_comment(
         )
     )
     return [
-        "# Multiplier for the probability of being a buy-to-let investor, output-calibrated against the weighted",
-        f"# WAS Round 8 positive-gross-rental-income household share target ({format_float(target, decimals=16)}).",
+        "# Multiplier for the probability of being a buy-to-let investor, output-calibrated against:",
+        f"# {target_description} Target = {format_float(target, decimals=16)}.",
         selected_note,
     ]
 
@@ -305,6 +313,7 @@ def create_output_version(
     selected_multiplier: float,
     overwrite: bool,
     target: float = DEFAULT_TARGET,
+    target_description: str = DEFAULT_TARGET_DESCRIPTION,
     selected_share: float | None = None,
 ) -> Path:
     source_version = validate_version_name(source_version)
@@ -330,6 +339,7 @@ def create_output_version(
             format_float(selected_multiplier, decimals=10),
             preceding_comment_lines=btl_probability_multiplier_comment(
                 target=target,
+                target_description=target_description,
                 selected_multiplier=selected_multiplier,
                 selected_share=selected_share,
             ),
@@ -711,6 +721,10 @@ def execute_stage(
 
     total_runs = len(candidates) * len(seeds)
     started_at = time.monotonic()
+    completed_by_candidate: dict[float, int] = {candidate: 0 for candidate in candidates}
+    completed_candidates: set[float] = set()
+    cache_hits = 0
+    new_runs = 0
     print(
         f"[btl-calibration] stage={stage} candidates={len(candidates)} seeds={len(seeds)} "
         f"runs={total_runs} workers={workers}",
@@ -739,12 +753,25 @@ def execute_stage(
         for index, future in enumerate(as_completed(futures), start=1):
             result = future.result()
             run_results.append(result)
+            completed_by_candidate[result.multiplier] += 1
+            if completed_by_candidate[result.multiplier] == len(seeds):
+                completed_candidates.add(result.multiplier)
+            if result.cached:
+                cache_hits += 1
+            else:
+                new_runs += 1
             elapsed = time.monotonic() - started_at
+            throughput = index / elapsed if elapsed > 0 else 0.0
+            remaining = total_runs - index
+            eta_seconds = remaining / throughput if throughput > 0 else None
             print(
                 f"[btl-calibration] stage={stage} progress={index}/{total_runs} "
+                f"completedCandidates={len(completed_candidates)}/{len(candidates)} "
                 f"multiplier={format_float(result.multiplier)} seed={result.seed} "
                 f"share={result.rental_income_positive_share:.6f}"
-                f"{' cached' if result.cached else ''} elapsed={_format_duration(elapsed)}",
+                f"{' cached' if result.cached else ''} elapsed={_format_duration(elapsed)} "
+                f"throughput={throughput:.3f}runs/s eta={_format_optional_duration(eta_seconds)} "
+                f"finish={_format_finish_time(eta_seconds)} cacheHits={cache_hits} newRuns={new_runs}",
                 flush=True,
             )
 
@@ -804,6 +831,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
         f"--coarse-step {format_float(args.coarse_step)}",
         f"--fine-radius {format_float(args.fine_radius)}",
         f"--target {format_float(args.target, decimals=16)}",
+        f"--target-description {json.dumps(args.target_description)}",
         f"--output-root {args.output_root}",
     ]
     if args.evidence_dir:
@@ -896,6 +924,7 @@ def run_calibration(args: argparse.Namespace) -> dict[str, object]:
         output_version=output_version,
         selected_multiplier=selected_multiplier,
         target=args.target,
+        target_description=args.target_description,
         selected_share=best_fine.rental_income_positive_share_mean,
         overwrite=args.overwrite_version,
     )
@@ -909,7 +938,7 @@ def run_calibration(args: argparse.Namespace) -> dict[str, object]:
         "outputVersion": output_version,
         "outputVersionDir": str(output_version_dir),
         "target": args.target,
-        "targetDescription": "Weighted WAS R8 positive gross rental income household share.",
+        "targetDescription": args.target_description,
         "dataBtlProbabilityChanged": False,
         "seeds": seeds,
         "workers": args.workers,
@@ -961,6 +990,18 @@ def _format_duration(seconds: float) -> str:
     if hours:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
+
+
+def _format_optional_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    return _format_duration(seconds)
+
+
+def _format_finish_time(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    return (datetime.now().astimezone() + timedelta(seconds=max(0.0, seconds))).isoformat(timespec="seconds")
 
 
 def main() -> None:

@@ -44,10 +44,12 @@ PPD_STATUS_CHOICES = (
     PPD_STATUS_BOTH,
 )
 
+YEAR_POLICY_2024_ONLY = "2024_only"
 YEAR_POLICY_2025_ONLY = "2025_only"
 YEAR_POLICY_POOLED_2024_2025 = "pooled_2024_2025"
 YEAR_POLICY_BOTH = "both"
 YEAR_POLICY_CHOICES = (
+    YEAR_POLICY_2024_ONLY,
     YEAR_POLICY_2025_ONLY,
     YEAR_POLICY_POOLED_2024_2025,
     YEAR_POLICY_BOTH,
@@ -95,11 +97,17 @@ class QuantileFitSpec:
         0.10,
         0.15,
         0.20,
+        0.25,
         0.30,
+        0.35,
         0.40,
+        0.45,
         0.50,
+        0.55,
         0.60,
+        0.65,
         0.70,
+        0.75,
         0.80,
         0.85,
         0.90,
@@ -112,6 +120,10 @@ class QuantileFitSpec:
     sigma_warning_low: float = SIGMA_WARNING_LOW
     sigma_warning_high: float = SIGMA_WARNING_HIGH
     median_target_curve: "SoftTargetCurve | dict[int, float] | None" = None
+    fixed_exponent: float | None = None
+    quantile_huber_delta: float = 0.05
+    sigma_search_low: float = 0.1
+    sigma_search_high: float = 0.8
 
     def resolved_median_target_curve(self) -> dict[int, float]:
         if self.median_target_curve is None:
@@ -182,9 +194,29 @@ class PpdYearMoments:
 @dataclass(frozen=True)
 class PpdSummary:
     status_mode: str
+    source_paths: tuple[str, ...]
     rows_total: int
     rows_used: int
     year_moments: dict[int, PpdYearMoments]
+    loaded_years: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class RakedPpdTarget:
+    status_mode: str
+    source_year: int
+    source_paths: tuple[str, ...]
+    rows_total: int
+    rows_source_year: int
+    rows_valid_price: int
+    rows_used: int
+    rows_unmatched_to_psd_bands: int
+    rows_non_positive_weight: int
+    property_band_count: int
+    bands_with_ppd_rows: int
+    log_prices: list[float]
+    weights: list[float]
+    diagnostics: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -268,13 +300,15 @@ def iter_status_modes(status_mode: str) -> tuple[str, ...]:
 
 def iter_year_policies(year_policy: str) -> tuple[str, ...]:
     if year_policy == YEAR_POLICY_BOTH:
-        return (YEAR_POLICY_2025_ONLY, YEAR_POLICY_POOLED_2024_2025)
-    if year_policy not in (YEAR_POLICY_2025_ONLY, YEAR_POLICY_POOLED_2024_2025):
+        return (YEAR_POLICY_2024_ONLY, YEAR_POLICY_2025_ONLY, YEAR_POLICY_POOLED_2024_2025)
+    if year_policy not in (YEAR_POLICY_2024_ONLY, YEAR_POLICY_2025_ONLY, YEAR_POLICY_POOLED_2024_2025):
         raise ValueError(f"Unsupported year_policy: {year_policy}")
     return (year_policy,)
 
 
 def fit_years_from_policy(year_policy: str) -> tuple[int, ...]:
+    if year_policy == YEAR_POLICY_2024_ONLY:
+        return (2024,)
     if year_policy == YEAR_POLICY_2025_ONLY:
         return (2025,)
     if year_policy == YEAR_POLICY_POOLED_2024_2025:
@@ -342,6 +376,31 @@ def _weighted_quantile(values: list[float], weights: list[float], q: float) -> f
         if cumulative >= threshold:
             return value
     return ordered[-1][0]
+
+
+def _weighted_quantiles(values: list[float], weights: list[float], levels: tuple[float, ...]) -> tuple[float, ...]:
+    if not values or len(values) != len(weights):
+        raise ValueError("Weighted quantiles require non-empty aligned arrays.")
+    if any(q < 0.0 or q > 1.0 for q in levels):
+        raise ValueError("quantile levels must be in [0,1].")
+    ordered = sorted(zip(values, weights), key=lambda item: item[0])
+    total = sum(weight for _, weight in ordered)
+    if total <= 0.0:
+        raise ValueError("Weighted quantiles require positive total weight.")
+
+    sorted_levels = sorted(enumerate(levels), key=lambda item: item[1])
+    output = [ordered[-1][0]] * len(levels)
+    cumulative = 0.0
+    pointer = 0
+    for value, weight in ordered:
+        cumulative += weight
+        while pointer < len(sorted_levels) and cumulative >= sorted_levels[pointer][1] * total:
+            original_index, _level = sorted_levels[pointer]
+            output[original_index] = value
+            pointer += 1
+        if pointer >= len(sorted_levels):
+            break
+    return tuple(output)
 
 
 def _weighted_quantile_series(values: list[float], weights: list[float], n_points: int) -> list[float]:
@@ -558,6 +617,7 @@ def _modern_income_price_marginals(
     top_bin_share_known = top_bin_mass / known_income_mass if known_income_mass > 0.0 else 0.0
 
     diagnostics = {
+        "source_year_psd": float(target_year_psd),
         "income_bins": float(len(income_bins)),
         "price_bins": float(len(property_bins)),
         "income_mass_known": known_income_mass,
@@ -723,9 +783,137 @@ def load_ppd_summary(
 
     return PpdSummary(
         status_mode=status_mode,
+        source_paths=tuple(str(path) for path in ppd_paths),
         rows_total=rows_total,
         rows_used=rows_used,
         year_moments=year_moments,
+        loaded_years=tuple(sorted(year_moments)),
+    )
+
+
+def _find_band_index_for_value(value: float, bins: list[PsdBin]) -> int | None:
+    for index, item in enumerate(bins):
+        lower = -math.inf if item.lower is None else item.lower
+        upper = math.inf if item.upper is None else item.upper
+        if value >= lower and value <= upper:
+            return index
+    return None
+
+
+def _property_bins_from_rows(rows: list[LongPsdRow], target_year_psd: int) -> list[PsdBin]:
+    property_sales = aggregate_category_sales(rows, group=MODERN_2024_PROPERTY_GROUP, year=target_year_psd)
+    if not property_sales:
+        raise ValueError(f"Missing modern property group '{MODERN_2024_PROPERTY_GROUP}' for year {target_year_psd}.")
+    property_bins = build_bins_from_category_masses(property_sales)
+    if not property_bins:
+        raise ValueError("No usable PSD property-value bins after parsing.")
+    return property_bins
+
+
+def load_raked_ppd_target(
+    *,
+    ppd_paths: tuple[Path, ...],
+    status_mode: str,
+    source_year: int,
+    property_bins: list[PsdBin],
+) -> RakedPpdTarget:
+    if status_mode not in (PPD_STATUS_A_ONLY, PPD_STATUS_ALL):
+        raise ValueError(f"Unsupported status_mode: {status_mode}")
+    if not property_bins:
+        raise ValueError("property_bins must be non-empty.")
+
+    rows_total = 0
+    rows_source_year = 0
+    rows_valid_price = 0
+    rows_unmatched = 0
+    rows_by_band: list[list[float]] = [[] for _ in property_bins]
+
+    for path in ppd_paths:
+        if not path.exists():
+            raise ValueError(f"Missing PPD CSV: {path}")
+
+        with path.open("r", encoding="utf-8", newline="", errors="replace") as handle:
+            reader = csv.reader(handle)
+            for row in reader:
+                rows_total += 1
+                if len(row) <= 1:
+                    continue
+                year = _parse_ppd_year(row)
+                if year != source_year:
+                    continue
+                rows_source_year += 1
+
+                try:
+                    price = float(row[1].strip())
+                except ValueError:
+                    continue
+                if price <= 0.0:
+                    continue
+
+                status = _parse_ppd_status(row)
+                if status_mode == PPD_STATUS_A_ONLY and status != "A":
+                    continue
+
+                rows_valid_price += 1
+                band_index = _find_band_index_for_value(price, property_bins)
+                if band_index is None:
+                    rows_unmatched += 1
+                    continue
+                rows_by_band[band_index].append(math.log(price))
+
+    log_prices: list[float] = []
+    weights: list[float] = []
+    rows_non_positive_weight = 0
+    bands_with_rows = 0
+    psd_total_mass = sum(max(item.mass, 0.0) for item in property_bins)
+    if psd_total_mass <= 0.0:
+        raise ValueError("PSD property-value bands require positive total mass.")
+
+    for item, band_log_prices in zip(property_bins, rows_by_band):
+        if not band_log_prices:
+            continue
+        if item.mass <= 0.0:
+            rows_non_positive_weight += len(band_log_prices)
+            continue
+        bands_with_rows += 1
+        weight_per_row = item.mass / len(band_log_prices)
+        log_prices.extend(band_log_prices)
+        weights.extend([weight_per_row] * len(band_log_prices))
+
+    if not log_prices:
+        raise ValueError("No usable raked PPD target rows after filtering and PSD-band matching.")
+
+    weight_total = sum(weights)
+    diagnostics = {
+        "source_year_ppd": float(source_year),
+        "ppd_rows_total": float(rows_total),
+        "ppd_rows_source_year": float(rows_source_year),
+        "ppd_rows_valid_price": float(rows_valid_price),
+        "ppd_rows_used_raked": float(len(log_prices)),
+        "ppd_rows_unmatched_to_psd_bands": float(rows_unmatched),
+        "ppd_rows_non_positive_weight": float(rows_non_positive_weight),
+        "ppd_raked_weight_total": weight_total,
+        "ppd_raked_weight_total_normalized_check": 1.0,
+        "ppd_property_band_count": float(len(property_bins)),
+        "ppd_property_bands_with_rows": float(bands_with_rows),
+        "ppd_2025_loaded": 1.0 if any("2025" in str(path) for path in ppd_paths) else 0.0,
+    }
+    normalized_weights = [weight / weight_total for weight in weights]
+    return RakedPpdTarget(
+        status_mode=status_mode,
+        source_year=source_year,
+        source_paths=tuple(str(path) for path in ppd_paths),
+        rows_total=rows_total,
+        rows_source_year=rows_source_year,
+        rows_valid_price=rows_valid_price,
+        rows_used=len(log_prices),
+        rows_unmatched_to_psd_bands=rows_unmatched,
+        rows_non_positive_weight=rows_non_positive_weight,
+        property_band_count=len(property_bins),
+        bands_with_ppd_rows=bands_with_rows,
+        log_prices=log_prices,
+        weights=normalized_weights,
+        diagnostics=diagnostics,
     )
 
 
@@ -820,10 +1008,16 @@ def evaluate_guardrails(
 
     if abs(buy_mu) > 1e-12:
         hard_failures.append(f"BUY_MU must be 0 within tolerance 1e-12, got {buy_mu:.12g}.")
+    if buy_scale <= 0.0:
+        hard_failures.append(f"BUY_SCALE must be > 0, got {buy_scale:.12g}.")
+    if buy_exponent <= 0.0:
+        hard_failures.append(f"BUY_EXPONENT must be > 0, got {buy_exponent:.12g}.")
     if buy_exponent > exponent_max:
         hard_failures.append(
             f"BUY_EXPONENT must be <= {exponent_max:.6g}, got {buy_exponent:.6f}."
         )
+    if buy_sigma < 0.1 or buy_sigma > 0.8:
+        hard_failures.append(f"BUY_SIGMA must be in [0.1, 0.8], got {buy_sigma:.6f}.")
 
     previous_median_budget = -math.inf
     for income in income_checkpoints:
@@ -941,6 +1135,245 @@ def _penalty_median_curve(*, med_map: dict[int, float], target_curve: dict[int, 
     return sum(penalties) / len(penalties) if penalties else 0.0
 
 
+def _huber(value: float, delta: float) -> float:
+    magnitude = abs(value)
+    if magnitude <= delta:
+        return 0.5 * value * value
+    return delta * (magnitude - 0.5 * delta)
+
+
+def _weighted_median(values: list[float], weights: list[float]) -> float:
+    return _weighted_quantile(values, weights, 0.5)
+
+
+def _mixture_normal_cdf(
+    *,
+    y_value: float,
+    log_scale: float,
+    exponent: float,
+    sigma: float,
+    log_income_values: list[float],
+    income_weights: list[float],
+    normal: NormalDist,
+) -> float:
+    if sigma <= 0.0:
+        raise ValueError("sigma must be positive.")
+    total = 0.0
+    for log_income, weight in zip(log_income_values, income_weights):
+        center = log_scale + exponent * log_income
+        total += weight * normal.cdf((y_value - center) / sigma)
+    return total
+
+
+def _mixture_normal_quantile(
+    *,
+    q: float,
+    log_scale: float,
+    exponent: float,
+    sigma: float,
+    log_income_values: list[float],
+    income_weights: list[float],
+    normal: NormalDist,
+) -> float:
+    if q <= 0.0 or q >= 1.0:
+        raise ValueError("Mixture quantile q must be in (0,1).")
+    centers = [log_scale + exponent * value for value in log_income_values]
+    lower = min(centers) + sigma * normal.inv_cdf(max(q * 1.0e-4, 1.0e-8))
+    upper = max(centers) + sigma * normal.inv_cdf(min(1.0 - (1.0 - q) * 1.0e-4, 1.0 - 1.0e-8))
+    for _ in range(72):
+        mid = (lower + upper) / 2.0
+        cdf = _mixture_normal_cdf(
+            y_value=mid,
+            log_scale=log_scale,
+            exponent=exponent,
+            sigma=sigma,
+            log_income_values=log_income_values,
+            income_weights=income_weights,
+            normal=normal,
+        )
+        if cdf < q:
+            lower = mid
+        else:
+            upper = mid
+    return (lower + upper) / 2.0
+
+
+def _mixture_normal_quantiles(
+    *,
+    levels: tuple[float, ...],
+    log_scale: float,
+    exponent: float,
+    sigma: float,
+    log_income_values: list[float],
+    income_weights: list[float],
+    normal: NormalDist,
+) -> tuple[float, ...]:
+    return tuple(
+        _mixture_normal_quantile(
+            q=level,
+            log_scale=log_scale,
+            exponent=exponent,
+            sigma=sigma,
+            log_income_values=log_income_values,
+            income_weights=income_weights,
+            normal=normal,
+        )
+        for level in levels
+    )
+
+
+def _quantile_loss(
+    *,
+    target_log_quantiles: tuple[float, ...],
+    model_log_quantiles: tuple[float, ...],
+    quantile_weights: tuple[float, ...],
+    huber_delta: float,
+) -> float:
+    total_weight = sum(quantile_weights)
+    if total_weight <= 0.0:
+        raise ValueError("quantile_weights require positive total weight.")
+    total = 0.0
+    for target, model, weight in zip(target_log_quantiles, model_log_quantiles, quantile_weights):
+        total += weight * _huber(target - model, huber_delta)
+    return total / total_weight
+
+
+def _fit_2024_only_raked_quantiles(
+    *,
+    marginals: _MarginalBundle,
+    raked_target: RakedPpdTarget,
+    anchor: AnchorDiagnostics,
+    exponent: float,
+    spec: QuantileFitSpec,
+    weights: ObjectiveWeights,
+    income_checkpoints: tuple[float, ...],
+) -> tuple[float, float, ObjectiveComponents, dict[str, float], tuple[float, ...], tuple[float, ...], tuple[float, ...]]:
+    if exponent <= 0.0:
+        raise ValueError("fixed exponent must be positive.")
+    if spec.sigma_search_low <= 0.0 or spec.sigma_search_high < spec.sigma_search_low:
+        raise ValueError("Invalid sigma search bounds.")
+
+    normal = NormalDist()
+    income_weight_total = sum(marginals.income_weights)
+    if income_weight_total <= 0.0:
+        raise ValueError("Income weights require positive total.")
+    income_weights = [weight / income_weight_total for weight in marginals.income_weights]
+    log_income_values = [math.log(max(value, 1.0e-12)) for value in marginals.income_values]
+
+    levels = spec.quantile_levels
+    target_log_quantiles = _weighted_quantiles(raked_target.log_prices, raked_target.weights, levels)
+    quantile_weights = tuple(0.5 if level in (0.05, 0.95) else 1.0 for level in levels)
+
+    sigma_values = [spec.sigma_search_low + idx * 0.01 for idx in range(int(round((spec.sigma_search_high - spec.sigma_search_low) / 0.01)) + 1)]
+    best: tuple[float, float, ObjectiveComponents, tuple[float, ...], dict[str, float]] | None = None
+
+    def evaluate_sigma(sigma: float) -> tuple[float, float, ObjectiveComponents, tuple[float, ...], dict[str, float]]:
+        base_quantiles = _mixture_normal_quantiles(
+            levels=levels,
+            log_scale=0.0,
+            exponent=exponent,
+            sigma=sigma,
+            log_income_values=log_income_values,
+            income_weights=income_weights,
+            normal=normal,
+        )
+        residual_shifts = [
+            target - model
+            for target, model in zip(target_log_quantiles, base_quantiles)
+        ]
+        log_scale = _weighted_median(residual_shifts, list(quantile_weights))
+        model_quantiles = tuple(log_scale + value for value in base_quantiles)
+        fit = _quantile_loss(
+            target_log_quantiles=target_log_quantiles,
+            model_log_quantiles=model_quantiles,
+            quantile_weights=quantile_weights,
+            huber_delta=spec.quantile_huber_delta,
+        )
+
+        buy_scale = math.exp(log_scale)
+        guardrails = evaluate_guardrails(
+            buy_scale=buy_scale,
+            buy_exponent=exponent,
+            buy_mu=0.0,
+            buy_sigma=sigma,
+            hard_p95_cap=spec.hard_p95_cap,
+            exponent_max=spec.exponent_max,
+            sigma_warning_low=spec.sigma_warning_low,
+            sigma_warning_high=spec.sigma_warning_high,
+            income_checkpoints=income_checkpoints,
+            enforce_hard_gates=False,
+        )
+        model_median = _mixture_normal_quantile(
+            q=0.5,
+            log_scale=log_scale,
+            exponent=exponent,
+            sigma=sigma,
+            log_income_values=log_income_values,
+            income_weights=income_weights,
+            normal=normal,
+        )
+        psd_property_median = math.log(_weighted_quantile(marginals.price_values, marginals.price_weights, 0.5))
+        target_median = target_log_quantiles[levels.index(0.5)] if 0.5 in levels else _weighted_quantile(raked_target.log_prices, raked_target.weights, 0.5)
+        anchor_values = [target_median, psd_property_median, math.log(anchor.implied_price)]
+        anchor_penalty = sum(_huber(model_median - value, spec.quantile_huber_delta) for value in anchor_values) / len(anchor_values)
+        penalty_p95 = _penalty_p95(p95_map=guardrails.p95_budget_multiples, soft_cap=spec.p95_soft_cap)
+        penalty_sigma = _penalty_sigma(sigma=sigma, low=spec.sigma_warning_low, high=spec.sigma_warning_high)
+        penalty_curve = _penalty_median_curve(
+            med_map=guardrails.median_budget_multiples,
+            target_curve=spec.resolved_median_target_curve(),
+        )
+        objective = _objective_from_components(
+            weights=weights,
+            fit=fit,
+            anchor=anchor_penalty,
+            p95=penalty_p95,
+            sigma=penalty_sigma,
+            curve=penalty_curve,
+        )
+        diagnostics = {
+            "quantile_huber_delta": spec.quantile_huber_delta,
+            "model_median_log_price": model_median,
+            "target_raked_median_log_price": target_median,
+            "psd_property_median_log_price": psd_property_median,
+            "anchor_implied_log_price": math.log(anchor.implied_price),
+            "raked_quantile_fit_loss": fit,
+        }
+        return objective.objective_total, log_scale, objective, model_quantiles, diagnostics
+
+    for sigma in sigma_values:
+        candidate = evaluate_sigma(sigma)
+        if best is None or candidate[0] < best[0]:
+            best = candidate
+
+    if best is None:
+        raise ValueError("No 2024-only sigma candidates were evaluated.")
+
+    best_sigma = sigma_values[0]
+    best_total = math.inf
+    for sigma in sigma_values:
+        candidate = evaluate_sigma(sigma)
+        if candidate[0] < best_total:
+            best_total = candidate[0]
+            best_sigma = sigma
+
+    refine_low = max(spec.sigma_search_low, best_sigma - 0.01)
+    refine_high = min(spec.sigma_search_high, best_sigma + 0.01)
+    refined_count = int(round((refine_high - refine_low) / 0.001)) + 1
+    for idx in range(refined_count):
+        sigma = refine_low + idx * 0.001
+        candidate = evaluate_sigma(sigma)
+        if candidate[0] < best[0]:
+            best = candidate
+            best_sigma = sigma
+
+    _, log_scale, objective, model_log_quantiles, diagnostics = best
+    buy_scale = math.exp(log_scale)
+    residuals = tuple(target - model for target, model in zip(target_log_quantiles, model_log_quantiles))
+    diagnostics["selected_sigma_grid_value"] = best_sigma
+    diagnostics["selected_log_scale"] = log_scale
+    return buy_scale, best_sigma, objective, diagnostics, target_log_quantiles, model_log_quantiles, residuals
+
+
 def calibrate_buy_variant(
     *,
     marginals: _MarginalBundle,
@@ -957,6 +1390,7 @@ def calibrate_buy_variant(
     enforce_hard_gates: bool = True,
     fit_degradation_vs_baseline: float | None = None,
     pareto_sensitivity_summary: dict[str, float] | None = None,
+    raked_ppd_target: RakedPpdTarget | None = None,
 ) -> BuyBudgetVariantResult:
     if guardrail_mode not in GUARDRAIL_MODE_CHOICES:
         raise ValueError(f"Unsupported guardrail_mode: {guardrail_mode}")
@@ -977,23 +1411,72 @@ def calibrate_buy_variant(
         for quantile in spec.quantile_levels
     )
 
-    x_values = [math.log(max(value, 1e-12)) for value in income_quantiles]
-    y_values = [math.log(max(value, 1e-12)) for value in price_quantiles]
-
     log_income_values = [math.log(max(value, 1e-12)) for value in income_values]
     mean_log_income = _weighted_mean(log_income_values, income_weights)
 
-    intercept, buy_exponent = _solve_anchor_weighted_ols(
-        x_values,
-        y_values,
-        x_anchor=mean_log_income,
-        y_anchor=fit_mean_log_price,
-        anchor_weight=spec.ppd_mean_anchor_weight,
-    )
-    buy_scale = math.exp(intercept)
-
-    residuals = [y - (intercept + buy_exponent * x) for x, y in zip(x_values, y_values)]
-    buy_sigma = math.sqrt(sum(value * value for value in residuals) / len(residuals))
+    if year_policy == YEAR_POLICY_2024_ONLY:
+        if raked_ppd_target is None:
+            raise ValueError("2024_only BUY calibration requires a raked PPD target.")
+        buy_exponent = 1.0 if spec.fixed_exponent is None else spec.fixed_exponent
+        buy_scale, buy_sigma, objective, raked_diagnostics, target_log_quantiles, model_log_quantiles, residuals = _fit_2024_only_raked_quantiles(
+            marginals=marginals,
+            raked_target=raked_ppd_target,
+            anchor=anchor,
+            exponent=buy_exponent,
+            spec=spec,
+            weights=weights,
+            income_checkpoints=income_checkpoints,
+        )
+        intercept = math.log(buy_scale)
+        price_quantiles = tuple(math.exp(value) for value in target_log_quantiles)
+        modeled_median_quantiles = tuple(math.exp(value) for value in model_log_quantiles)
+        quantile_rmse_log = math.sqrt(sum(value * value for value in residuals) / len(residuals))
+    else:
+        x_values = [math.log(max(value, 1e-12)) for value in income_quantiles]
+        y_values = [math.log(max(value, 1e-12)) for value in price_quantiles]
+        intercept, buy_exponent = _solve_anchor_weighted_ols(
+            x_values,
+            y_values,
+            x_anchor=mean_log_income,
+            y_anchor=fit_mean_log_price,
+            anchor_weight=spec.ppd_mean_anchor_weight,
+        )
+        buy_scale = math.exp(intercept)
+        residuals = tuple(y - (intercept + buy_exponent * x) for x, y in zip(x_values, y_values))
+        buy_sigma = math.sqrt(sum(value * value for value in residuals) / len(residuals))
+        median_curve_target = spec.resolved_median_target_curve()
+        preliminary_guardrails = evaluate_guardrails(
+            buy_scale=buy_scale,
+            buy_exponent=buy_exponent,
+            buy_mu=0.0,
+            buy_sigma=buy_sigma,
+            hard_p95_cap=spec.hard_p95_cap,
+            exponent_max=spec.exponent_max,
+            sigma_warning_low=spec.sigma_warning_low,
+            sigma_warning_high=spec.sigma_warning_high,
+            income_checkpoints=income_checkpoints,
+            enforce_hard_gates=enforce_hard_gates,
+        )
+        median_income = _weighted_quantile(income_values, income_weights, 0.5)
+        model_anchor_price = buy_scale * math.pow(max(median_income, 1e-12), buy_exponent)
+        anchor_error = abs(model_anchor_price - anchor.implied_price) / max(anchor.implied_price, 1e-9)
+        objective = _objective_from_components(
+            weights=weights,
+            fit=0.0,
+            anchor=anchor_error,
+            p95=_penalty_p95(p95_map=preliminary_guardrails.p95_budget_multiples, soft_cap=spec.p95_soft_cap),
+            sigma=_penalty_sigma(sigma=buy_sigma, low=spec.sigma_warning_low, high=spec.sigma_warning_high),
+            curve=_penalty_median_curve(
+                med_map=preliminary_guardrails.median_budget_multiples,
+                target_curve=median_curve_target,
+            ),
+        )
+        modeled_median_quantiles = tuple(
+            buy_scale * math.pow(max(income, 1e-12), buy_exponent)
+            for income in income_quantiles
+        )
+        raked_diagnostics = {}
+        quantile_rmse_log = math.sqrt(sum(value * value for value in residuals) / len(residuals))
     buy_mu = 0.0
 
     model_mean_log_price, model_var_log_price, model_income_mean_log, model_income_var_log = _model_log_price_moments(
@@ -1022,7 +1505,7 @@ def calibrate_buy_variant(
         yearly_fit_std_error[year] = std_error
         yearly_fit_distance[year] = math.sqrt(mean_error**2 + std_error**2)
 
-    worst_year_fit_distance = max(yearly_fit_distance.values())
+    worst_year_fit_distance = max(yearly_fit_distance[year] for year in fit_years)
 
     guardrails = evaluate_guardrails(
         buy_scale=buy_scale,
@@ -1037,35 +1520,53 @@ def calibrate_buy_variant(
         enforce_hard_gates=enforce_hard_gates,
     )
 
+    source_failures: list[str] = []
+    if year_policy == YEAR_POLICY_2024_ONLY:
+        if int(marginals.diagnostics.get("source_year_psd", -1)) != 2024:
+            source_failures.append("source_year_psd must be 2024 for 2024_only BUY calibration.")
+        if raked_ppd_target is None or raked_ppd_target.source_year != 2024:
+            source_failures.append("source_year_ppd must be 2024 for 2024_only BUY calibration.")
+        if 2025 in ppd_summary.loaded_years:
+            source_failures.append("No PPD 2025 rows may be loaded for 2024_only BUY calibration.")
+        if raked_ppd_target is not None and raked_ppd_target.diagnostics.get("ppd_2025_loaded", 0.0) > 0.0:
+            source_failures.append("No PPD 2025 file may be loaded for 2024_only BUY calibration.")
+        if fit_years != (2024,):
+            source_failures.append("2024_only BUY calibration must fit exactly year 2024.")
+    if source_failures:
+        if enforce_hard_gates:
+            guardrails = GuardrailOutcome(
+                passed=False,
+                hard_failures=guardrails.hard_failures + tuple(source_failures),
+                warnings=guardrails.warnings,
+                median_budget_multiples=guardrails.median_budget_multiples,
+                p95_budget_multiples=guardrails.p95_budget_multiples,
+            )
+        else:
+            guardrails = GuardrailOutcome(
+                passed=guardrails.passed,
+                hard_failures=guardrails.hard_failures,
+                warnings=guardrails.warnings + tuple(f"(baseline relaxed) {item}" for item in source_failures),
+                median_budget_multiples=guardrails.median_budget_multiples,
+                p95_budget_multiples=guardrails.p95_budget_multiples,
+            )
+
     median_income = _weighted_quantile(income_values, income_weights, 0.5)
     model_anchor_price = buy_scale * math.pow(max(median_income, 1e-12), buy_exponent)
     anchor_error = abs(model_anchor_price - anchor.implied_price) / max(anchor.implied_price, 1e-9)
-
-    median_curve_target = spec.resolved_median_target_curve()
-    penalty_curve = _penalty_median_curve(
-        med_map=guardrails.median_budget_multiples,
-        target_curve=median_curve_target,
-    )
-    penalty_p95 = _penalty_p95(
-        p95_map=guardrails.p95_budget_multiples,
-        soft_cap=spec.p95_soft_cap,
-    )
-    penalty_sigma = _penalty_sigma(
-        sigma=buy_sigma,
-        low=spec.sigma_warning_low,
-        high=spec.sigma_warning_high,
-    )
-
-    objective = _objective_from_components(
-        weights=weights,
-        fit=worst_year_fit_distance,
-        anchor=anchor_error,
-        p95=penalty_p95,
-        sigma=penalty_sigma,
-        curve=penalty_curve,
-    )
+    if year_policy != YEAR_POLICY_2024_ONLY:
+        objective = _objective_from_components(
+            weights=weights,
+            fit=worst_year_fit_distance,
+            anchor=anchor_error,
+            p95=objective.objective_p95,
+            sigma=objective.objective_sigma,
+            curve=objective.objective_median_curve,
+        )
 
     diagnostics = dict(marginals.diagnostics)
+    diagnostics.update(raked_diagnostics)
+    if raked_ppd_target is not None:
+        diagnostics.update(raked_ppd_target.diagnostics)
     if pareto_sensitivity_summary:
         diagnostics.update(pareto_sensitivity_summary)
     diagnostics.update(
@@ -1074,10 +1575,12 @@ def calibrate_buy_variant(
             "fit_mean_log_price": fit_mean_log_price,
             "intercept": intercept,
             "buy_mu_locked": 1.0,
+            "fixed_exponent": buy_exponent if year_policy == YEAR_POLICY_2024_ONLY else float("nan"),
+            "quantile_levels": tuple(spec.quantile_levels),
             "sigma_warning": 1.0
             if buy_sigma < spec.sigma_warning_low or buy_sigma > spec.sigma_warning_high
             else 0.0,
-            "quantile_rmse_log": math.sqrt(sum(value * value for value in residuals) / len(residuals)),
+            "quantile_rmse_log": quantile_rmse_log,
             "model_mean_log_price": model_mean_log_price,
             "model_std_log_price": model_std_log_price,
             "model_income_mean_log": model_income_mean_log,
@@ -1114,12 +1617,7 @@ def calibrate_buy_variant(
         + buy_exponent * math.log(max(income, 1e-12))
         + buy_sigma * normal.inv_cdf((idx + 0.5) / spec.quantile_grid_size)
         for idx, income in enumerate(model_income_series)
-    )
-
-    modeled_median_quantiles = tuple(
-        buy_scale * math.pow(max(income, 1e-12), buy_exponent)
-        for income in income_quantiles
-    )
+        )
 
     if guardrail_mode == GUARDRAIL_MODE_FAIL and enforce_hard_gates and not guardrails.passed:
         diagnostics["guardrail_failed"] = 1.0
@@ -1189,11 +1687,23 @@ def evaluate_variants(
 
     rows = load_quarterly_psd_rows(quarterly_csv)
     anchor = _median_anchor_from_rows(rows, target_year_psd)
+    property_bins = _property_bins_from_rows(rows, target_year_psd)
 
     summary_cache: dict[str, PpdSummary] = {
         status: load_ppd_summary(ppd_paths=ppd_paths, status_mode=status)
         for status in statuses
     }
+    raked_target_cache: dict[str, RakedPpdTarget] = {}
+    if YEAR_POLICY_2024_ONLY in policies:
+        raked_target_cache = {
+            status: load_raked_ppd_target(
+                ppd_paths=ppd_paths,
+                status_mode=status,
+                source_year=2024,
+                property_bins=property_bins,
+            )
+            for status in statuses
+        }
 
     marginal_cache: dict[float, _MarginalBundle] = {}
     for alpha in pareto_alpha_values:
@@ -1239,6 +1749,7 @@ def evaluate_variants(
             enforce_hard_gates=enforce_hard_gates,
             fit_degradation_vs_baseline=None,
             pareto_sensitivity_summary=pareto_sensitivity_summary,
+            raked_ppd_target=raked_target_cache.get(status),
         )
 
     if workers == 1 or total == 1:
@@ -1289,6 +1800,10 @@ def evaluate_baseline_best_fit(
         sigma_warning_low=spec.sigma_warning_low,
         sigma_warning_high=spec.sigma_warning_high,
         median_target_curve={},
+        fixed_exponent=spec.fixed_exponent,
+        quantile_huber_delta=spec.quantile_huber_delta,
+        sigma_search_low=spec.sigma_search_low,
+        sigma_search_high=spec.sigma_search_high,
     )
     baseline_weights = (ObjectiveWeights(w_fit=1.0, w_anchor=0.0, w_p95=0.0, w_sigma=0.0, w_curve=0.0, profile_id="baseline"),)
 
@@ -1314,7 +1829,7 @@ def evaluate_baseline_best_fit(
 
 def rank_variants(results: list[BuyBudgetVariantResult]) -> list[BuyBudgetVariantResult]:
     status_rank = {PPD_STATUS_A_ONLY: 0, PPD_STATUS_ALL: 1}
-    year_rank = {YEAR_POLICY_POOLED_2024_2025: 0, YEAR_POLICY_2025_ONLY: 1}
+    year_rank = {YEAR_POLICY_2024_ONLY: 0, YEAR_POLICY_POOLED_2024_2025: 1, YEAR_POLICY_2025_ONLY: 2}
     return sorted(
         results,
         key=lambda item: (
@@ -1529,12 +2044,14 @@ __all__ = [
     "PpdSummary",
     "ProductionSelection",
     "QuantileFitSpec",
+    "RakedPpdTarget",
     "SIGMA_WARNING_HIGH",
     "SIGMA_WARNING_LOW",
     "SoftTargetCurve",
     "TAIL_FAMILY_CHOICES",
     "TAIL_FAMILY_PARETO",
     "TailSpec",
+    "YEAR_POLICY_2024_ONLY",
     "YEAR_POLICY_2025_ONLY",
     "YEAR_POLICY_BOTH",
     "YEAR_POLICY_CHOICES",

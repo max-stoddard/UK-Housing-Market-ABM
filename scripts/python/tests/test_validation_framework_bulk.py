@@ -23,13 +23,15 @@ from scripts.python.validation.model.validation_profiles import resolve_validati
 
 class TestValidationFrameworkBulk(unittest.TestCase):
     def test_version_sorting_supports_repeated_output_suffixes(self) -> None:
-        unsorted_versions = ["v4.14oo", "v0oo", "v4.14", "v0", "v4.14o", "v0o"]
+        unsorted_versions = ["v0o2", "v4.14oo", "v0oo", "v4.14", "v0", "v4.14o", "v0o", "v0o1"]
 
         self.assertEqual(parse_version_parts("v0oo"), [0, 2])
+        self.assertEqual(parse_version_parts("v0o1"), [0, 3])
+        self.assertEqual(parse_version_parts("v0o2"), [0, 4])
         self.assertEqual(parse_version_parts("v4.14oo"), [4, 14, 2])
         self.assertEqual(
             sorted(unsorted_versions, key=parse_version_parts),
-            ["v0", "v0o", "v0oo", "v4.14", "v4.14o", "v4.14oo"],
+            ["v0", "v0o", "v0oo", "v0o1", "v0o2", "v4.14", "v4.14o", "v4.14oo"],
         )
 
     def test_list_versions_discovers_repeated_output_suffixes(self) -> None:
@@ -37,7 +39,7 @@ class TestValidationFrameworkBulk(unittest.TestCase):
             repo_root = Path(tmp_dir)
             input_data_dir = repo_root / "input-data-versions"
             input_data_dir.mkdir()
-            for version in ["v0oo", "v0", "v0o", "v4.14oo", "v4.14o", "v4.14"]:
+            for version in ["v0o2", "v0oo", "v0", "v0o1", "v0o", "v4.14oo", "v4.14o", "v4.14"]:
                 version_dir = input_data_dir / version
                 version_dir.mkdir()
                 (version_dir / "config.properties").write_text("", encoding="utf-8")
@@ -47,11 +49,11 @@ class TestValidationFrameworkBulk(unittest.TestCase):
 
             self.assertEqual(
                 list_versions(repo_root),
-                ["v0", "v0o", "v0oo", "v4.14", "v4.14o", "v4.14oo"],
+                ["v0", "v0o", "v0oo", "v0o1", "v0o2", "v4.14", "v4.14o", "v4.14oo"],
             )
             self.assertEqual(
-                resolve_versions(repo_root, "v4.14oo,v0oo,v0o"),
-                ["v0o", "v0oo", "v4.14oo"],
+                resolve_versions(repo_root, "v4.14oo,v0o2,v0oo,v0o"),
+                ["v0o", "v0oo", "v0o2", "v4.14oo"],
             )
 
     def test_run_validation_campaign_requires_positive_workers(self) -> None:

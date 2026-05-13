@@ -28,6 +28,8 @@ class TestValidationFrameworkProfiles(unittest.TestCase):
         v0_profile = resolve_reference_validation_profile("v0")
         v0o_profile = resolve_reference_validation_profile("v0o")
         v0oo_profile = resolve_reference_validation_profile("v0oo")
+        v0o1_profile = resolve_reference_validation_profile("v0o1")
+        v0o2_profile = resolve_reference_validation_profile("v0o2")
         latest_profile = resolve_reference_validation_profile("v4.1")
 
         self.assertIsNotNone(v0_profile)
@@ -35,6 +37,8 @@ class TestValidationFrameworkProfiles(unittest.TestCase):
         self.assertEqual(v0_profile.was_dataset, "W3")
         self.assertIs(v0o_profile, v0_profile)
         self.assertIs(v0oo_profile, v0_profile)
+        self.assertIs(v0o1_profile, v0_profile)
+        self.assertIs(v0o2_profile, v0_profile)
         self.assertIsNone(latest_profile)
 
     def test_v0_reference_profile_preserves_metric_ids_while_switching_household_reference_wave(self) -> None:

@@ -50,7 +50,7 @@ class TestOutputBtlProbabilityMultiplier(unittest.TestCase):
         self.assertEqual(args.version, "v4.14")
         self.assertEqual(args.output_version, "v4.14o")
         self.assertEqual(args.precision, DEFAULT_PRECISION)
-        self.assertEqual(args.seeds, "1,2,3,4")
+        self.assertEqual(args.seeds, "1,2,3,4,5,6,7,8")
         self.assertEqual(args.workers, 20)
         self.assertEqual(args.coarse_min, DEFAULT_COARSE_MIN)
         self.assertEqual(args.coarse_max, DEFAULT_COARSE_MAX)
@@ -58,6 +58,8 @@ class TestOutputBtlProbabilityMultiplier(unittest.TestCase):
 
     def test_validate_version_name_accepts_snapshot_versions_only(self) -> None:
         self.assertEqual(validate_version_name("v4.14o"), "v4.14o")
+        self.assertEqual(validate_version_name("v0o1"), "v0o1")
+        self.assertEqual(validate_version_name("v0o2"), "v0o2")
 
         for invalid_version in [
             "validation",
@@ -246,13 +248,19 @@ class TestOutputBtlProbabilityMultiplier(unittest.TestCase):
                 source_version="v4.14",
                 output_version="v4.14o",
                 selected_multiplier=1.235,
+                target=0.0752616555661275,
+                target_description=(
+                    "WAS Wave 3 household BTL prevalence target from the tracked v0 config note; "
+                    "full precision carried from existing v0o evidence."
+                ),
                 overwrite=False,
             )
 
             output_config = (output_dir / "config.properties").read_text(encoding="utf-8")
             self.assertIn("BTL_PROBABILITY_MULTIPLIER = 1.235", output_config)
-            self.assertIn("WAS Round 8 positive-gross-rental-income", output_config)
-            self.assertIn("0.0515255103048705", output_config)
+            self.assertIn("WAS Wave 3 household BTL prevalence target", output_config)
+            self.assertIn("0.0752616555661275", output_config)
+            self.assertNotIn("WAS Round 8 positive-gross-rental-income", output_config)
             self.assertIn("Selected BTL_PROBABILITY_MULTIPLIER = 1.235", output_config)
             self.assertIn(
                 'DATA_BTL_PROBABILITY = "src/main/resources/BTLProbabilityPerIncomePercentileBin-R8.csv"',

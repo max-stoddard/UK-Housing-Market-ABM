@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import shutil
 import subprocess
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -21,7 +24,7 @@ from scripts.python.helpers.common.cli import format_float
 from scripts.python.validation.model.runner import VALIDATION_RECORDING_OVERRIDES, _extract_seed_metrics
 from scripts.python.validation.model.validation_profiles import ValidationProfile
 
-VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*(?:oo?|)?$", re.IGNORECASE)
+VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*(?:o+|o\d+)?$", re.IGNORECASE)
 DEFAULT_OUTPUT_ROOT = "tmp/output-calibration"
 EVIDENCE_DIR_TEMPLATE = "input-data-versions/calibration-evidence/output-four-parameter-esmda-{output_version}"
 
@@ -158,7 +161,7 @@ def build_candidate_batches(
         raise ValueError("seed_count must be positive")
     if workers <= 0:
         raise ValueError("workers must be positive")
-    candidate_parallelism = max(1, workers // seed_count)
+    candidate_parallelism = max(1, math.ceil(workers / seed_count))
     return [
         list(member_ids[start : start + candidate_parallelism])
         for start in range(0, len(member_ids), candidate_parallelism)
@@ -390,11 +393,17 @@ def execute_seed_requests_for_members(
 
     results: list[SeedRunResult] = []
     member_ids = list(range(len(member_parameters)))
+    total_seed_runs = len(member_parameters) * len(seeds)
+    completed_by_member: dict[int, int] = {member_id: 0 for member_id in member_ids}
+    completed_members: set[int] = set()
+    cache_hits = 0
+    new_runs = 0
+    started_at = time.monotonic()
     for batch in build_candidate_batches(member_ids, seed_count=len(seeds), workers=workers):
         print(
             "[four-parameter-esmda] "
             f"iteration={iteration} evaluatingMembers={batch[0]}..{batch[-1]} "
-            f"seedRuns={len(batch) * len(seeds)}",
+            f"seedRuns={len(batch) * len(seeds)} totalSeedRuns={total_seed_runs}",
             flush=True,
         )
         with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="four-parameter-esmda") as executor:
@@ -420,11 +429,27 @@ def execute_seed_requests_for_members(
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result)
+                completed_by_member[result.member_id] += 1
+                if completed_by_member[result.member_id] == len(seeds):
+                    completed_members.add(result.member_id)
+                if result.cached:
+                    cache_hits += 1
+                else:
+                    new_runs += 1
+                completed_runs = len(results)
+                elapsed = time.monotonic() - started_at
+                throughput = completed_runs / elapsed if elapsed > 0 else 0.0
+                remaining_runs = total_seed_runs - completed_runs
+                eta_seconds = remaining_runs / throughput if throughput > 0 else None
                 print(
                     "[four-parameter-esmda] "
                     f"iteration={iteration} member={result.member_id} seed={result.seed} "
                     f"cached={str(result.cached).lower()} "
-                    f"completed={len(results)}/{len(member_parameters) * len(seeds)}",
+                    f"completedSeedRuns={completed_runs}/{total_seed_runs} "
+                    f"completedMembers={len(completed_members)}/{len(member_parameters)} "
+                    f"elapsed={_format_duration(elapsed)} throughput={throughput:.3f}runs/s "
+                    f"eta={_format_optional_duration(eta_seconds)} finish={_format_finish_time(eta_seconds)} "
+                    f"cacheHits={cache_hits} newRuns={new_runs}",
                     flush=True,
                 )
 
@@ -470,6 +495,27 @@ def write_json(path: Path, payload: Mapping[str, object]) -> None:
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _format_duration(seconds: float) -> str:
+    rounded = max(0, int(round(seconds)))
+    hours, remainder = divmod(rounded, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
+def _format_optional_duration(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    return _format_duration(seconds)
+
+
+def _format_finish_time(seconds: float | None) -> str:
+    if seconds is None:
+        return "unknown"
+    return (datetime.now().astimezone() + timedelta(seconds=max(0.0, seconds))).isoformat(timespec="seconds")
 
 
 __all__ = [
