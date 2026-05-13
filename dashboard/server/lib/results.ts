@@ -57,6 +57,7 @@ interface ParsedCoreIndicatorFile {
   status: Exclude<ResultsCoverageStatus, 'unsupported'>;
   note?: string;
   values: Array<number | null>;
+  missingValueCount?: number;
 }
 
 interface CachedValue<T> {
@@ -366,6 +367,38 @@ function safeNumber(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const CORE_INDICATOR_NUMERIC_TOKEN_PATTERN = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/;
+const CORE_INDICATOR_MISSING_TOKENS = new Set([
+  'nan',
+  '+nan',
+  '-nan',
+  'infinity',
+  '+infinity',
+  '-infinity'
+]);
+
+type CoreIndicatorTokenParseResult =
+  | { kind: 'number'; value: number }
+  | { kind: 'missing' }
+  | { kind: 'malformed'; token: string };
+
+function parseCoreIndicatorToken(token: string): CoreIndicatorTokenParseResult {
+  if (CORE_INDICATOR_MISSING_TOKENS.has(token.toLowerCase())) {
+    return { kind: 'missing' };
+  }
+
+  if (!CORE_INDICATOR_NUMERIC_TOKEN_PATTERN.test(token)) {
+    return { kind: 'malformed', token };
+  }
+
+  const value = Number(token);
+  if (!Number.isFinite(value)) {
+    return { kind: 'missing' };
+  }
+
+  return { kind: 'number', value };
+}
+
 function parseSemicolonRow(line: string): string[] {
   return line.split(';').map((token) => token.trim());
 }
@@ -426,12 +459,35 @@ function parseCoreIndicatorFile(filePath: string): ParsedCoreIndicatorFile {
       return { status: 'empty', note: 'File contains no numeric tokens.', values: [] };
     }
 
-    const values = tokens.map(safeNumber);
-    if (values.some((value) => value === null)) {
-      return { status: 'error', note: 'Core indicator contains non-numeric values.', values: [] };
+    const values: Array<number | null> = [];
+    let missingValueCount = 0;
+    for (const token of tokens) {
+      const parsed = parseCoreIndicatorToken(token);
+      if (parsed.kind === 'malformed') {
+        return {
+          status: 'error',
+          note: `Core indicator contains malformed token: ${parsed.token}`,
+          values: []
+        };
+      }
+      if (parsed.kind === 'missing') {
+        missingValueCount += 1;
+        values.push(null);
+      } else {
+        values.push(parsed.value);
+      }
     }
 
-    return { status: 'supported', values };
+    if (missingValueCount > 0) {
+      return {
+        status: 'supported',
+        note: `${missingValueCount} missing core indicator value${missingValueCount === 1 ? '' : 's'}.`,
+        values,
+        missingValueCount
+      };
+    }
+
+    return { status: 'supported', values, missingValueCount: 0 };
   } catch (error) {
     return { status: 'error', note: `Failed to parse core indicator: ${(error as Error).message}`, values: [] };
   }
@@ -845,7 +901,8 @@ function getRawSeriesForIndicator(runPath: string, indicatorId: string): {
     return {
       indicator,
       points: toSeriesPointsFromCore(parsed.values),
-      coverageStatus: 'supported'
+      coverageStatus: 'supported',
+      note: parsed.note
     };
   }
 
