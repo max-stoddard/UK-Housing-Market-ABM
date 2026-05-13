@@ -1,7 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import type {
   KpiMetricValues,
@@ -64,6 +63,26 @@ import {
   type SensitivityRunManifestPoint
 } from './runManifest';
 import { buildEmptyKpiValues, computePost200Kpi } from './stats/kpi';
+import {
+  buildSeeds,
+  createProgressSnapshot as createSeededProgressSnapshot,
+  createSeededProgressState,
+  defaultWorkerCount,
+  finishProgressTask as finishSeededProgressTask,
+  formatProgressBrief,
+  parseMaxWorkers,
+  parseSeedCount as parseSeedCountValue,
+  publishProgress as publishSeededProgress,
+  runSeededModelProcess,
+  runSeededWorkerPool,
+  seededTaskId,
+  startProgressTask as startSeededProgressTask,
+  updateProgressEnded as updateSeededProgressEnded,
+  updateProgressStarted as updateSeededProgressStarted,
+  type SeededProgressState,
+  type SeededProgressTask,
+  type SeededRunStatus
+} from './seededExperimentRunner';
 
 const EXPERIMENTS_DIR = path.join('experiments', 'sensitivity');
 const TMP_EXPERIMENT_RUNS_DIR = 'dashboard-sensitivity-runs';
@@ -75,8 +94,6 @@ const TERMINAL_STATUSES = new Set<SensitivityExperimentStatus>(['succeeded', 'fa
 const KPI_KEYS = ['mean', 'cv', 'annualisedTrend', 'range'] as const;
 const SENSITIVITY_RESULTS_WINDOW_TYPE = 'post_200' as const;
 const BASELINE_EPSILON = 1e-12;
-const FORCED_STARTING_SEED = 1;
-const DEFAULT_MAX_WORKERS_CAP = 20;
 
 interface PolicyBindingValues {
   bankInitialRate: number | null;
@@ -115,7 +132,7 @@ interface ExperimentRecord {
   results: SensitivityExperimentResultsPayload;
   charts: SensitivityExperimentChartsPayload;
   logBuffer: LogBufferState;
-  progress: SensitivityProgressState;
+  progress: SeededProgressState;
   rawLogSink?: LogLineSink;
   progressSink?: (progress: ExperimentProgressSnapshot) => void;
   lastProgressSinkAtMs: number;
@@ -125,34 +142,6 @@ interface ExperimentRecord {
   activeProcesses: Set<ChildProcessWithoutNullStreams>;
   killTimer?: NodeJS.Timeout;
   cancelRequested: boolean;
-}
-
-interface SensitivityProgressTask {
-  taskId: string;
-  pointId: string;
-  pointLabel: string;
-  seed: number;
-  workerIndex: number | null;
-  nSteps: number | null;
-  lastModelTime: number | null;
-  startedAtMs: number | null;
-  endedAtMs: number | null;
-  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
-}
-
-interface SensitivityProgressState {
-  totalRuns: number;
-  totalWorkers: number;
-  tasks: Map<string, SensitivityProgressTask>;
-  workerTaskIds: Map<number, string>;
-  startedAtMs: number | null;
-  endedAtMs: number | null;
-  updatedAtMs: number;
-}
-
-interface ParsedJvmProgressLine {
-  simulation: number;
-  modelTime: number;
 }
 
 interface RepoState {
@@ -672,44 +661,29 @@ function createLogBuffer(sink?: LogLineSink): LogBufferState {
 }
 
 function taskId(point: SensitivitySamplePoint, seed: number): string {
-  return `${point.pointId}\0${seed}`;
+  return seededTaskId(point.pointId, seed);
 }
 
-function createProgressState(metadata: SensitivityExperimentMetadata): SensitivityProgressState {
+function createProgressState(metadata: SensitivityExperimentMetadata): SeededProgressState {
   const seeds = metadata.seeds ?? buildSeeds(metadata.seedsPerPoint ?? 1);
-  const tasks = new Map<string, SensitivityProgressTask>();
-  for (const point of metadata.sampledPoints) {
-    for (const seed of seeds) {
-      tasks.set(taskId(point, seed), {
-        taskId: taskId(point, seed),
-        pointId: point.pointId,
-        pointLabel: point.label,
-        seed,
-        workerIndex: null,
-        nSteps: null,
-        lastModelTime: null,
-        startedAtMs: null,
-        endedAtMs: null,
-        status: 'queued'
-      });
-    }
-  }
-
-  const startedAtMs = metadata.startedAt ? Date.parse(metadata.startedAt) : Number.NaN;
-  const endedAtMs = metadata.endedAt ? Date.parse(metadata.endedAt) : Number.NaN;
-
-  return {
-    totalRuns: tasks.size,
-    totalWorkers: Math.max(1, metadata.maxWorkers ?? defaultWorkerCount(tasks.size)),
+  const tasks = metadata.sampledPoints.flatMap((point) =>
+    seeds.map((seed) => ({
+      pointId: point.pointId,
+      pointLabel: point.label,
+      seed,
+      taskId: taskId(point, seed)
+    }))
+  );
+  return createSeededProgressState(
+    'sensitivity',
     tasks,
-    workerTaskIds: new Map(),
-    startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
-    endedAtMs: Number.isFinite(endedAtMs) ? endedAtMs : null,
-    updatedAtMs: Date.now()
-  };
+    Math.max(1, metadata.maxWorkers ?? defaultWorkerCount(tasks.length)),
+    metadata.startedAt,
+    metadata.endedAt
+  );
 }
 
-function hydrateProgressFromResults(progress: SensitivityProgressState, results: SensitivityExperimentResultsPayload): void {
+function hydrateProgressFromResults(progress: SeededProgressState, results: SensitivityExperimentResultsPayload): void {
   for (const point of results.points) {
     for (const seedResult of point.seedResults ?? []) {
       const id = `${point.pointId}\0${seedResult.seed}`;
@@ -724,135 +698,16 @@ function hydrateProgressFromResults(progress: SensitivityProgressState, results:
   }
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function taskProgressFraction(task: SensitivityProgressTask): number {
-  if (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') {
-    return 1;
-  }
-  if (task.status !== 'running' || task.nSteps === null || task.nSteps <= 0 || task.lastModelTime === null) {
-    return 0;
-  }
-  return clamp(task.lastModelTime / task.nSteps, 0, 0.999);
-}
-
 function createProgressSnapshot(record: ExperimentRecord, nowMs = Date.now()): ExperimentProgressSnapshot {
-  const tasks = [...record.progress.tasks.values()];
-  const succeededRuns = tasks.filter((task) => task.status === 'succeeded').length;
-  const failedRuns = tasks.filter((task) => task.status === 'failed').length;
-  const canceledRuns = tasks.filter((task) => task.status === 'canceled').length;
-  const completedRuns = succeededRuns + failedRuns + canceledRuns;
-  const activeRuns = tasks.filter((task) => task.status === 'running').length;
-  const completedRunEquivalents = tasks.reduce((sum, task) => sum + taskProgressFraction(task), 0);
-  const startedAtMs = record.progress.startedAtMs ?? (record.metadata.startedAt ? Date.parse(record.metadata.startedAt) : null);
-  const endedAtMs = record.progress.endedAtMs ?? (record.metadata.endedAt ? Date.parse(record.metadata.endedAt) : null);
-  const elapsedMs = startedAtMs === null ? 0 : Math.max(0, (endedAtMs ?? nowMs) - startedAtMs);
-  const elapsedMinutes = elapsedMs / 60_000;
-  const throughputRunsPerMinute = elapsedMinutes > 0 ? completedRunEquivalents / elapsedMinutes : null;
-  const completedRunsPerMinute = elapsedMinutes > 0 ? completedRuns / elapsedMinutes : null;
-  const remainingRuns = Math.max(0, record.progress.totalRuns - completedRunEquivalents);
-  const canEstimateEta =
-    record.metadata.status === 'running' &&
-    throughputRunsPerMinute !== null &&
-    throughputRunsPerMinute > 0 &&
-    remainingRuns > 0;
-  const etaSeconds = canEstimateEta ? (remainingRuns / throughputRunsPerMinute) * 60 : null;
-  const estimatedFinishAt = etaSeconds === null ? null : new Date(nowMs + etaSeconds * 1000).toISOString();
-
-  return {
-    kind: 'sensitivity',
-    status: record.metadata.status,
-    totalRuns: record.progress.totalRuns,
-    completedRuns,
-    failedRuns,
-    canceledRuns,
-    activeRuns,
-    totalWorkers: record.progress.totalWorkers,
-    activeWorkers: record.progress.workerTaskIds.size,
-    completedRunEquivalents,
-    percentComplete: record.progress.totalRuns === 0
-      ? 0
-      : clamp((completedRunEquivalents / record.progress.totalRuns) * 100, 0, 100),
-    throughputRunsPerMinute,
-    completedRunsPerMinute,
-    etaSeconds,
-    estimatedFinishAt,
-    elapsedSeconds: elapsedMs / 1000,
-    ...(startedAtMs !== null ? { startedAt: new Date(startedAtMs).toISOString() } : {}),
-    ...(endedAtMs !== null ? { endedAt: new Date(endedAtMs).toISOString() } : {}),
-    updatedAt: new Date(nowMs).toISOString()
-  };
-}
-
-function formatDuration(seconds: number | null): string {
-  if (seconds === null || !Number.isFinite(seconds)) {
-    return 'pending';
-  }
-  const totalSeconds = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const remainingSeconds = totalSeconds % 60;
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  if (minutes > 0) {
-    return `${minutes}m ${remainingSeconds}s`;
-  }
-  return `${remainingSeconds}s`;
-}
-
-function formatEstimatedFinish(isoTimestamp: string | null): string {
-  if (!isoTimestamp) {
-    return 'pending';
-  }
-  const date = new Date(isoTimestamp);
-  if (!Number.isFinite(date.getTime())) {
-    return 'pending';
-  }
-  return date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false
-  });
-}
-
-function formatRate(value: number | null): string {
-  return value === null || !Number.isFinite(value) ? 'pending' : `${value.toFixed(2)}/min`;
-}
-
-function formatProgressBrief(snapshot: ExperimentProgressSnapshot): string {
-  return `progress ${snapshot.completedRunEquivalents.toFixed(1)}/${snapshot.totalRuns} (${snapshot.percentComplete.toFixed(
-    1
-  )}%), completed ${snapshot.completedRuns}/${snapshot.totalRuns}, active workers ${snapshot.activeWorkers}/${
-    snapshot.totalWorkers
-  }, throughput ${formatRate(snapshot.throughputRunsPerMinute)}, ETA ${formatDuration(snapshot.etaSeconds)}, finish ${formatEstimatedFinish(
-    snapshot.estimatedFinishAt
-  )}`;
+  return createSeededProgressSnapshot(record, record.metadata.status, nowMs);
 }
 
 function publishProgress(record: ExperimentRecord, force = false): void {
-  if (!record.progressSink) {
-    return;
-  }
-  const nowMs = Date.now();
-  if (!force && nowMs - record.lastProgressSinkAtMs < 1_000) {
-    return;
-  }
-  record.lastProgressSinkAtMs = nowMs;
-  try {
-    record.progressSink(createProgressSnapshot(record, nowMs));
-  } catch {
-    // Progress sinks are diagnostic; they must not affect run execution.
-  }
+  publishSeededProgress(record, record.metadata.status, force);
 }
 
 function updateProgressStarted(record: ExperimentRecord): void {
-  const startedAtMs = record.metadata.startedAt ? Date.parse(record.metadata.startedAt) : Date.now();
-  record.progress.startedAtMs = Number.isFinite(startedAtMs) ? startedAtMs : Date.now();
-  record.progress.updatedAtMs = Date.now();
-  publishProgress(record, true);
+  updateSeededProgressStarted(record, record.metadata.status, record.metadata.startedAt);
 }
 
 function startProgressTask(
@@ -861,45 +716,19 @@ function startProgressTask(
   seed: number,
   workerIndex: number,
   nSteps: number | null
-): SensitivityProgressTask {
-  const id = taskId(point, seed);
-  let task = record.progress.tasks.get(id);
-  if (!task) {
-    task = {
-      taskId: id,
+): SeededProgressTask {
+  return startSeededProgressTask(
+    record,
+    {
       pointId: point.pointId,
       pointLabel: point.label,
       seed,
-      workerIndex: null,
-      nSteps: null,
-      lastModelTime: null,
-      startedAtMs: null,
-      endedAtMs: null,
-      status: 'queued'
-    };
-    record.progress.tasks.set(id, task);
-    record.progress.totalRuns = record.progress.tasks.size;
-  }
-  task.status = 'running';
-  task.workerIndex = workerIndex;
-  task.nSteps = nSteps;
-  task.lastModelTime = null;
-  task.startedAtMs = Date.now();
-  task.endedAtMs = null;
-  record.progress.workerTaskIds.set(workerIndex, id);
-  record.progress.updatedAtMs = Date.now();
-  publishProgress(record, true);
-  return task;
-}
-
-function updateProgressModelTime(record: ExperimentRecord, id: string, modelTime: number): void {
-  const task = record.progress.tasks.get(id);
-  if (!task || task.status !== 'running') {
-    return;
-  }
-  task.lastModelTime = Math.max(task.lastModelTime ?? 0, modelTime);
-  record.progress.updatedAtMs = Date.now();
-  publishProgress(record);
+      taskId: taskId(point, seed)
+    },
+    workerIndex,
+    nSteps,
+    record.metadata.status
+  );
 }
 
 function finishProgressTask(
@@ -907,31 +736,7 @@ function finishProgressTask(
   id: string,
   status: SensitivitySeedRunResult['status']
 ): void {
-  const task = record.progress.tasks.get(id);
-  if (!task) {
-    return;
-  }
-  task.status = status;
-  task.lastModelTime = task.nSteps;
-  task.endedAtMs = Date.now();
-  if (task.workerIndex !== null) {
-    record.progress.workerTaskIds.delete(task.workerIndex);
-  }
-  record.progress.updatedAtMs = Date.now();
-  publishProgress(record, true);
-}
-
-function parseJvmProgressLine(line: string): ParsedJvmProgressLine | null {
-  const match = /^Simulation:\s*(\d+),\s*time:\s*([0-9]+(?:\.[0-9]+)?)\s*$/.exec(line.trim());
-  if (!match) {
-    return null;
-  }
-  const simulation = Number.parseInt(match[1], 10);
-  const modelTime = Number.parseFloat(match[2]);
-  if (!Number.isFinite(simulation) || !Number.isFinite(modelTime)) {
-    return null;
-  }
-  return { simulation, modelTime };
+  finishSeededProgressTask(record, id, status as SeededRunStatus, record.metadata.status);
 }
 
 function emitRawLogLine(record: ExperimentRecord, streamName: 'stdout' | 'stderr', line: string): void {
@@ -943,49 +748,6 @@ function emitRawLogLine(record: ExperimentRecord, streamName: 'stdout' | 'stderr
   } catch {
     // Raw persistent logs must not affect model execution.
   }
-}
-
-function createSensitivityOutputParser(record: ExperimentRecord, id: string) {
-  const partials: Record<'stdout' | 'stderr', string> = {
-    stdout: '',
-    stderr: ''
-  };
-
-  const handleLine = (streamName: 'stdout' | 'stderr', line: string): void => {
-    emitRawLogLine(record, streamName, line);
-    if (streamName !== 'stdout') {
-      return;
-    }
-    const parsed = parseJvmProgressLine(line);
-    if (parsed) {
-      updateProgressModelTime(record, id, parsed.modelTime);
-    }
-  };
-
-  const append = (streamName: 'stdout' | 'stderr', chunk: Buffer): void => {
-    partials[streamName] += chunk.toString('utf-8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    while (true) {
-      const lineBreak = partials[streamName].indexOf('\n');
-      if (lineBreak < 0) {
-        break;
-      }
-      const line = partials[streamName].slice(0, lineBreak);
-      partials[streamName] = partials[streamName].slice(lineBreak + 1);
-      handleLine(streamName, line);
-    }
-  };
-
-  const flush = (): void => {
-    for (const streamName of ['stdout', 'stderr'] as const) {
-      if (!partials[streamName]) {
-        continue;
-      }
-      handleLine(streamName, partials[streamName]);
-      partials[streamName] = '';
-    }
-  };
-
-  return { append, flush };
 }
 
 function asSummary(metadata: SensitivityExperimentMetadata): SensitivityExperimentSummary {
@@ -2055,38 +1817,7 @@ function normalizeSensitivityOverrideValue(
 }
 
 function parseSeedCount(valuesByKey: Map<string, number | boolean>): number {
-  const rawSeedCount = Number(valuesByKey.get('N_SIMS') ?? 1);
-  if (!Number.isFinite(rawSeedCount) || !Number.isInteger(rawSeedCount) || rawSeedCount < 1) {
-    throw new Error('Seeds per sampled point must be a positive integer.');
-  }
-  return rawSeedCount;
-}
-
-function buildSeeds(seedCount: number): number[] {
-  return Array.from({ length: seedCount }, (_, index) => FORCED_STARTING_SEED + index);
-}
-
-function defaultWorkerCount(totalRuns: number): number {
-  const availableWorkers =
-    typeof os.availableParallelism === 'function' ? os.availableParallelism() : os.cpus().length;
-  return Math.max(1, Math.min(totalRuns, Math.max(1, availableWorkers), DEFAULT_MAX_WORKERS_CAP));
-}
-
-function parseMaxWorkers(rawValue: unknown, totalRuns: number): number {
-  if (totalRuns < 1) {
-    return 1;
-  }
-
-  if (rawValue === undefined || rawValue === null || rawValue === '') {
-    return defaultWorkerCount(totalRuns);
-  }
-
-  const parsed = Number(rawValue);
-  if (!Number.isFinite(parsed) || !Number.isInteger(parsed) || parsed < 1) {
-    throw new Error('maxWorkers must be a positive integer.');
-  }
-
-  return Math.max(1, Math.min(parsed, totalRuns));
+  return parseSeedCountValue(valuesByKey.get('N_SIMS') ?? 1, 'Seeds per sampled point');
 }
 
 function computeKpiPercentDiffFromBaseline(current: KpiMetricValues, baseline: KpiMetricValues): KpiMetricValues {
@@ -2236,64 +1967,14 @@ async function runSeed(
     )}; ${formatProgressBrief(createProgressSnapshot(record))}`
   );
 
-  const executionResult = await new Promise<{
-    status: 'succeeded' | 'failed' | 'canceled';
-    error?: string;
-  }>((resolve) => {
-    let stderr = '';
-    let stdout = '';
-    let child: ChildProcessWithoutNullStreams;
-    const outputParser = createSensitivityOutputParser(record, currentTaskId);
-
-    try {
-      child = record.launcher.launch({ repoRoot: paths.repoRoot, configPath, outputPath });
-    } catch (error) {
-      const message = `Failed to spawn model process: ${(error as Error).message}`;
-      resolve({ status: 'failed', error: message });
-      return;
-    }
-
-    record.activeProcesses.add(child);
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString('utf-8');
-      outputParser.append('stdout', chunk);
-    });
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString('utf-8');
-      outputParser.append('stderr', chunk);
-    });
-
-    child.on('error', (error: Error) => {
-      stderr += `${error.message}\n`;
-      appendLifecycle(
-        record,
-        `Worker ${workerIndex}/${record.progress.totalWorkers} process error for point ${point.label} (${point.pointId}) ${seedLabel}: ${error.message}`
-      );
-    });
-
-    child.on('close', (code) => {
-      record.activeProcesses.delete(child);
-      outputParser.flush();
-      if (record.killTimer && record.activeProcesses.size === 0) {
-        clearTimeout(record.killTimer);
-        record.killTimer = undefined;
-      }
-
-      if (record.cancelRequested) {
-        resolve({ status: 'canceled', error: stderr.trim() || undefined });
-        return;
-      }
-
-      if (code === 0) {
-        resolve({ status: 'succeeded' });
-        return;
-      }
-
-      const output = stderr.trim() || stdout.trim() || `Model run exited with code ${String(code)}`;
-      resolve({ status: 'failed', error: output.slice(-2_000) });
-    });
+  const executionResult = await runSeededModelProcess({
+    paths,
+    owner: record,
+    configPath,
+    outputPath,
+    taskId: currentTaskId,
+    status: () => record.metadata.status,
+    rawLogSink: (streamName, line) => emitRawLogLine(record, streamName, line)
   });
 
   finishProgressTask(record, currentTaskId, executionResult.status);
@@ -2509,28 +2190,14 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
     record.launcher.prepare?.({ repoRoot: paths.repoRoot });
 
     const tasks = metadata.sampledPoints.flatMap((point) => seeds.map((seed) => ({ point, seed })));
-    let nextTaskIndex = 0;
-    let stopLaunching = false;
-
-    const runWorker = async (workerIndex: number) => {
-      while (!stopLaunching && !record.cancelRequested) {
-        const task = tasks[nextTaskIndex];
-        nextTaskIndex += 1;
-        if (!task) {
-          return;
-        }
-
-        const seedResult = await runSeed(paths, record, task.point, task.seed, workerIndex);
-        updatePointResult(task.point, seedResult);
-
-        if (seedResult.status === 'failed' || seedResult.status === 'canceled') {
-          stopLaunching = true;
-        }
-      }
-    };
-
-    const workerCount = Math.min(maxWorkers, tasks.length);
-    await Promise.all(Array.from({ length: workerCount }, (_unused, index) => runWorker(index + 1)));
+    await runSeededWorkerPool({
+      tasks,
+      maxWorkers,
+      isCancelRequested: () => record.cancelRequested,
+      runTask: (task, workerIndex) => runSeed(paths, record, task.point, task.seed, workerIndex),
+      onResult: (task, seedResult) => updatePointResult(task.point, seedResult),
+      shouldStopOnResult: (seedResult) => seedResult.status === 'failed' || seedResult.status === 'canceled'
+    });
 
     const pointResults = [...pointResultsById.values()];
     const failedPoint = pointResults.find((pointResult) => pointResult.status === 'failed');
@@ -2555,8 +2222,7 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
     appendLifecycle(record, `Experiment failed: ${metadata.failureReason}`);
   } finally {
     metadata.endedAt = new Date().toISOString();
-    const endedAtMs = Date.parse(metadata.endedAt);
-    record.progress.endedAtMs = Number.isFinite(endedAtMs) ? endedAtMs : Date.now();
+    updateSeededProgressEnded(record, metadata.status, metadata.endedAt);
     writeMetadata(paths, metadata);
     writeSummary(paths, metadata.experimentId, record.results, record.charts);
     writeManifest(paths, record);

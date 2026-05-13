@@ -577,6 +577,9 @@ export interface ModelRunJob {
   createdAt: string;
   startedAt?: string;
   endedAt?: string;
+  seedsPerPoint?: number;
+  seeds?: number[];
+  maxWorkers?: number;
   outputPath: string;
   configPath: string;
   exitCode?: number | null;
@@ -603,6 +606,7 @@ export interface ModelRunSubmitRequest {
   basePolicy?: BasePolicyId;
   title?: string;
   overrides: Record<string, number | boolean>;
+  maxWorkers?: number;
   confirmWarnings?: boolean;
 }
 
@@ -629,6 +633,7 @@ export interface ModelRunJobLogsPayload {
   hasMore: boolean;
   done: boolean;
   truncated: boolean;
+  progress?: ExperimentProgressSnapshot;
 }
 
 export interface ResultsRunDeleteResponse {
@@ -792,7 +797,7 @@ export interface SensitivityExperimentSubmitResponse {
 }
 
 export interface ExperimentProgressSnapshot {
-  kind: 'sensitivity';
+  kind: ExperimentJobType;
   status: ExperimentJobStatus;
   totalRuns: number;
   completedRuns: number;
