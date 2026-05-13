@@ -135,7 +135,7 @@ Sensitivity behavior:
 - summary-first retention by default (per-point outputs deleted after summary extraction)
 - optional full-output retention under `Results/experiments/sensitivity/<experimentId>/points`
 - persisted experiment metadata + chart-ready summaries under `Results/experiments/sensitivity/<experimentId>`
-- merged live logs with lifecycle markers + stdout/stderr stream under sensitivity and unified logs endpoints
+- summarized sensitivity live logs with worker lifecycle markers and structured progress payloads under sensitivity and unified logs endpoints; raw JVM stdout/stderr is retained in persistent model logs for debugging
 - tornado charts support KPI-basis selection (`Mean`, `CV`, `Range`); backend summaries retain `annualisedTrend` for compatibility
 - submission warnings flag Central Bank policy sweeps that are likely non-binding one-at-a-time for the selected baseline/range
 - manual run submissions are blocked while a sensitivity experiment is active, and sensitivity submissions are blocked while manual jobs are active
