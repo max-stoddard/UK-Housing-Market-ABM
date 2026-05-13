@@ -714,8 +714,9 @@ activate_java_runtime() {
   return 1
 }
 activate_java_runtime
+RUN_SEGMENT="$("$NODE_BIN" -e 'const value = process.argv[1] || "run"; const sanitized = value.trim().replace(/[^A-Za-z0-9._=-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "") || "run"; process.stdout.write(sanitized);' "$JOB_REF")"
 RUN_BASE="$HOME/remote-runs"
-RUN_ROOT="$RUN_BASE/$JOB_REF"
+RUN_ROOT="$RUN_BASE/$RUN_SEGMENT"
 REQUEST_JSON="$RUN_ROOT/request.json"
 SOURCE_DIR="$RUN_ROOT/source"
 ARTIFACT_DIR="$RUN_ROOT/artifact"

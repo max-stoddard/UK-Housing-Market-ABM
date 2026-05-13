@@ -1860,7 +1860,7 @@ try {
     'Expected remote runner to source SDKMAN with nounset disabled because SDKMAN reads optional variables'
   );
   const nodeActivationCallIndex = manualScript.indexOf('\nactivate_node_runtime\nactivate_java_runtime()');
-  const javaActivationCallIndex = manualScript.indexOf('\nactivate_java_runtime\nRUN_BASE=');
+  const javaActivationCallIndex = manualScript.indexOf('\nactivate_java_runtime\nRUN_SEGMENT=');
   assert.ok(
     nodeActivationCallIndex > 0 &&
       javaActivationCallIndex > nodeActivationCallIndex &&
@@ -1876,6 +1876,19 @@ try {
   assert.ok(
     manualScript.includes('RUN_BASE="$HOME/remote-runs"'),
     'Expected remote runner working directory to use the safe HOME value'
+  );
+  assert.ok(
+    manualScript.includes('RUN_SEGMENT="$("$NODE_BIN" -e'),
+    'Expected remote runner to sanitize job refs before using them in filesystem paths'
+  );
+  assert.ok(
+    manualScript.includes('RUN_ROOT="$RUN_BASE/$RUN_SEGMENT"'),
+    'Expected remote runner working directory to avoid raw job refs because colons break Java classpaths'
+  );
+  assert.equal(
+    manualScript.includes('RUN_ROOT="$RUN_BASE/$JOB_REF"'),
+    false,
+    'Expected remote runner working directory not to include raw job refs'
   );
   assert.equal(
     manualScript.includes('RUN_ROOT="$HOME/remote-runs/$JOB_REF"'),
