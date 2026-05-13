@@ -36,7 +36,7 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
-## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.19`)
+## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.21`)
 
 ### `scripts/python/calibration/was/age_dist.py`
 - Outputs/keys produced:
@@ -1231,6 +1231,80 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
 - Version(s) affected:
   - `v0oo`
 
+### v0o1
+- Script path: `scripts/python/calibration/output/btl_probability_multiplier.py`
+- Outputs/keys produced:
+  - `BTL_PROBABILITY_MULTIPLIER`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.btl_probability_multiplier --version v0 --output-version v0o1 --seeds 1,2,3,4,5,6,7,8 --workers 20 --precision 0.005 --coarse-min 0.05 --coarse-max 2 --coarse-step 0.05 --fine-radius 0.15 --target 0.0752616555661275 --target-description "WAS Wave 3 household BTL prevalence target. The rounded 0.0752617 target is documented in input-data-versions/v0/config.properties; full precision 0.0752616555661275 is carried from existing v0o calibration evidence because no tracked W3 derivation artifact with more precision is available." --output-root tmp/output-calibration --evidence-dir input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o1 --overwrite-version`
+  - `bash input-data-versions/validate.sh v0o1 --output-dir tmp/validation/v0o1 --workers 20`
+- Expected result snippet:
+  - `BTL_PROBABILITY_MULTIPLIER = 1.63`
+  - WAS W3 household BTL prevalence target: `0.0752616555661275`
+  - selected model-side rental-income-positive share: `0.0752794306134058`
+  - selected absolute target gap: `0.0000177750472783`
+  - 2011 reference overlay: `overallCompositeLoss = 0.526481`
+  - secondary tracked 2024 validation: `overallCompositeLoss = 0.691123`
+- Method chosen:
+  - BTL-only snapshot-local common-random-number grid search over `BTL_PROBABILITY_MULTIPLIER`.
+  - The script used seeds `1..8`, `20` workers, `N_STEPS = 2000`, `t >= 200`, `recordRentalIncome = true`, and `recordCoreIndicators = true`.
+  - Coarse grid: `0.05..2.00` by `0.05`; fine grid: `1.50..1.80` by `0.005` after the coarse winner landed at `1.65`.
+  - Selection minimized only the absolute gap between the W3/2011 prevalence target and the model-side share of households with `MonthlyGrossRentalIncome > 0`.
+- Method-selection decision logic:
+  - `Objective=2011/W3 output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the W3 household BTL prevalence target; Tradeoff=the selected multiplier is the same numeric value as old v0o because the W3 target matches the old target value, but v0o1 corrects the campaign provenance, uses seeds 1..8 for selection, and is kept separate from the older R8-labelled v0o artifact.`
+- Rationale category:
+  - output calibration
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o1/BtlProbabilityMultiplierCandidates.csv`
+  - `input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o1/BtlProbabilityMultiplierCalibrationSummary.json`
+  - `input-data-versions/validation-overlays/v0o1-2011.json`
+  - `input-data-versions/validation/v0o1.json`
+- Version(s) affected:
+  - `v0o1`
+
+### v0o2
+- Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - Pre-run feasibility check: a `160` member, `6` assimilation-step run was started against `validation-reference-v0-2011`, but the live ETA was infeasible for this session and the partial results were retained only as safe cache inputs.
+  - `python3 -m scripts.python.calibration.output.four_parameter_esmda --version v0o1 --output-version v0o2 --validation-year 2011 --validation-objective family_aware_metric_loss --validation-loss-error-std 1.0 --seeds 1,2,3,4,5,6,7,8 --workers 20 --ensemble-size 48 --assimilation-steps 5 --rng-seed 20260512 --output-root tmp/output-calibration --evidence-dir input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2 --local-refinement-top-n 8 --local-refinement-radius 1 --local-refinement-max-candidates 72`
+  - `bash input-data-versions/validate.sh v0o2 --output-dir tmp/validation/v0o2 --workers 20`
+- Expected result snippet:
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.25`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0016`
+  - `BTL_CHOICE_INTENSITY = 150`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.64`
+  - `BTL_PROBABILITY_MULTIPLIER = 1.63` inherited unchanged from `v0o1`
+  - selected 2011/W3 profile loss: `0.457489` versus `v0o1` baseline `0.526481`
+  - selected status counts: `pass=8`, `warn=0`, `fail=9` versus baseline `pass=5`, `warn=0`, `fail=12`
+  - secondary tracked 2024 validation: `overallCompositeLoss = 0.652087`
+- Method chosen:
+  - Four-parameter ESMDA output calibration against `validation-reference-v0-2011` using the schema-v4 `family_aware_metric_loss` objective and `schema4_metric_loss` assimilation transform.
+  - The global pass used source snapshot `v0o1`, seeds `1..8`, `20` workers, ensemble size `48`, `5` assimilation steps plus the initial prior evaluation (`2304` global seed-runs), rng seed `20260512`, and left `BTL_PROBABILITY_MULTIPLIER` fixed.
+  - Local refinement ranked snapped/practical parameter sets, deduplicated them, evaluated `52` snapped candidates (`416` local seed-runs), and promoted local candidate `26`.
+  - Total calibration selection evidence contains `2720` model seed-runs: `2304` global plus `416` local.
+- Guardrail decision logic:
+  - Primary objective: lowest 2011/W3 `overallCompositeLoss` under `validation-reference-v0-2011` and `family_aware_metric_loss`.
+  - Guardrail thresholds recorded in summary JSON and used for promotion: `requiredLossImprovement=0.001`, `materialLossImprovementForFailCountIncrease=0.02`, `strategicMetricDegradationTolerance=0.1`, `excessiveNormalizedSourceMovement=1.0`, `boundaryParameterMinimumLossImprovement=0.05`.
+  - Strategic metrics guarded: `core_advancesToBTL`, `core_hpiMean`, `core_hpiStd`, `core_hpiCyclePeriod`, `income_distribution_jsd`, `housing_wealth_distribution_jsd`, and `financial_wealth_distribution_jsd`.
+  - Lowest-loss local candidate `26` was accepted, so no lower-loss candidate was rejected. It improved loss by `0.068993`, reduced required fail count by `3`, had no hard-boundary parameters, and had normalized source movement `0.397650`.
+- Method-selection decision logic:
+  - `Objective=2011/W3 reference reproduction; Why=the campaign intentionally recalibrates the v0-derived branch against 2011/W3 only and keeps BTL_PROBABILITY_MULTIPLIER outside ES-MDA because it already has a separate prevalence-matching stage; Tradeoff=the scaled 48x5 global run is smaller than the attempted 160x6 plan due to infeasible ETA, but it is still larger than old v0oo in total seed-runs, uses seeds 1..8, applies local snapped refinement, and improves both the retained 2011 overlay and secondary 2024 comparability summary.`
+- Rationale category:
+  - output calibration
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/AllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/LocalRefinementMembers.csv`
+  - `input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/FourParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/validation-overlays/v0o2-2011.json`
+  - `input-data-versions/validation/v0o2.json`
+- Version(s) affected:
+  - `v0o2`
+
 ### v4.14oo
 - Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
 - Outputs/keys produced:
@@ -1484,3 +1558,191 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.20.json`
 - Version(s) affected:
   - `v4.20`
+
+### v4.21
+- Script path: `scripts/python/calibration/psd/psd_buy_budget_calibration_v2.py`
+- Shared helper path: `scripts/python/helpers/psd/buy_budget_quantile_v2.py`
+- Outputs/keys produced:
+  - `BUY_SCALE`
+  - `BUY_EXPONENT`
+  - `BUY_MU`
+  - `BUY_SIGMA`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.psd.psd_buy_budget_calibration_v2 --quarterly-csv private-datasets/psd/2024/psd-quarterly-2024.csv --ppd-csv-2024 private-datasets/ppd/pp-2024.csv --target-year-psd 2024 --ppd-status-mode a_only --year-policy 2024_only --guardrail-mode fail --hard-p95-cap 15 --exponent-max 1.0 --median-target-curve 25000:6.5,50000:6.0,100000:5.4,150000:5.0,200000:4.8 --tail-family pareto --pareto-alpha-grid 1.8 --objective-weight-grid-profile minimal --fit-degradation-max 0.10 --within-bin-points 11 --quantile-grid-size 4000 --ppd-mean-anchor-weight 4.0 --fixed-exponent 1.0 --income-open-upper-k 200 --property-open-upper-k 2000 --workers 1 --output-dir tmp/buy-2024-only-v4.21/calibration`
+  - `bash input-data-versions/validate.sh v4.21 --output-dir tmp/buy-2024-only-v4.21/validation/v4.21 --workers 20`
+- Expected result snippet:
+  - `BUY_SCALE = 4.3957479837`
+  - `BUY_EXPONENT = 1`
+  - `BUY_MU = 0`
+  - `BUY_SIGMA = 0.2`
+  - `source_year_psd = 2024`
+  - `source_year_ppd = 2024`
+  - `ppd_2025_loaded = 0`
+  - hard BUY calibration guardrails passed.
+  - Tracked validation summary generated on `2026-05-12T18:56:44Z` with `overallCompositeLoss=0.573916720919496`, improved from `v4.20=0.6045043981851204` by `-0.03058767726562439`.
+  - HPI Mean metric loss improves from `0.4671213798746696` to `0.29732111653870075`.
+  - HPI Std metric loss improves from `1.4987466529102156` to `0.2561351239522241`.
+  - HPI Cycle Period metric loss worsens from `0.5373901292495852` to `0.794483541872788`.
+  - Combined HPI metric loss improves from `2.5032581620344705` to `1.347939782363713`.
+- Method chosen:
+  - Clone `v4.20` to `v4.21` and update only `BUY_SCALE`, `BUY_EXPONENT`, `BUY_MU`, and `BUY_SIGMA`.
+  - Use the true `2024_only` BUY path: PSD 2024 property-value bands, PPD 2024 status-A transaction prices, PSD-raked PPD log-price quantiles, `BUY_MU=0`, fixed primary `BUY_EXPONENT=1.0`, and estimated `BUY_SCALE`/`BUY_SIGMA`.
+  - Keep raw private PSD/PPD rows out of tracked evidence; retain only derived row counts, source-year checks, guardrail diagnostics, selected parameters, and quantile residuals under `input-data-versions/calibration-evidence/buy-2024-only-v4.21/`.
+- Method-selection decision logic:
+  - `Objective=forced source-year correction; Why=the selected candidate removes 2025 and pooled-year dependence from the current BUY calibration and passes hard BUY guardrails; Tradeoff=overall and combined HPI validation losses improve, but HPI Cycle Period regresses, so this forced promotion is not a clean all-HPI-component model improvement.`
+- Rationale category:
+  - forced source-fidelity correction
+- Evidence links:
+  - `input-data-versions/calibration-evidence/buy-2024-only-v4.21/README.md`
+  - `input-data-versions/calibration-evidence/buy-2024-only-v4.21/PsdBuyBudgetCalibrationV421.csv`
+  - `input-data-versions/calibration-evidence/buy-2024-only-v4.21/PsdBuyBudgetCalibrationV421Summary.json`
+  - `input-data-versions/validation/v4.21.json`
+- Version(s) affected:
+  - `v4.21`
+
+### v4.22
+- Script path: `N/A (direct official-policy source confirmation)`
+- Outputs/keys produced:
+  - `GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE`
+- Exact run command:
+  - `curl -L -o input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/spring-budget-2024-annex-a-rates-and-allowances.html https://www.gov.uk/government/publications/spring-budget-2024-overview-of-tax-legislation-and-rates-ootlar/annex-a-rates-and-allowances`
+  - `bash input-data-versions/validate.sh v4.22 --output-dir tmp/validation/v4.22 --workers 20`
+- Expected result snippet:
+  - GOV.UK Spring Budget 2024 Annex A, Income Tax allowances, Personal allowance for tax year 2024 to 2025: `12570`.
+  - `GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE = 12570.0`
+  - Tracked validation summary generated on `2026-05-12T20:11:01Z` with `overallCompositeLoss=0.573916720919496`, unchanged from `v4.21`.
+  - Status changes versus `v4.21`: none.
+- Method chosen:
+  - Clone `v4.21` to `v4.22` and update only the `GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE` config provenance comments.
+  - Use the official 2024/25 GOV.UK Spring Budget Annex A Personal Allowance row directly; no statistical fitting.
+  - Retained artifact: `input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/spring-budget-2024-annex-a-rates-and-allowances.html`.
+- Method-selection decision logic:
+  - `Objective=source-year fidelity; Why=the 2024 baseline should cite the 2024/25 policy period instead of future-year 2025/26 wording even though the value is unchanged; Tradeoff=this improves provenance but does not change simulation output.`
+- Rationale category:
+  - source-fidelity correction
+- Evidence links:
+  - `https://www.gov.uk/government/publications/spring-budget-2024-overview-of-tax-legislation-and-rates-ootlar/annex-a-rates-and-allowances`
+  - `input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/README.md`
+  - `input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/GovPersonalAllowanceV422SourceValues.csv`
+  - `input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/GovPersonalAllowanceV422Summary.json`
+  - `input-data-versions/validation/v4.22.json`
+- Version(s) affected:
+  - `v4.22`
+
+### v4.23
+- Script path: `N/A (direct official-policy source confirmation)`
+- Outputs/keys produced:
+  - `GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE`
+- Exact run command:
+  - `curl -L -o input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/spring-budget-2024-annex-a-rates-and-allowances.html https://www.gov.uk/government/publications/spring-budget-2024-overview-of-tax-legislation-and-rates-ootlar/annex-a-rates-and-allowances`
+  - `bash input-data-versions/validate.sh v4.23 --output-dir tmp/validation/v4.23 --workers 20`
+- Expected result snippet:
+  - GOV.UK Spring Budget 2024 Annex A, Income Tax allowances, Income limit for Personal Allowance for tax year 2024 to 2025: `100000`.
+  - `GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE = 100000.0`
+  - Tracked validation summary generated on `2026-05-12T20:12:19Z` with `overallCompositeLoss=0.573916720919496`, unchanged from `v4.22`.
+  - Status changes versus `v4.22`: none.
+- Method chosen:
+  - Clone `v4.22` to `v4.23` and update only the `GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE` config provenance comments.
+  - Use the official 2024/25 GOV.UK Spring Budget Annex A Income limit for Personal Allowance row directly; no statistical fitting.
+  - Retained artifact: `input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/spring-budget-2024-annex-a-rates-and-allowances.html`.
+- Method-selection decision logic:
+  - `Objective=source-year fidelity; Why=the 2024 baseline should cite the 2024/25 policy period instead of future-year 2025/26 wording even though the value is unchanged; Tradeoff=this improves provenance but does not change simulation output.`
+- Rationale category:
+  - source-fidelity correction
+- Evidence links:
+  - `https://www.gov.uk/government/publications/spring-budget-2024-overview-of-tax-legislation-and-rates-ootlar/annex-a-rates-and-allowances`
+  - `input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/README.md`
+  - `input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/GovPersonalAllowanceIncomeLimitV423SourceValues.csv`
+  - `input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/GovPersonalAllowanceIncomeLimitV423Summary.json`
+  - `input-data-versions/validation/v4.23.json`
+- Version(s) affected:
+  - `v4.23`
+
+### v4.24
+- Script path: `N/A (direct official-policy source confirmation)`
+- Outputs/keys produced:
+  - `DATA_TAX_RATES`
+- Exact run command:
+  - `curl -L -o input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/income-tax-rates-and-allowances-current-and-past.html https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past`
+  - `bash input-data-versions/validate.sh v4.24 --output-dir tmp/validation/v4.24 --workers 20`
+- Expected result snippet:
+  - GOV.UK Income Tax rates and allowances, England, Northern Ireland and Wales, tax year 2024 to 2025: Basic rate `20%` up to `37700`, Higher rate `40%` from `37701` to `125140`, Additional rate `45%` over `125140`.
+  - `TaxRates.csv` rows: `0, 0.20`; `37700, 0.40`; `125140, 0.45`.
+  - Tracked validation summary generated on `2026-05-12T20:14:13Z` with `overallCompositeLoss=0.573916720919496`, unchanged from `v4.23`.
+  - Status changes versus `v4.23`: none.
+- Method chosen:
+  - Clone `v4.23` to `v4.24` and update only `TaxRates.csv` comments plus the directly related `DATA_TAX_RATES` config provenance comments.
+  - Use the official 2024/25 England/Wales/Northern Ireland main-rate table directly. The model applies Personal Allowance separately, so the CSV stores taxable-income band starts after allowance.
+  - Retained artifact: `input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/income-tax-rates-and-allowances-current-and-past.html`.
+  - Documented caveat: the current model has one tax table and does not encode separate Scottish Income Tax bands.
+- Method-selection decision logic:
+  - `Objective=source-year fidelity; Why=the 2024 baseline should cite the 2024/25 policy period instead of future-year 2025/26 wording even though the England/Wales/Northern Ireland main-rate rows are unchanged; Tradeoff=this improves provenance but retains the existing single-table Scottish-rate limitation.`
+- Rationale category:
+  - source-fidelity correction
+- Evidence links:
+  - `https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past`
+  - `input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/README.md`
+  - `input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/GovIncomeTaxRatesV424SourceValues.csv`
+  - `input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/GovIncomeTaxRatesV424Summary.json`
+  - `input-data-versions/validation/v4.24.json`
+- Version(s) affected:
+  - `v4.24`
+
+### v4.25
+- Script path: `N/A (direct official-policy source update)`
+- Outputs/keys produced:
+  - `DATA_NATIONAL_INSURANCE_RATES`
+- Exact run command:
+  - `curl -L -o input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/rates-and-thresholds-for-employers-2024-to-2025.html https://www.gov.uk/guidance/rates-and-thresholds-for-employers-2024-to-2025`
+  - `bash input-data-versions/validate.sh v4.25 --output-dir tmp/validation/v4.25 --workers 20`
+- Expected result snippet:
+  - GOV.UK Rates and thresholds for employers 2024 to 2025: annual Primary Threshold `12570`, annual Upper Earnings Limit `50270`, Class 1 employee category A rate `8%` above PT to UEL, and `2%` above UEL.
+  - `NationalInsuranceRates.csv` rows changed from `12584, 0.12`; `50284, 0.02` to `12570, 0.08`; `50270, 0.02`.
+  - Tracked validation summary generated on `2026-05-12T20:15:28Z` with `overallCompositeLoss=0.5780636756491524`, versus `v4.24=0.573916720919496`.
+  - Status changes versus `v4.24`: `HPI Std` warning to fail.
+- Method chosen:
+  - Clone `v4.24` to `v4.25` and update only `NationalInsuranceRates.csv` plus the directly related `DATA_NATIONAL_INSURANCE_RATES` config provenance comments.
+  - Use the official annual 2024/25 Class 1 employee Category A thresholds because the model applies this table to annual gross income.
+  - Retained artifact: `input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/rates-and-thresholds-for-employers-2024-to-2025.html`.
+- Method-selection decision logic:
+  - `Objective=source-year fidelity and unit consistency; Why=the prior table retained a stale 12% main rate and 52-times-weekly thresholds while the model consumes annual income; Tradeoff=the tracked 2024 composite worsens modestly and HPI Std moves from warning to failing, but the policy input is more accurate for 2024/25.`
+- Rationale category:
+  - source-fidelity correction
+- Evidence links:
+  - `https://www.gov.uk/guidance/rates-and-thresholds-for-employers-2024-to-2025`
+  - `input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/README.md`
+  - `input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/GovNationalInsuranceRatesV425SourceValues.csv`
+  - `input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/GovNationalInsuranceRatesV425Summary.json`
+  - `input-data-versions/validation/v4.25.json`
+- Version(s) affected:
+  - `v4.25`
+
+### v4.26
+- Script path: `scripts/python/calibration/official/gov_income_support_2024.py`
+- Outputs/keys produced:
+  - `GOVERNMENT_MONTHLY_INCOME_SUPPORT`
+- Exact run command:
+  - `curl -L -o input-data-versions/calibration-evidence/gov-income-support-v4.26/benefit-and-pension-rates-2024-to-2025.html https://www.gov.uk/government/publications/benefit-and-pension-rates-2024-to-2025/benefit-and-pension-rates-2024-to-2025`
+  - `bash input-data-versions/validate.sh v4.26 --output-dir tmp/validation/v4.26 --workers 20`
+- Expected result snippet:
+  - GOV.UK Benefit and pension rates 2024 to 2025, Income Support, `Both 18 or over`, `Rates 2024/25`: `142.25` weekly.
+  - `GOVERNMENT_MONTHLY_INCOME_SUPPORT = 142.25 * 52 / 12 = 616.4166666667`.
+  - Tracked validation summary generated on `2026-05-12T20:17:27Z` with `overallCompositeLoss=0.5780636756491524`, unchanged from `v4.25`.
+  - Status changes versus `v4.25`: none.
+- Method chosen:
+  - Clone `v4.25` to `v4.26` and update only the `GOVERNMENT_MONTHLY_INCOME_SUPPORT` config provenance comment to point at a v4.26-local evidence bundle.
+  - Retain the already-correct v4.13-selected value, but download and store a distinct v4.26 GOV.UK artifact so this version is self-contained.
+  - Do not carry forward the stale live `src/main/resources` value `578.6`.
+  - Retained artifact: `input-data-versions/calibration-evidence/gov-income-support-v4.26/benefit-and-pension-rates-2024-to-2025.html`.
+- Method-selection decision logic:
+  - `Objective=source-year fidelity and unit consistency; Why=the model annualizes the monthly value by multiplying by 12, so the weekly rate should be converted with 52/12; Tradeoff=this improves self-contained provenance but does not change simulation output relative to v4.25.`
+- Rationale category:
+  - source-fidelity correction
+- Evidence links:
+  - `https://www.gov.uk/government/publications/benefit-and-pension-rates-2024-to-2025/benefit-and-pension-rates-2024-to-2025`
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.26/README.md`
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.26/GovIncomeSupportV426SourceValues.csv`
+  - `input-data-versions/calibration-evidence/gov-income-support-v4.26/GovIncomeSupportV426Summary.json`
+  - `input-data-versions/validation/v4.26.json`
+- Version(s) affected:
+  - `v4.26`

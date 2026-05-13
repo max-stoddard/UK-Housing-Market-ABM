@@ -1,0 +1,15 @@
+python3 -m scripts.python.calibration.output.btl_probability_multiplier \
+  --version v0 \
+  --output-version v0o1 \
+  --seeds 1,2,3,4,5,6,7,8 \
+  --workers 20 \
+  --precision 0.005 \
+  --coarse-min 0.05 \
+  --coarse-max 2 \
+  --coarse-step 0.05 \
+  --fine-radius 0.15 \
+  --target 0.0752616555661275 \
+  --target-description "WAS Wave 3 household BTL prevalence target. The rounded 0.0752617 target is documented in input-data-versions/v0/config.properties; full precision 0.0752616555661275 is carried from existing v0o calibration evidence because no tracked W3 derivation artifact with more precision is available." \
+  --output-root tmp/output-calibration \
+  --evidence-dir input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o1 \
+  --overwrite-version

@@ -1,0 +1,21 @@
+{
+  "sourceUrl": "https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past",
+  "sourcePath": "input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/income-tax-rates-and-allowances-current-and-past.html",
+  "sourceYear": "2024/25",
+  "method": "direct-official-policy-table-source-confirmation",
+  "methodRationale": "Income Tax rates are direct policy table values. The Java model applies Personal Allowance separately, so the CSV stores taxable-income band starts after allowance. This improves 2024 source alignment by replacing future-year provenance while leaving the numerically identical England/Wales/Northern Ireland main-rate rows unchanged.",
+  "selectedRows": [
+    {"bandStart": 0, "rate": 0.20},
+    {"bandStart": 37700, "rate": 0.40},
+    {"bandStart": 125140, "rate": 0.45}
+  ],
+  "modelCaveat": "The current model has one tax table and does not encode separate Scottish Income Tax bands.",
+  "legacyComparison": {
+    "v4_23_rows": [
+      {"bandStart": 0, "rate": 0.20},
+      {"bandStart": 37700, "rate": 0.40},
+      {"bandStart": 125140, "rate": 0.45}
+    ],
+    "selected_rows_changed": false
+  }
+}

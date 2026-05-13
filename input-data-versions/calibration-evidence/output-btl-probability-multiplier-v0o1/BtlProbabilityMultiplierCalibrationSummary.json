@@ -1,0 +1,129 @@
+{
+  "sourceVersion": "v0",
+  "outputVersion": "v0o1",
+  "outputVersionDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/v0o1",
+  "target": 0.0752616555661275,
+  "targetDescription": "WAS Wave 3 household BTL prevalence target. The rounded 0.0752617 target is documented in input-data-versions/v0/config.properties; full precision 0.0752616555661275 is carried from existing v0o calibration evidence because no tracked W3 derivation artifact with more precision is available.",
+  "dataBtlProbabilityChanged": false,
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "workers": 20,
+  "nSteps": 2000,
+  "window": {
+    "startTime": 200,
+    "endTime": 2000
+  },
+  "precision": 0.005,
+  "coarseGrid": {
+    "min": 0.05,
+    "max": 2.0,
+    "step": 0.05,
+    "candidateCount": 40
+  },
+  "fineGrid": {
+    "center": 1.65,
+    "radius": 0.15,
+    "precision": 0.005,
+    "candidateCount": 61
+  },
+  "selected": {
+    "multiplier": 1.63,
+    "stage": "fine",
+    "rentalIncomePositiveShareMean": 0.07527943061340583,
+    "targetGap": 1.777504727833168e-05,
+    "activeBtlShareMean": 0.07411868643430242,
+    "latentBtlShareMean": 0.12268942444654014,
+    "btlStockFractionMean": 0.2506589047751249
+  },
+  "bestCoarse": {
+    "stage": "coarse",
+    "multiplier": 1.65,
+    "target": 0.0752616555661275,
+    "target_gap": 0.000420183774788474,
+    "rental_income_positive_share_mean": 0.07568183934091598,
+    "rental_income_positive_share_stdev": 0.0018532917427345208,
+    "active_btl_share_mean": 0.07439631098146955,
+    "latent_btl_share_mean": 0.12316613380148127,
+    "btl_stock_fraction_mean": 0.24881085508051082,
+    "seed_count": 8,
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "bestFine": {
+    "stage": "fine",
+    "multiplier": 1.63,
+    "target": 0.0752616555661275,
+    "target_gap": 1.777504727833168e-05,
+    "rental_income_positive_share_mean": 0.07527943061340583,
+    "rental_income_positive_share_stdev": 0.0013650056333848934,
+    "active_btl_share_mean": 0.07411868643430242,
+    "latent_btl_share_mean": 0.12268942444654014,
+    "btl_stock_fraction_mean": 0.2506589047751249,
+    "seed_count": 8,
+    "seeds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  "searchDiagnostics": {
+    "targetTolerance": 1e-12,
+    "coarse": {
+      "candidateCount": 40,
+      "minMultiplier": 0.05,
+      "maxMultiplier": 2.0,
+      "minRentalIncomePositiveShareMean": 0.01802203538377922,
+      "maxRentalIncomePositiveShareMean": 0.09029989994485008,
+      "selectedMultiplier": 1.65,
+      "selectedTargetGap": 0.000420183774788474,
+      "selectedOnLowerBoundary": false,
+      "selectedOnUpperBoundary": false,
+      "targetBracketed": true,
+      "targetHit": false,
+      "targetPosition": "within_candidate_output_range"
+    },
+    "fine": {
+      "candidateCount": 61,
+      "minMultiplier": 1.5,
+      "maxMultiplier": 1.8,
+      "minRentalIncomePositiveShareMean": 0.06869360813354197,
+      "maxRentalIncomePositiveShareMean": 0.08291049770712686,
+      "selectedMultiplier": 1.63,
+      "selectedTargetGap": 1.777504727833168e-05,
+      "selectedOnLowerBoundary": false,
+      "selectedOnUpperBoundary": false,
+      "targetBracketed": true,
+      "targetHit": false,
+      "targetPosition": "within_candidate_output_range"
+    },
+    "warnings": [
+      "coarse selected candidate does not exactly hit the target.",
+      "fine selected candidate does not exactly hit the target."
+    ],
+    "promotedWithWarnings": true
+  },
+  "selectionRule": "minimize primary target gap; deterministic lower-multiplier ordering only for exact equal gaps",
+  "runOutputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v0o1",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o1"
+}

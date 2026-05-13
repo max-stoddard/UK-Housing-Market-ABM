@@ -1450,6 +1450,102 @@
       ]
     },
     {
+      "version_id": "v0o1",
+      "snapshot_folder": "v0o1",
+      "validation_dataset": "w3",
+      "description": "Created a W3/2011-only v0-derived stage-1 BTL output calibration branch without overwriting the older R8-labelled v0o artifact.",
+      "updated_data_sources": [
+        "was"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/btl_probability_multiplier.py"
+      ],
+      "config_parameters": [
+        "BTL_PROBABILITY_MULTIPLIER"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-btl-probability-multiplier-v0o1/BtlProbabilityMultiplierCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-13 after W3/2011-only BTL output calibration from v0 to v0o1. Calibration used source snapshot v0, seeds 1..8, 20 workers, coarse grid 0.05..2.00 by 0.05, fine grid 1.50..1.80 by 0.005, and target 0.0752616555661275. The target provenance is W3/2011: the rounded 0.0752617 target is documented in input-data-versions/v0/config.properties; full precision is carried from existing v0o calibration evidence because no tracked W3 derivation artifact with more precision is available. Selected BTL_PROBABILITY_MULTIPLIER=1.63, selected model rental-income-positive share=0.075279, absolute gap=0.0000178. The retained 2011 overlay has overallCompositeLoss=0.526481, matching old v0o because the selected multiplier is numerically identical, but v0o1 corrects campaign provenance and uses seeds 1..8 for selection. The tracked 2024 summary is secondary comparability only and has overallCompositeLoss=0.691123. Required 2024 metrics passing: House Price to Household Disposable Income, House Price Growth, HPI Mean, HPI Cycle Period, Income Distribution Realism, and Financial Wealth Distribution Realism. Required 2024 metrics warning: none. Required 2024 metrics failing: Mortgage Approvals, Housing Transactions, Advances to FTB, Advances to Home Movers, Advances to BTL, Household Debt to Income, HPI Std, Owner-Occupier Debt to Income, Rental Yield, Interest Rate Spread, and Housing Wealth Distribution Realism."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BTL_PROBABILITY_MULTIPLIER"
+          ],
+          "improvement_summary": "Selected the same interior multiplier as old v0o, but under explicit W3/2011 provenance and seeds 1..8.",
+          "why_changed": "To create a new v0-derived stage-1 branch for a 2011/W3-only recalibration campaign without overwriting v0o.",
+          "method_chosen": "BTL-only snapshot-local grid search using model-side share of households with MonthlyGrossRentalIncome > 0, averaged over t >= 200 and seeds 1..8.",
+          "decision_logic": "Objective=2011/W3 output prevalence bridge; Why=MonthlyGrossRentalIncome > 0 is the closest recorded model observable to the W3 household BTL prevalence target; Tradeoff=the numeric multiplier matches old v0o, so the 2011 overlay does not improve over v0o, but the retained artifact now has correct W3 provenance and a larger seed set."
+        }
+      ]
+    },
+    {
+      "version_id": "v0o2",
+      "snapshot_folder": "v0o2",
+      "validation_dataset": "w3",
+      "description": "Applied a W3/2011-only four-parameter ESMDA plus snapped local-refinement output calibration to v0o1 using the schema-v4 family-aware validation metric.",
+      "updated_data_sources": [
+        "config-only"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/four_parameter_esmda.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/FourParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2/FourParameterEsmdaCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-13 after W3/2011-only four-parameter output calibration from v0o1 to v0o2. Calibration used validation-reference-v0-2011, validationObjective=family_aware_metric_loss, source snapshot v0o1, seeds 1..8, 20 workers, ensemble size 48, 5 assimilation steps plus the initial prior evaluation, rng seed 20260512, and snapped local refinement over 52 deduplicated practical candidates. BTL_PROBABILITY_MULTIPLIER remained fixed at 1.63 from v0o1. Promoted local candidate 26: PSYCHOLOGICAL_COST_OF_RENTING=0.25, SENSITIVITY_RENT_OR_PURCHASE=0.0016, BTL_CHOICE_INTENSITY=150, MARKET_AVERAGE_PRICE_DECAY=0.64. The retained 2011 overlay improved overallCompositeLoss from v0o1=0.526481 to v0o2=0.457489, with 2011 status counts improving from pass=5/warn=0/fail=12 to pass=8/warn=0/fail=9. Guardrails accepted the lowest-loss local candidate: loss improvement 0.068993, fail count reduced by 3, no hard-boundary parameters, normalized source movement 0.397650, and no guarded strategic metric degradation beyond tolerance. The tracked 2024 summary is secondary comparability only and has overallCompositeLoss=0.652087 versus v0o1=0.691123. Required 2024 metrics passing: House Price to Household Disposable Income, House Price Growth, HPI Mean, HPI Std, HPI Cycle Period, Income Distribution Realism, and Financial Wealth Distribution Realism. Required 2024 metrics warning: Housing Transactions. Required 2024 metrics failing: Mortgage Approvals, Advances to FTB, Advances to Home Movers, Advances to BTL, Household Debt to Income, Owner-Occupier Debt to Income, Rental Yield, Interest Rate Spread, and Housing Wealth Distribution Realism."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Selected a snapped local-refined four-parameter output calibration that reduced the retained 2011/W3 overlay loss to 0.457489.",
+          "why_changed": "To complete the v0-derived W3/2011-only campaign with BTL fixed from v0o1 and the remaining output parameters calibrated under the new family-aware validation metric.",
+          "method_chosen": "Four-parameter ESMDA over PSYCHOLOGICAL_COST_OF_RENTING, SENSITIVITY_RENT_OR_PURCHASE, BTL_CHOICE_INTENSITY, and MARKET_AVERAGE_PRICE_DECAY with seeds 1..8, 20 workers, ensemble size 48, 5 assimilation steps, rng seed 20260512, schema-v4 family-aware metric loss, and a snapped local-refinement pass.",
+          "decision_logic": "Objective=2011/W3 reference reproduction; Why=the campaign target is the v0-only 2011 reference profile and BTL_PROBABILITY_MULTIPLIER already has a separate prevalence stage; Tradeoff=the scaled run is smaller than the attempted 160x6 global pass due to infeasible ETA, but it is larger than old v0oo by seed-run count, uses seeds 1..8, applies local guardrails, and improves both the retained 2011 overlay and secondary 2024 summary."
+        }
+      ]
+    },
+    {
       "version_id": "v4.14oo",
       "snapshot_folder": "v4.14oo",
       "validation_dataset": "r8",
@@ -1789,6 +1885,260 @@
           "why_changed": "To align house-price distribution parameters with the 2024 calibration target year and avoid using 2025 transaction data in the current baseline.",
           "method_chosen": "Focused status-A lognormal fit with population standard deviation and no trimming, run on private-datasets/ppd/pp-2024.csv.",
           "decision_logic": "Objective=source fidelity; Why=the 2024 baseline should not depend on 2025 transactions when a full annual 2024 PPD file is available and the existing method reproduces the previous 2025 values exactly; Tradeoff=the tracked 2024 validation composite worsens modestly under the current validation code, with no metric status changes."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.21",
+      "snapshot_folder": "v4.21",
+      "validation_dataset": "r8",
+      "description": "Forced promotion of BUY_SCALE, BUY_EXPONENT, BUY_MU, and BUY_SIGMA to a true 2024-only PSD-raked PPD BUY calibration.",
+      "updated_data_sources": [
+        "psd",
+        "ppd"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/psd/psd_buy_budget_calibration_v2.py",
+        "scripts/python/helpers/psd/buy_budget_quantile_v2.py"
+      ],
+      "config_parameters": [
+        "BUY_SCALE",
+        "BUY_EXPONENT",
+        "BUY_MU",
+        "BUY_SIGMA"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "BUY_SCALE",
+          "dataset_source": "input-data-versions/calibration-evidence/buy-2024-only-v4.21/PsdBuyBudgetCalibrationV421Summary.json"
+        },
+        {
+          "config_parameter": "BUY_EXPONENT",
+          "dataset_source": "input-data-versions/calibration-evidence/buy-2024-only-v4.21/PsdBuyBudgetCalibrationV421Summary.json"
+        },
+        {
+          "config_parameter": "BUY_MU",
+          "dataset_source": "input-data-versions/calibration-evidence/buy-2024-only-v4.21/PsdBuyBudgetCalibrationV421Summary.json"
+        },
+        {
+          "config_parameter": "BUY_SIGMA",
+          "dataset_source": "input-data-versions/calibration-evidence/buy-2024-only-v4.21/PsdBuyBudgetCalibrationV421Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T18:56:44Z after cloning v4.20 to v4.21 and changing BUY_SCALE from 7.6238412132 to 4.3957479837, BUY_EXPONENT from 1.0028939531 to 1, BUY_MU remaining 0, and BUY_SIGMA from 0.4326188972 to 0.2. The retained BUY evidence bundle is input-data-versions/calibration-evidence/buy-2024-only-v4.21/. The calibration used PSD 2024 and PPD 2024 only, with source_year_psd=2024, source_year_ppd=2024, ppd_2025_loaded=0, and hard BUY guardrails passing. overallCompositeLoss=0.573917 versus v4.20=0.604504 (delta -0.030588). HPI Mean metricLoss improves from 0.467121 to 0.297321 and status changes fail->warn. HPI Std metricLoss improves from 1.498747 to 0.256135 and status changes fail->warn. HPI Cycle Period metricLoss worsens from 0.537390 to 0.794484 and remains fail. Combined HPI metric loss improves from 2.503258 to 1.347940 (delta -1.155318, -46.152586%). Required metrics passing: Advances to FTB, Household Debt to Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean and HPI Std. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Required status changes versus v4.20: Household Debt to Income fail->pass, HPI Mean fail->warn, and HPI Std fail->warn. This release is promoted by explicit request despite failing the stricter all-HPI-component promotion gate because HPI Cycle Period regresses."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "BUY_SCALE",
+            "BUY_EXPONENT",
+            "BUY_MU",
+            "BUY_SIGMA"
+          ],
+          "improvement_summary": "Replaced the prior pooled/guardrail-failing BUY values with a true 2024-only PSD-raked PPD fit that passes hard BUY calibration guardrails.",
+          "why_changed": "To remove 2025 and pooled-year dependence from the 2024 BUY calibration and normalize BUY_MU to zero while keeping BUY_EXPONENT fixed at the primary 1.0 method setting.",
+          "method_chosen": "2024_only PSD-raked PPD log-quantile fit with status-A PPD 2024, PSD 2024 property-value raking, BUY_MU=0, BUY_EXPONENT=1, BUY_SCALE=4.3957479837, and BUY_SIGMA=0.2.",
+          "decision_logic": "Objective=forced source-year correction; Why=the selected candidate uses only admissible 2024 PSD/PPD sources and passes hard BUY guardrails; Tradeoff=overall and combined HPI validation losses improve versus v4.20, but HPI Cycle Period regresses, so this is not a clean all-HPI-gate model improvement."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.22",
+      "snapshot_folder": "v4.22",
+      "validation_dataset": "r8",
+      "description": "Source-confirmed GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE against the GOV.UK 2024/25 Spring Budget Annex A Personal Allowance table.",
+      "updated_data_sources": [
+        "gov"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source confirmation)"
+      ],
+      "config_parameters": [
+        "GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE",
+          "dataset_source": "input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/GovPersonalAllowanceV422Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T20:11:01Z after cloning v4.21 to v4.22 and correcting GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE provenance from 2025/26 wording to the GOV.UK Spring Budget 2024 Annex A 2024/25 Personal Allowance source. The selected value remains 12570.0 because the official 2024/25 value is unchanged. The retained source artifact is input-data-versions/calibration-evidence/gov-personal-allowance-v4.22/spring-budget-2024-annex-a-rates-and-allowances.html. overallCompositeLoss=0.573917, unchanged from v4.21. Required metrics passing: Advances to FTB, Household Debt to Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean and HPI Std. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.21: none. This release improves 2024 source-year alignment without changing model behavior."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "GOVERNMENT_GENERAL_PERSONAL_ALLOWANCE"
+          ],
+          "improvement_summary": "Replaced future-year personal-allowance provenance with a 2024/25 GOV.UK source while keeping the same official value.",
+          "why_changed": "To remove 2025/26 source-year leakage from the 2024 calibration chain.",
+          "method_chosen": "Direct source confirmation from GOV.UK Spring Budget 2024 Annex A Income Tax allowances: Personal allowance for tax year 2024 to 2025 = 12570.",
+          "decision_logic": "Objective=source-year fidelity; Why=the 2024 baseline should cite the 2024/25 policy period even where the value is unchanged; Tradeoff=this improves provenance but does not change simulation output."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.23",
+      "snapshot_folder": "v4.23",
+      "validation_dataset": "r8",
+      "description": "Source-confirmed GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE against the GOV.UK 2024/25 Spring Budget Annex A Personal Allowance income-limit table.",
+      "updated_data_sources": [
+        "gov"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source confirmation)"
+      ],
+      "config_parameters": [
+        "GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE",
+          "dataset_source": "input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/GovPersonalAllowanceIncomeLimitV423Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T20:12:19Z after cloning v4.22 to v4.23 and correcting GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE provenance from 2025/26 wording to the GOV.UK Spring Budget 2024 Annex A 2024/25 Income limit for Personal Allowance source. The selected value remains 100000.0 because the official 2024/25 value is unchanged. The retained source artifact is input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/spring-budget-2024-annex-a-rates-and-allowances.html. overallCompositeLoss=0.573917, unchanged from v4.22. Required metrics passing: Advances to FTB, Household Debt to Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean and HPI Std. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.22: none. This release improves 2024 source-year alignment without changing model behavior."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE"
+          ],
+          "improvement_summary": "Replaced future-year personal-allowance income-limit provenance with a 2024/25 GOV.UK source while keeping the same official value.",
+          "why_changed": "To remove 2025/26 source-year leakage from the 2024 calibration chain.",
+          "method_chosen": "Direct source confirmation from GOV.UK Spring Budget 2024 Annex A Income Tax allowances: Income limit for Personal Allowance for tax year 2024 to 2025 = 100000.",
+          "decision_logic": "Objective=source-year fidelity; Why=the 2024 baseline should cite the 2024/25 policy period even where the value is unchanged; Tradeoff=this improves provenance but does not change simulation output."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.24",
+      "snapshot_folder": "v4.24",
+      "validation_dataset": "r8",
+      "description": "Source-confirmed DATA_TAX_RATES against GOV.UK 2024/25 Income Tax rates and bands for England, Wales, and Northern Ireland.",
+      "updated_data_sources": [
+        "gov"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source confirmation)"
+      ],
+      "config_parameters": [
+        "DATA_TAX_RATES"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "DATA_TAX_RATES",
+          "dataset_source": "input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/GovIncomeTaxRatesV424Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T20:14:13Z after cloning v4.23 to v4.24 and correcting DATA_TAX_RATES provenance to GOV.UK 2024/25 Income Tax rates and allowances for England, Wales, and Northern Ireland main rates. The selected TaxRates.csv rows remain 0,0.20; 37700,0.40; and 125140,0.45 because the official 2024/25 rows match the prior file. The retained source artifact is input-data-versions/calibration-evidence/gov-income-tax-rates-v4.24/income-tax-rates-and-allowances-current-and-past.html. The current model has one tax table and does not encode separate Scottish Income Tax bands. overallCompositeLoss=0.573917, unchanged from v4.23. Required metrics passing: Advances to FTB, Household Debt to Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean and HPI Std. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.23: none. This release improves 2024 source-year alignment without changing model behavior."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "DATA_TAX_RATES"
+          ],
+          "improvement_summary": "Replaced future-year tax-rate provenance with 2024/25 GOV.UK Income Tax rates and allowances while keeping the same England/Wales/Northern Ireland main-rate rows.",
+          "why_changed": "To remove 2025/26 source-year leakage from the 2024 calibration chain.",
+          "method_chosen": "Direct source confirmation from GOV.UK Income Tax rates and allowances for current and previous tax years: taxable-income band starts after Personal Allowance at 0, 37700, and 125140 with rates 20%, 40%, and 45%.",
+          "decision_logic": "Objective=source-year fidelity; Why=the 2024 baseline should cite the 2024/25 policy period even where rows are unchanged; Tradeoff=this improves provenance but retains the existing single-table model limitation for Scotland."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.25",
+      "snapshot_folder": "v4.25",
+      "validation_dataset": "r8",
+      "description": "Recalibrated DATA_NATIONAL_INSURANCE_RATES to official 2024/25 Class 1 employee Category A annual thresholds and rates.",
+      "updated_data_sources": [
+        "gov"
+      ],
+      "calibration_files": [
+        "N/A (direct official-policy source update)"
+      ],
+      "config_parameters": [
+        "DATA_NATIONAL_INSURANCE_RATES"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "DATA_NATIONAL_INSURANCE_RATES",
+          "dataset_source": "input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/GovNationalInsuranceRatesV425Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T20:15:28Z after cloning v4.24 to v4.25 and changing NationalInsuranceRates.csv from 12584,0.12 and 50284,0.02 to official annual 2024/25 Class 1 employee Category A rows 12570,0.08 and 50270,0.02. The retained source artifact is input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/rates-and-thresholds-for-employers-2024-to-2025.html, downloaded from https://www.gov.uk/guidance/rates-and-thresholds-for-employers-2024-to-2025. The model applies the NI table to annual income, so v4.25 uses the official annual Primary Threshold and Upper Earnings Limit rather than the prior 52-times-weekly convention. overallCompositeLoss=0.578064 versus v4.24=0.573917 (delta +0.004147). Required metrics passing: Advances to FTB, Household Debt to Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.24: HPI Std warn->fail. This release improves 2024 policy fidelity by removing stale NI rates, while modestly worsening the tracked validation composite."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "DATA_NATIONAL_INSURANCE_RATES"
+          ],
+          "improvement_summary": "Replaced stale Class 1 employee NI rows with official 2024/25 annual thresholds and 8%/2% Category A employee rates.",
+          "why_changed": "To align employee National Insurance deductions with the 2024/25 policy period and the model's annual-income table application.",
+          "method_chosen": "Direct source update from GOV.UK Rates and thresholds for employers 2024 to 2025: Primary Threshold 12570 per year, Upper Earnings Limit 50270 per year, Category A employee rates 8% between PT and UEL and 2% above UEL.",
+          "decision_logic": "Objective=source-year fidelity and unit consistency; Why=the prior table retained a stale 12% main rate and 52-times-weekly thresholds while the model consumes annual income; Tradeoff=the tracked 2024 composite worsens modestly and HPI Std moves from warning to failing, but the policy input is more accurate for 2024/25."
+        }
+      ]
+    },
+    {
+      "version_id": "v4.26",
+      "snapshot_folder": "v4.26",
+      "validation_dataset": "r8",
+      "description": "Source-confirmed GOVERNMENT_MONTHLY_INCOME_SUPPORT against a v4.26-local GOV.UK 2024/25 Income Support evidence bundle.",
+      "updated_data_sources": [
+        "gov"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/official/gov_income_support_2024.py"
+      ],
+      "config_parameters": [
+        "GOVERNMENT_MONTHLY_INCOME_SUPPORT"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "GOVERNMENT_MONTHLY_INCOME_SUPPORT",
+          "dataset_source": "input-data-versions/calibration-evidence/gov-income-support-v4.26/GovIncomeSupportV426Summary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-12T20:17:27Z after cloning v4.25 to v4.26 and source-confirming GOVERNMENT_MONTHLY_INCOME_SUPPORT at 616.4166666667 from a v4.26-local copy of the GOV.UK 2024/25 Income Support evidence. The retained source artifact is input-data-versions/calibration-evidence/gov-income-support-v4.26/benefit-and-pension-rates-2024-to-2025.html. The source weekly rate is 142.25 for Income Support personal allowance, Both 18 or over, Rates 2024/25, and the selected monthly scalar remains 142.25 * 52 / 12 = 616.4166666667. The stale live src/main/resources value 578.6 is not carried into this version chain. overallCompositeLoss=0.578064, unchanged from v4.25. Required metrics passing: Advances to FTB, Household Debt to Income, House Price Growth, Interest Rate Spread, Income Distribution Realism, and Financial Wealth Distribution Realism. Required metrics warning: HPI Mean. Required metrics failing: Mortgage Approvals, Housing Transactions, Advances to Home Movers, Advances to BTL, House Price to Household Disposable Income, HPI Std, HPI Cycle Period, Owner-Occupier Debt to Income, Rental Yield, and Housing Wealth Distribution Realism. Status changes versus v4.25: none. This release improves self-contained provenance for the v4.26 chain without changing model behavior."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "GOVERNMENT_MONTHLY_INCOME_SUPPORT"
+          ],
+          "improvement_summary": "Retained a v4.26-local 2024/25 GOV.UK Income Support evidence bundle for the already-correct calendar-month support value.",
+          "why_changed": "To make the final sequential government/tax correction self-contained and to avoid silently carrying the stale live runtime value based on four-week-month reasoning.",
+          "method_chosen": "Direct source confirmation from GOV.UK Benefit and pension rates 2024 to 2025: Income Support, Both 18 or over, Rates 2024/25 = 142.25 weekly; selected monthly scalar = 142.25 * 52 / 12 = 616.4166666667.",
+          "decision_logic": "Objective=source-year fidelity and unit consistency; Why=the model annualizes the monthly value by multiplying by 12, so the weekly rate should be converted with 52/12; Tradeoff=this improves self-contained provenance but does not change simulation output relative to v4.25."
         }
       ]
     }

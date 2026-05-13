@@ -1,0 +1,20 @@
+{
+  "sourceUrl": "https://www.gov.uk/guidance/rates-and-thresholds-for-employers-2024-to-2025",
+  "sourcePath": "input-data-versions/calibration-evidence/gov-ni-class1-employee-v4.25/rates-and-thresholds-for-employers-2024-to-2025.html",
+  "sourceYear": "2024/25",
+  "method": "direct-official-policy-table-update",
+  "methodRationale": "Class 1 employee National Insurance thresholds and rates are direct policy table values. The model applies this table to annual gross income, so v4.25 uses the official annual Primary Threshold and Upper Earnings Limit instead of the previous 52-times-weekly convention. This removes stale 12% employee main-rate behavior and improves 2024 policy alignment.",
+  "selectedRows": [
+    {"bandStart": 12570, "rate": 0.08},
+    {"bandStart": 50270, "rate": 0.02}
+  ],
+  "legacyComparison": {
+    "v4_24_rows": [
+      {"bandStart": 12584, "rate": 0.12},
+      {"bandStart": 50284, "rate": 0.02}
+    ],
+    "main_rate_change": -0.04,
+    "primary_threshold_change": -14,
+    "upper_earnings_limit_change": -14
+  }
+}

@@ -1,0 +1,16 @@
+python3 -m scripts.python.calibration.output.four_parameter_esmda \
+  --version v0o1 \
+  --output-version v0o2 \
+  --validation-year 2011 \
+  --validation-objective family_aware_metric_loss \
+  --validation-loss-error-std 1.0 \
+  --seeds 1,2,3,4,5,6,7,8 \
+  --workers 20 \
+  --ensemble-size 48 \
+  --assimilation-steps 5 \
+  --rng-seed 20260512 \
+  --output-root tmp/output-calibration \
+  --evidence-dir input-data-versions/calibration-evidence/output-four-parameter-esmda-v0o2 \
+  --local-refinement-top-n 8 \
+  --local-refinement-radius 1 \
+  --local-refinement-max-candidates 72

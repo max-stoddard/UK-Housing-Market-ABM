@@ -1,0 +1,25 @@
+{
+  "sourceUrl": "https://www.gov.uk/government/publications/benefit-and-pension-rates-2024-to-2025/benefit-and-pension-rates-2024-to-2025",
+  "sourcePath": "input-data-versions/calibration-evidence/gov-income-support-v4.26/benefit-and-pension-rates-2024-to-2025.html",
+  "sourceYear": "2024/25",
+  "sourceSection": "Income Support",
+  "method": "weekly-source-rate-annualized-to-calendar-month",
+  "methodRationale": "The model stores this support floor as a monthly value and later annualizes it by multiplying by 12. Converting the weekly GOV.UK rate with 52 / 12 preserves the official annual entitlement implied by 52 weekly payments, unlike a four-week month convention.",
+  "selectedConfigValues": {
+    "GOVERNMENT_MONTHLY_INCOME_SUPPORT": 616.4166666667
+  },
+  "observation": {
+    "weekly_rate": 142.25,
+    "annual_equivalent": 7397.0,
+    "monthly_equivalent": 616.4166666666666,
+    "selected_config_value": 616.4166666667,
+    "row_label": "Both 18 or over",
+    "rate_column": "Rates 2024/25",
+    "calculation": "142.25 * 52 / 12"
+  },
+  "legacyComparison": {
+    "v4_25_config_value": 616.4166666667,
+    "src_main_resources_value_at_planning": 578.6,
+    "selected_minus_src_main_resources": 37.8166666667
+  }
+}

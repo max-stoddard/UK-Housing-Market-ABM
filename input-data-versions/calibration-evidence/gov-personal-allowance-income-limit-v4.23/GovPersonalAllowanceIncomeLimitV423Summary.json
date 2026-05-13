@@ -1,0 +1,15 @@
+{
+  "sourceUrl": "https://www.gov.uk/government/publications/spring-budget-2024-overview-of-tax-legislation-and-rates-ootlar/annex-a-rates-and-allowances",
+  "sourcePath": "input-data-versions/calibration-evidence/gov-personal-allowance-income-limit-v4.23/spring-budget-2024-annex-a-rates-and-allowances.html",
+  "sourceYear": "2024/25",
+  "method": "direct-official-policy-table-source-confirmation",
+  "methodRationale": "The Personal Allowance taper income limit is a direct statutory policy parameter, so the 2024/25 GOV.UK table is promoted without statistical fitting. This improves 2024 source alignment by replacing future-year provenance while leaving the numerically identical value unchanged.",
+  "selectedConfigValues": {
+    "GOVERNMENT_INCOME_LIMIT_FOR_PERSONAL_ALLOWANCE": 100000.0
+  },
+  "legacyComparison": {
+    "v4_22_value": 100000.0,
+    "v4_22_comment_source_year": "2025/26",
+    "selected_minus_v4_22": 0.0
+  }
+}

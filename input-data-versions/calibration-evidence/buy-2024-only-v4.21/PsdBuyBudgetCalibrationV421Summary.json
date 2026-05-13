@@ -1,0 +1,153 @@
+{
+  "baseline_best_fit_distance": 0.5464600916183502,
+  "eligible_variant_count": 1,
+  "fit_degradation_max": 0.1,
+  "rejected_variant_count": 0,
+  "selected": {
+    "anchor_price_error": 0.19080781129778324,
+    "anchor_price_implied_psd": 260078.0920955562,
+    "buy_exponent": 1.0,
+    "buy_mu": 0.0,
+    "buy_scale": 4.3957479837432825,
+    "buy_sigma": 0.2,
+    "fit_degradation_vs_baseline": 0.04205386990278949,
+    "fit_distance_2024": 0.5694408532183347,
+    "fit_distance_2025": Infinity,
+    "guardrail_failures": [],
+    "guardrail_warnings": [],
+    "guardrails_passed": true,
+    "objective_anchor": 0.014376299834734442,
+    "objective_fit": 0.006743270086287181,
+    "objective_median_curve": 0.0,
+    "objective_p95": 0.0,
+    "objective_sigma": 0.0,
+    "objective_total": 0.1792588681031005,
+    "ppd_2025_loaded": 0.0,
+    "ppd_rows_used_raked": 752326.0,
+    "quantile_residuals_log": [
+      {
+        "level": 0.05,
+        "modelPrice": 34243.403537086946,
+        "residualLogPrice": 1.278690406670771,
+        "targetPrice": 123000.00000000003
+      },
+      {
+        "level": 0.1,
+        "modelPrice": 69598.97060523853,
+        "residualLogPrice": 0.7510783987034948,
+        "targetPrice": 147500.0
+      },
+      {
+        "level": 0.15,
+        "modelPrice": 104412.96842456453,
+        "residualLogPrice": 0.47561009304311774,
+        "targetPrice": 167999.99999999994
+      },
+      {
+        "level": 0.2,
+        "modelPrice": 139126.38155806658,
+        "residualLogPrice": 0.2849730851954142,
+        "targetPrice": 185000.00000000006
+      },
+      {
+        "level": 0.25,
+        "modelPrice": 172613.75646617243,
+        "residualLogPrice": 0.17195350223881078,
+        "targetPrice": 205000.0
+      },
+      {
+        "level": 0.3,
+        "modelPrice": 202731.344766496,
+        "residualLogPrice": 0.10421872445822089,
+        "targetPrice": 225000.00000000015
+      },
+      {
+        "level": 0.35,
+        "modelPrice": 229444.67556424023,
+        "residualLogPrice": 0.06150628993302121,
+        "targetPrice": 243999.9999999998
+      },
+      {
+        "level": 0.4,
+        "modelPrice": 254041.22423744955,
+        "residualLogPrice": 0.023185077018796463,
+        "targetPrice": 260000.00000000015
+      },
+      {
+        "level": 0.45,
+        "modelPrice": 277606.2285349908,
+        "residualLogPrice": 0.008585937702605406,
+        "targetPrice": 279999.9999999998
+      },
+      {
+        "level": 0.5,
+        "modelPrice": 300896.347051058,
+        "residualLogPrice": -0.0029833688298630534,
+        "targetPrice": 299999.9999999999
+      },
+      {
+        "level": 0.55,
+        "modelPrice": 324533.4316587394,
+        "residualLogPrice": -0.004736232757256431,
+        "targetPrice": 323000.0000000002
+      },
+      {
+        "level": 0.6,
+        "modelPrice": 349185.5115843397,
+        "residualLogPrice": -0.0034008530219207245,
+        "targetPrice": 348000.0
+      },
+      {
+        "level": 0.65,
+        "modelPrice": 375744.92126730614,
+        "residualLogPrice": -0.0019844863166529336,
+        "targetPrice": 375000.0000000002
+      },
+      {
+        "level": 0.7,
+        "modelPrice": 405595.4665497317,
+        "residualLogPrice": -0.001481553717558981,
+        "targetPrice": 404994.99999999977
+      },
+      {
+        "level": 0.75,
+        "modelPrice": 441180.47634604736,
+        "residualLogPrice": -0.0026793082323663953,
+        "targetPrice": 439999.9999999997
+      },
+      {
+        "level": 0.8,
+        "modelPrice": 487500.00000000035,
+        "residualLogPrice": 0.0,
+        "targetPrice": 487500.00000000035
+      },
+      {
+        "level": 0.85,
+        "modelPrice": 556798.5634385587,
+        "residualLogPrice": -0.003235415239123185,
+        "targetPrice": 554999.9999999998
+      },
+      {
+        "level": 0.9,
+        "modelPrice": 684577.4531803519,
+        "residualLogPrice": -0.05182942836717075,
+        "targetPrice": 649999.9999999998
+      },
+      {
+        "level": 0.95,
+        "modelPrice": 998049.1054348658,
+        "residualLogPrice": -0.16056612945918403,
+        "targetPrice": 849999.9999999994
+      }
+    ],
+    "selected_alpha": 1.8,
+    "source_year_ppd": 2024.0,
+    "source_year_psd": 2024.0,
+    "status_mode": "a_only",
+    "unknown_income_share": 0.03733314919768201,
+    "variant_id": "status=a_only|year_policy=2024_only|alpha=1.8|weights=a12_p20_s4_c12",
+    "weight_profile_id": "a12_p20_s4_c12",
+    "worst_year_fit_distance": 0.5694408532183347,
+    "year_policy": "2024_only"
+  }
+}
