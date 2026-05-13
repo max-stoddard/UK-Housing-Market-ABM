@@ -182,7 +182,11 @@ export function ExperimentRunMode({
           }}
         />
 
-        <ExperimentLogCard selectedJob={controller.selectedJob} lines={controller.logLines} />
+        <ExperimentLogCard
+          selectedJob={controller.selectedJob}
+          lines={controller.logLines}
+          progress={controller.logProgress}
+        />
       </div>
     </section>
   );

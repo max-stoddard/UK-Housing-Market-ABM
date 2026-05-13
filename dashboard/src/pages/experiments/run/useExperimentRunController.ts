@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type {
   BasePolicyId,
   BasePolicyOption,
+  ExperimentProgressSnapshot,
   ExperimentJobSummary,
   ModelRunOptionsPayload,
   ModelRunParameterDefinition,
@@ -63,6 +64,7 @@ export interface ExperimentRunController {
   selectedJob: ExperimentJobSummary | null;
   selectedJobRef: string;
   logLines: string[];
+  logProgress: ExperimentProgressSnapshot | null;
   logError: string;
   policyParameters: ModelRunParameterDefinition[];
   sensitivityPolicyPackages: SensitivityPolicyPackageDefinition[];
@@ -262,7 +264,7 @@ export function useExperimentRunController({
   const executionDisabled = Boolean(options && !options.executionEnabled);
   const executionDisabledReason = options?.executionDisabledReason ?? options?.remoteExecution?.reason ?? '';
 
-  const { lines: logLines, error: logError } = useExperimentLogs(
+  const { lines: logLines, progress: logProgress, error: logError } = useExperimentLogs(
     selectedJobRef,
     Boolean(options?.executionEnabled && selectedJobRef)
   );
@@ -749,6 +751,7 @@ export function useExperimentRunController({
     selectedJob,
     selectedJobRef,
     logLines,
+    logProgress,
     logError,
     policyParameters,
     sensitivityPolicyPackages,

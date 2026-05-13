@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ExperimentProgressSnapshot } from '../../../shared/types';
 import { fetchExperimentJobLogs, isRetryableApiError } from '../../lib/api';
 
 const MAX_LOG_LINES = 10_000;
 
-export function useExperimentLogs(jobRef: string, enabled: boolean): { lines: string[]; error: string } {
+export function useExperimentLogs(jobRef: string, enabled: boolean): {
+  lines: string[];
+  progress: ExperimentProgressSnapshot | null;
+  error: string;
+} {
   const [lines, setLines] = useState<string[]>([]);
+  const [progress, setProgress] = useState<ExperimentProgressSnapshot | null>(null);
   const [error, setError] = useState<string>('');
   const cursorRef = useRef<number>(0);
 
   useEffect(() => {
     setLines([]);
+    setProgress(null);
     setError('');
     cursorRef.current = 0;
   }, [jobRef]);
@@ -30,6 +37,7 @@ export function useExperimentLogs(jobRef: string, enabled: boolean): { lines: st
         }
 
         cursorRef.current = payload.nextCursor;
+        setProgress(payload.progress ?? null);
         setLines((current) => {
           if (payload.truncated) {
             return payload.lines;
@@ -60,5 +68,5 @@ export function useExperimentLogs(jobRef: string, enabled: boolean): { lines: st
     };
   }, [enabled, jobRef]);
 
-  return { lines, error };
+  return { lines, progress, error };
 }

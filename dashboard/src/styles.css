@@ -1707,6 +1707,69 @@ code {
   opacity: 0.65;
 }
 
+.job-progress-panel {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.65rem;
+  border: 1px solid rgba(11, 114, 133, 0.14);
+  border-radius: 0.7rem;
+  background: #f8fbfa;
+  padding: 0.7rem;
+}
+
+.job-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  color: var(--text);
+}
+
+.job-progress-head span {
+  color: var(--muted);
+  font-size: 0.82rem;
+  text-transform: capitalize;
+}
+
+.job-progress-track {
+  height: 0.7rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e9ecef;
+}
+
+.job-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #0b7285, #2b8a3e);
+  transition: width 160ms ease;
+}
+
+.job-progress-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+}
+
+.job-progress-stats div {
+  min-width: 0;
+}
+
+.job-progress-stats dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.job-progress-stats dd {
+  margin: 0.12rem 0 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
 .job-log-view {
   margin-top: 0.65rem;
   min-height: 260px;
