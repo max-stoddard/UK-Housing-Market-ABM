@@ -87,6 +87,11 @@ function appendLog(logPath: string, line: string): void {
   fs.appendFileSync(logPath, `${line}\n`, 'utf-8');
 }
 
+function appendVisibleLog(logPath: string, line: string): void {
+  appendLog(logPath, line);
+  console.log(line);
+}
+
 function validateRemoteSensitivityExperimentId(experimentId: string): string {
   const normalized = experimentId.trim();
   if (!/^sensitivity-\d{8}T\d{6}Z-[0-9a-f]{8}$/.test(normalized)) {
@@ -212,10 +217,13 @@ async function runManual(request: RemoteRunRequest, paths: ReturnType<typeof cre
 
 async function runSensitivity(request: RemoteRunRequest, paths: ReturnType<typeof createDevelopmentRuntimePaths>, artifactRoot: string, logPath: string): Promise<void> {
   const experimentId = resolveRemoteSensitivityExperimentId(request);
+  const rawLogPath = path.join(artifactRoot, 'logs', 'sensitivity-raw.log');
   const submit = submitSensitivityExperiment(paths, request.payload as SensitivityExperimentCreateRequest, {
     now: parseRemoteCreatedAt(request.createdAt),
     forcedExperimentId: experimentId,
-    logSink: (line) => appendLog(logPath, line)
+    logSink: (line) => appendVisibleLog(logPath, line),
+    rawLogSink: (line) => appendLog(rawLogPath, line),
+    progressSink: (progress) => appendVisibleLog(logPath, `[progress] ${JSON.stringify(progress)}`)
   });
   if (!submit.accepted || !submit.experiment) {
     writeJson(path.join(artifactRoot, 'remote-status.json'), {

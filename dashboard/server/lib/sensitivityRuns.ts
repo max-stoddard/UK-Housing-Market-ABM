@@ -26,7 +26,8 @@ import type {
   SensitivitySampleSlot,
   SensitivityTornadoBar,
   BasePolicyId,
-  SensitivityPolicyPackageDefinition
+  SensitivityPolicyPackageDefinition,
+  ExperimentProgressSnapshot
 } from '../../shared/types';
 import { getModelRunOptions, listModelRunJobs } from './modelRuns';
 import {
@@ -38,8 +39,6 @@ import {
 } from '../../shared/policyCatalogue';
 import {
   appendLogLine,
-  appendOutputChunk,
-  flushPartialLine,
   readLogSlice,
   type LogBufferState,
   type LogLineSink
@@ -104,6 +103,8 @@ type SpawnModelRunFn = (
 interface SubmitSensitivityExperimentOptions {
   launcher?: ModelLauncher;
   logSink?: LogLineSink;
+  rawLogSink?: LogLineSink;
+  progressSink?: (progress: ExperimentProgressSnapshot) => void;
   now?: Date;
   forcedExperimentId?: string;
 }
@@ -114,12 +115,44 @@ interface ExperimentRecord {
   results: SensitivityExperimentResultsPayload;
   charts: SensitivityExperimentChartsPayload;
   logBuffer: LogBufferState;
+  progress: SensitivityProgressState;
+  rawLogSink?: LogLineSink;
+  progressSink?: (progress: ExperimentProgressSnapshot) => void;
+  lastProgressSinkAtMs: number;
   launcher: ModelLauncher;
   manifestPoints: SensitivityRunManifestPoint[];
   normalizedGeneralOverrides: Map<string, string>;
   activeProcesses: Set<ChildProcessWithoutNullStreams>;
   killTimer?: NodeJS.Timeout;
   cancelRequested: boolean;
+}
+
+interface SensitivityProgressTask {
+  taskId: string;
+  pointId: string;
+  pointLabel: string;
+  seed: number;
+  workerIndex: number | null;
+  nSteps: number | null;
+  lastModelTime: number | null;
+  startedAtMs: number | null;
+  endedAtMs: number | null;
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled';
+}
+
+interface SensitivityProgressState {
+  totalRuns: number;
+  totalWorkers: number;
+  tasks: Map<string, SensitivityProgressTask>;
+  workerTaskIds: Map<number, string>;
+  startedAtMs: number | null;
+  endedAtMs: number | null;
+  updatedAtMs: number;
+}
+
+interface ParsedJvmProgressLine {
+  simulation: number;
+  modelTime: number;
 }
 
 interface RepoState {
@@ -638,6 +671,323 @@ function createLogBuffer(sink?: LogLineSink): LogBufferState {
   };
 }
 
+function taskId(point: SensitivitySamplePoint, seed: number): string {
+  return `${point.pointId}\0${seed}`;
+}
+
+function createProgressState(metadata: SensitivityExperimentMetadata): SensitivityProgressState {
+  const seeds = metadata.seeds ?? buildSeeds(metadata.seedsPerPoint ?? 1);
+  const tasks = new Map<string, SensitivityProgressTask>();
+  for (const point of metadata.sampledPoints) {
+    for (const seed of seeds) {
+      tasks.set(taskId(point, seed), {
+        taskId: taskId(point, seed),
+        pointId: point.pointId,
+        pointLabel: point.label,
+        seed,
+        workerIndex: null,
+        nSteps: null,
+        lastModelTime: null,
+        startedAtMs: null,
+        endedAtMs: null,
+        status: 'queued'
+      });
+    }
+  }
+
+  const startedAtMs = metadata.startedAt ? Date.parse(metadata.startedAt) : Number.NaN;
+  const endedAtMs = metadata.endedAt ? Date.parse(metadata.endedAt) : Number.NaN;
+
+  return {
+    totalRuns: tasks.size,
+    totalWorkers: Math.max(1, metadata.maxWorkers ?? defaultWorkerCount(tasks.size)),
+    tasks,
+    workerTaskIds: new Map(),
+    startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : null,
+    endedAtMs: Number.isFinite(endedAtMs) ? endedAtMs : null,
+    updatedAtMs: Date.now()
+  };
+}
+
+function hydrateProgressFromResults(progress: SensitivityProgressState, results: SensitivityExperimentResultsPayload): void {
+  for (const point of results.points) {
+    for (const seedResult of point.seedResults ?? []) {
+      const id = `${point.pointId}\0${seedResult.seed}`;
+      const task = progress.tasks.get(id);
+      if (!task) {
+        continue;
+      }
+      task.status = seedResult.status;
+      task.lastModelTime = task.nSteps;
+      task.endedAtMs = progress.endedAtMs ?? progress.updatedAtMs;
+    }
+  }
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function taskProgressFraction(task: SensitivityProgressTask): number {
+  if (task.status === 'succeeded' || task.status === 'failed' || task.status === 'canceled') {
+    return 1;
+  }
+  if (task.status !== 'running' || task.nSteps === null || task.nSteps <= 0 || task.lastModelTime === null) {
+    return 0;
+  }
+  return clamp(task.lastModelTime / task.nSteps, 0, 0.999);
+}
+
+function createProgressSnapshot(record: ExperimentRecord, nowMs = Date.now()): ExperimentProgressSnapshot {
+  const tasks = [...record.progress.tasks.values()];
+  const succeededRuns = tasks.filter((task) => task.status === 'succeeded').length;
+  const failedRuns = tasks.filter((task) => task.status === 'failed').length;
+  const canceledRuns = tasks.filter((task) => task.status === 'canceled').length;
+  const completedRuns = succeededRuns + failedRuns + canceledRuns;
+  const activeRuns = tasks.filter((task) => task.status === 'running').length;
+  const completedRunEquivalents = tasks.reduce((sum, task) => sum + taskProgressFraction(task), 0);
+  const startedAtMs = record.progress.startedAtMs ?? (record.metadata.startedAt ? Date.parse(record.metadata.startedAt) : null);
+  const endedAtMs = record.progress.endedAtMs ?? (record.metadata.endedAt ? Date.parse(record.metadata.endedAt) : null);
+  const elapsedMs = startedAtMs === null ? 0 : Math.max(0, (endedAtMs ?? nowMs) - startedAtMs);
+  const elapsedMinutes = elapsedMs / 60_000;
+  const throughputRunsPerMinute = elapsedMinutes > 0 ? completedRunEquivalents / elapsedMinutes : null;
+  const completedRunsPerMinute = elapsedMinutes > 0 ? completedRuns / elapsedMinutes : null;
+  const remainingRuns = Math.max(0, record.progress.totalRuns - completedRunEquivalents);
+  const canEstimateEta =
+    record.metadata.status === 'running' &&
+    throughputRunsPerMinute !== null &&
+    throughputRunsPerMinute > 0 &&
+    remainingRuns > 0;
+  const etaSeconds = canEstimateEta ? (remainingRuns / throughputRunsPerMinute) * 60 : null;
+  const estimatedFinishAt = etaSeconds === null ? null : new Date(nowMs + etaSeconds * 1000).toISOString();
+
+  return {
+    kind: 'sensitivity',
+    status: record.metadata.status,
+    totalRuns: record.progress.totalRuns,
+    completedRuns,
+    failedRuns,
+    canceledRuns,
+    activeRuns,
+    totalWorkers: record.progress.totalWorkers,
+    activeWorkers: record.progress.workerTaskIds.size,
+    completedRunEquivalents,
+    percentComplete: record.progress.totalRuns === 0
+      ? 0
+      : clamp((completedRunEquivalents / record.progress.totalRuns) * 100, 0, 100),
+    throughputRunsPerMinute,
+    completedRunsPerMinute,
+    etaSeconds,
+    estimatedFinishAt,
+    elapsedSeconds: elapsedMs / 1000,
+    ...(startedAtMs !== null ? { startedAt: new Date(startedAtMs).toISOString() } : {}),
+    ...(endedAtMs !== null ? { endedAt: new Date(endedAtMs).toISOString() } : {}),
+    updatedAt: new Date(nowMs).toISOString()
+  };
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds === null || !Number.isFinite(seconds)) {
+    return 'pending';
+  }
+  const totalSeconds = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ${remainingSeconds}s`;
+  }
+  return `${remainingSeconds}s`;
+}
+
+function formatEstimatedFinish(isoTimestamp: string | null): string {
+  if (!isoTimestamp) {
+    return 'pending';
+  }
+  const date = new Date(isoTimestamp);
+  if (!Number.isFinite(date.getTime())) {
+    return 'pending';
+  }
+  return date.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+}
+
+function formatRate(value: number | null): string {
+  return value === null || !Number.isFinite(value) ? 'pending' : `${value.toFixed(2)}/min`;
+}
+
+function formatProgressBrief(snapshot: ExperimentProgressSnapshot): string {
+  return `progress ${snapshot.completedRunEquivalents.toFixed(1)}/${snapshot.totalRuns} (${snapshot.percentComplete.toFixed(
+    1
+  )}%), completed ${snapshot.completedRuns}/${snapshot.totalRuns}, active workers ${snapshot.activeWorkers}/${
+    snapshot.totalWorkers
+  }, throughput ${formatRate(snapshot.throughputRunsPerMinute)}, ETA ${formatDuration(snapshot.etaSeconds)}, finish ${formatEstimatedFinish(
+    snapshot.estimatedFinishAt
+  )}`;
+}
+
+function publishProgress(record: ExperimentRecord, force = false): void {
+  if (!record.progressSink) {
+    return;
+  }
+  const nowMs = Date.now();
+  if (!force && nowMs - record.lastProgressSinkAtMs < 1_000) {
+    return;
+  }
+  record.lastProgressSinkAtMs = nowMs;
+  try {
+    record.progressSink(createProgressSnapshot(record, nowMs));
+  } catch {
+    // Progress sinks are diagnostic; they must not affect run execution.
+  }
+}
+
+function updateProgressStarted(record: ExperimentRecord): void {
+  const startedAtMs = record.metadata.startedAt ? Date.parse(record.metadata.startedAt) : Date.now();
+  record.progress.startedAtMs = Number.isFinite(startedAtMs) ? startedAtMs : Date.now();
+  record.progress.updatedAtMs = Date.now();
+  publishProgress(record, true);
+}
+
+function startProgressTask(
+  record: ExperimentRecord,
+  point: SensitivitySamplePoint,
+  seed: number,
+  workerIndex: number,
+  nSteps: number | null
+): SensitivityProgressTask {
+  const id = taskId(point, seed);
+  let task = record.progress.tasks.get(id);
+  if (!task) {
+    task = {
+      taskId: id,
+      pointId: point.pointId,
+      pointLabel: point.label,
+      seed,
+      workerIndex: null,
+      nSteps: null,
+      lastModelTime: null,
+      startedAtMs: null,
+      endedAtMs: null,
+      status: 'queued'
+    };
+    record.progress.tasks.set(id, task);
+    record.progress.totalRuns = record.progress.tasks.size;
+  }
+  task.status = 'running';
+  task.workerIndex = workerIndex;
+  task.nSteps = nSteps;
+  task.lastModelTime = null;
+  task.startedAtMs = Date.now();
+  task.endedAtMs = null;
+  record.progress.workerTaskIds.set(workerIndex, id);
+  record.progress.updatedAtMs = Date.now();
+  publishProgress(record, true);
+  return task;
+}
+
+function updateProgressModelTime(record: ExperimentRecord, id: string, modelTime: number): void {
+  const task = record.progress.tasks.get(id);
+  if (!task || task.status !== 'running') {
+    return;
+  }
+  task.lastModelTime = Math.max(task.lastModelTime ?? 0, modelTime);
+  record.progress.updatedAtMs = Date.now();
+  publishProgress(record);
+}
+
+function finishProgressTask(
+  record: ExperimentRecord,
+  id: string,
+  status: SensitivitySeedRunResult['status']
+): void {
+  const task = record.progress.tasks.get(id);
+  if (!task) {
+    return;
+  }
+  task.status = status;
+  task.lastModelTime = task.nSteps;
+  task.endedAtMs = Date.now();
+  if (task.workerIndex !== null) {
+    record.progress.workerTaskIds.delete(task.workerIndex);
+  }
+  record.progress.updatedAtMs = Date.now();
+  publishProgress(record, true);
+}
+
+function parseJvmProgressLine(line: string): ParsedJvmProgressLine | null {
+  const match = /^Simulation:\s*(\d+),\s*time:\s*([0-9]+(?:\.[0-9]+)?)\s*$/.exec(line.trim());
+  if (!match) {
+    return null;
+  }
+  const simulation = Number.parseInt(match[1], 10);
+  const modelTime = Number.parseFloat(match[2]);
+  if (!Number.isFinite(simulation) || !Number.isFinite(modelTime)) {
+    return null;
+  }
+  return { simulation, modelTime };
+}
+
+function emitRawLogLine(record: ExperimentRecord, streamName: 'stdout' | 'stderr', line: string): void {
+  if (!record.rawLogSink) {
+    return;
+  }
+  try {
+    record.rawLogSink(`[sensitivity:${record.metadata.experimentId}] [raw:${streamName}] ${line}`);
+  } catch {
+    // Raw persistent logs must not affect model execution.
+  }
+}
+
+function createSensitivityOutputParser(record: ExperimentRecord, id: string) {
+  const partials: Record<'stdout' | 'stderr', string> = {
+    stdout: '',
+    stderr: ''
+  };
+
+  const handleLine = (streamName: 'stdout' | 'stderr', line: string): void => {
+    emitRawLogLine(record, streamName, line);
+    if (streamName !== 'stdout') {
+      return;
+    }
+    const parsed = parseJvmProgressLine(line);
+    if (parsed) {
+      updateProgressModelTime(record, id, parsed.modelTime);
+    }
+  };
+
+  const append = (streamName: 'stdout' | 'stderr', chunk: Buffer): void => {
+    partials[streamName] += chunk.toString('utf-8').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    while (true) {
+      const lineBreak = partials[streamName].indexOf('\n');
+      if (lineBreak < 0) {
+        break;
+      }
+      const line = partials[streamName].slice(0, lineBreak);
+      partials[streamName] = partials[streamName].slice(lineBreak + 1);
+      handleLine(streamName, line);
+    }
+  };
+
+  const flush = (): void => {
+    for (const streamName of ['stdout', 'stderr'] as const) {
+      if (!partials[streamName]) {
+        continue;
+      }
+      handleLine(streamName, partials[streamName]);
+      partials[streamName] = '';
+    }
+  };
+
+  return { append, flush };
+}
+
 function asSummary(metadata: SensitivityExperimentMetadata): SensitivityExperimentSummary {
   return {
     experimentId: metadata.experimentId,
@@ -743,6 +1093,16 @@ function readConfigSeed(configPath: string): number | null {
   }
   const parsed = Number.parseFloat(unquote(stripInlineComment(match[1]).trim()));
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readConfigPositiveInteger(configPath: string, key: string): number | null {
+  const values = parseConfigAssignments(configPath);
+  const rawValue = values.get(key);
+  if (rawValue === undefined) {
+    return null;
+  }
+  const parsed = Number.parseFloat(rawValue);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
 }
 
 function rewriteConfigForRun(
@@ -1274,12 +1634,15 @@ function ensureLoaded(pathsInput: RuntimePathInput): void {
         results,
         charts,
         logBuffer: createLogBuffer(),
+        progress: createProgressState(metadata),
+        lastProgressSinkAtMs: 0,
         launcher: defaultSensitivityLauncher,
         manifestPoints: [],
         normalizedGeneralOverrides: new Map(),
         activeProcesses: new Set(),
         cancelRequested: false
       };
+      hydrateProgressFromResults(record.progress, results);
 
       state.experimentsById.set(experimentId, record);
       state.order.push(experimentId);
@@ -1819,7 +2182,8 @@ async function runSeed(
   pathsInput: RuntimePathInput,
   record: ExperimentRecord,
   point: SensitivitySamplePoint,
-  seed: number
+  seed: number,
+  workerIndex: number
 ): Promise<SensitivitySeedRunResult> {
   const paths = resolveRuntimePaths(pathsInput);
   const metadata = record.metadata;
@@ -1855,16 +2219,21 @@ async function runSeed(
   );
   const generatedConfigHash = hashFile(configPath);
   const configSeed = readConfigSeed(configPath);
+  const nSteps = readConfigPositiveInteger(configPath, 'N_STEPS');
 
   fs.mkdirSync(outputPath, { recursive: true });
 
   const runId = `${metadata.experimentId}-${point.pointId}-${seedLabel}`;
+  const currentTaskId = taskId(point, seed);
+  startProgressTask(record, point, seed, workerIndex, nSteps);
   appendLifecycle(
     record,
-    `Point ${point.label} (${point.pointId}) ${seedLabel} started with ${metadata.parameter.title}=${formatPointValues(
+    `Worker ${workerIndex}/${record.progress.totalWorkers} started point ${point.label} (${point.pointId}) ${seedLabel} with ${
+      metadata.parameter.title
+    }=${formatPointValues(
       point,
       parameterKeys
-    )}`
+    )}; ${formatProgressBrief(createProgressSnapshot(record))}`
   );
 
   const executionResult = await new Promise<{
@@ -1874,12 +2243,12 @@ async function runSeed(
     let stderr = '';
     let stdout = '';
     let child: ChildProcessWithoutNullStreams;
+    const outputParser = createSensitivityOutputParser(record, currentTaskId);
 
     try {
       child = record.launcher.launch({ repoRoot: paths.repoRoot, configPath, outputPath });
     } catch (error) {
       const message = `Failed to spawn model process: ${(error as Error).message}`;
-      appendLogLine(record.logBuffer, `[stderr] ${message}`, MAX_LOG_LINES);
       resolve({ status: 'failed', error: message });
       return;
     }
@@ -1888,22 +2257,25 @@ async function runSeed(
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf-8');
-      appendOutputChunk(record.logBuffer, 'stdout', chunk, MAX_LOG_LINES);
+      outputParser.append('stdout', chunk);
     });
 
     child.stderr.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf-8');
-      appendOutputChunk(record.logBuffer, 'stderr', chunk, MAX_LOG_LINES);
+      outputParser.append('stderr', chunk);
     });
 
     child.on('error', (error: Error) => {
       stderr += `${error.message}\n`;
-      appendLogLine(record.logBuffer, `[stderr] Model process error: ${error.message}`, MAX_LOG_LINES);
+      appendLifecycle(
+        record,
+        `Worker ${workerIndex}/${record.progress.totalWorkers} process error for point ${point.label} (${point.pointId}) ${seedLabel}: ${error.message}`
+      );
     });
 
     child.on('close', (code) => {
       record.activeProcesses.delete(child);
-      flushPartialLine(record.logBuffer, MAX_LOG_LINES);
+      outputParser.flush();
       if (record.killTimer && record.activeProcesses.size === 0) {
         clearTimeout(record.killTimer);
         record.killTimer = undefined;
@@ -1924,6 +2296,7 @@ async function runSeed(
     });
   });
 
+  finishProgressTask(record, currentTaskId, executionResult.status);
   let indicatorMetrics: SensitivityIndicatorPointMetric[] = emptyIndicatorMetrics();
 
   if (executionResult.status === 'succeeded') {
@@ -1942,7 +2315,9 @@ async function runSeed(
 
   appendLifecycle(
     record,
-    `Point ${point.label} (${point.pointId}) ${seedLabel} finished with status ${result.status}${
+    `Worker ${workerIndex}/${record.progress.totalWorkers} finished point ${point.label} (${point.pointId}) ${seedLabel} with status ${result.status}; ${formatProgressBrief(
+      createProgressSnapshot(record)
+    )}${
       result.error ? `: ${result.error}` : ''
     }`
   );
@@ -2090,10 +2465,16 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
 
   metadata.status = 'running';
   metadata.startedAt = new Date().toISOString();
+  updateProgressStarted(record);
   writeMetadata(paths, metadata);
   writeManifest(paths, record);
   state.activeExperimentId = metadata.experimentId;
-  appendLifecycle(record, `Experiment ${metadata.experimentId} running`);
+  appendLifecycle(
+    record,
+    `Experiment ${metadata.experimentId} running with ${record.progress.totalRuns} runs across ${record.progress.totalWorkers} workers; ${formatProgressBrief(
+      createProgressSnapshot(record)
+    )}`
+  );
 
   const seeds = metadata.seeds ?? buildSeeds(metadata.seedsPerPoint ?? 1);
   const maxWorkers = Math.max(1, metadata.maxWorkers ?? defaultWorkerCount(metadata.sampledPoints.length * seeds.length));
@@ -2131,7 +2512,7 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
     let nextTaskIndex = 0;
     let stopLaunching = false;
 
-    const runWorker = async () => {
+    const runWorker = async (workerIndex: number) => {
       while (!stopLaunching && !record.cancelRequested) {
         const task = tasks[nextTaskIndex];
         nextTaskIndex += 1;
@@ -2139,7 +2520,7 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
           return;
         }
 
-        const seedResult = await runSeed(paths, record, task.point, task.seed);
+        const seedResult = await runSeed(paths, record, task.point, task.seed, workerIndex);
         updatePointResult(task.point, seedResult);
 
         if (seedResult.status === 'failed' || seedResult.status === 'canceled') {
@@ -2148,7 +2529,8 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
       }
     };
 
-    await Promise.all(Array.from({ length: Math.min(maxWorkers, tasks.length) }, () => runWorker()));
+    const workerCount = Math.min(maxWorkers, tasks.length);
+    await Promise.all(Array.from({ length: workerCount }, (_unused, index) => runWorker(index + 1)));
 
     const pointResults = [...pointResultsById.values()];
     const failedPoint = pointResults.find((pointResult) => pointResult.status === 'failed');
@@ -2173,6 +2555,8 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
     appendLifecycle(record, `Experiment failed: ${metadata.failureReason}`);
   } finally {
     metadata.endedAt = new Date().toISOString();
+    const endedAtMs = Date.parse(metadata.endedAt);
+    record.progress.endedAtMs = Number.isFinite(endedAtMs) ? endedAtMs : Date.now();
     writeMetadata(paths, metadata);
     writeSummary(paths, metadata.experimentId, record.results, record.charts);
     writeManifest(paths, record);
@@ -2182,7 +2566,11 @@ async function runExperiment(pathsInput: RuntimePathInput, record: ExperimentRec
       clearTimeout(record.killTimer);
       record.killTimer = undefined;
     }
-    appendLifecycle(record, `Experiment ${metadata.experimentId} ended with status ${metadata.status}`);
+    publishProgress(record, true);
+    appendLifecycle(
+      record,
+      `Experiment ${metadata.experimentId} ended with status ${metadata.status}; ${formatProgressBrief(createProgressSnapshot(record))}`
+    );
   }
 }
 
@@ -2305,7 +2693,8 @@ export function getSensitivityExperimentLogs(
     lines: slice.lines,
     hasMore: slice.hasMore,
     done: isTerminal(record.metadata.status) && !slice.hasMore,
-    truncated: slice.truncated
+    truncated: slice.truncated,
+    progress: createProgressSnapshot(record)
   };
 }
 
@@ -2400,6 +2789,10 @@ export function submitSensitivityExperiment(
     results: emptyResults(experimentId),
     charts: emptyCharts(experimentId, metadata.parameter),
     logBuffer: createLogBuffer(options.logSink ? (line) => options.logSink?.(`[sensitivity:${experimentId}] ${line}`) : undefined),
+    progress: createProgressState(metadata),
+    rawLogSink: options.rawLogSink ?? options.logSink,
+    progressSink: options.progressSink,
+    lastProgressSinkAtMs: 0,
     launcher,
     manifestPoints: [],
     normalizedGeneralOverrides,
@@ -2408,6 +2801,7 @@ export function submitSensitivityExperiment(
   };
 
   appendLifecycle(record, `Experiment ${experimentId} queued`);
+  publishProgress(record, true);
 
   writeMetadata(paths, metadata);
   writeSummary(paths, experimentId, record.results, record.charts);
@@ -2452,16 +2846,20 @@ export function cancelSensitivityExperiment(
   record.cancelRequested = true;
   record.metadata.canceledByUser = true;
   appendLifecycle(record, `Cancel requested for experiment ${record.metadata.experimentId}`);
+  publishProgress(record, true);
 
   if (record.metadata.status === 'queued') {
     record.metadata.status = 'canceled';
     record.metadata.endedAt = new Date().toISOString();
+    const endedAtMs = Date.parse(record.metadata.endedAt);
+    record.progress.endedAtMs = Number.isFinite(endedAtMs) ? endedAtMs : Date.now();
     writeMetadata(record.runtimePaths, record.metadata);
     writeManifest(record.runtimePaths, record);
     if (state.activeExperimentId === normalized) {
       state.activeExperimentId = null;
     }
     appendLifecycle(record, `Experiment ${record.metadata.experimentId} canceled before start`);
+    publishProgress(record, true);
     return { experiment: record.metadata };
   }
 

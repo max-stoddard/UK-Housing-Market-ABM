@@ -48,7 +48,8 @@ import type {
   SensitivityExperimentMetadata,
   SensitivityExperimentResultsPayload,
   SensitivityExperimentSubmitResponse,
-  SensitivityExperimentSummary
+  SensitivityExperimentSummary,
+  ExperimentProgressSnapshot
 } from '../../shared/types';
 import { prepareModelRunSubmission } from './modelRuns';
 import { getResultsIndicatorCatalog } from './results';
@@ -244,6 +245,75 @@ function sliceLogLines(lines: string[], cursor = 0, limit = 200) {
     lines: selected,
     hasMore: nextCursor < lines.length,
     truncated: false
+  };
+}
+
+interface RemoteLogPayload {
+  lines: string[];
+  progress?: ExperimentProgressSnapshot;
+}
+
+function isExperimentProgressSnapshot(value: unknown): value is ExperimentProgressSnapshot {
+  const candidate = value as Partial<ExperimentProgressSnapshot> | null;
+  return Boolean(
+    candidate &&
+      candidate.kind === 'sensitivity' &&
+      typeof candidate.totalRuns === 'number' &&
+      typeof candidate.percentComplete === 'number' &&
+      typeof candidate.updatedAt === 'string'
+  );
+}
+
+function parseProgressLogLine(line: string): ExperimentProgressSnapshot | null {
+  const prefix = '[progress] ';
+  if (!line.startsWith(prefix)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(line.slice(prefix.length)) as unknown;
+    return isExperimentProgressSnapshot(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeRemoteSensitivityLogLine(job: RemoteJobRecord, line: string): string | null {
+  if (line.startsWith('[progress] ')) {
+    return null;
+  }
+  const jobPrefix = `[sensitivity:${job.id}] `;
+  if (line.startsWith(jobPrefix)) {
+    return line.slice(jobPrefix.length);
+  }
+  if (line.startsWith('[system] ') || line.startsWith('[stderr] ')) {
+    return line;
+  }
+  return null;
+}
+
+function createRemoteSensitivityLogPayload(job: RemoteJobRecord, rawLines: string[]): RemoteLogPayload {
+  let progress: ExperimentProgressSnapshot | undefined;
+  const lines = [`[system] Remote job ${job.jobRef} status=${job.status}`];
+
+  for (const line of rawLines) {
+    const parsedProgress = parseProgressLogLine(line);
+    if (parsedProgress) {
+      progress = {
+        ...parsedProgress,
+        status: job.status
+      };
+      continue;
+    }
+
+    const normalized = normalizeRemoteSensitivityLogLine(job, line);
+    if (normalized) {
+      lines.push(normalized);
+    }
+  }
+
+  return {
+    lines,
+    ...(progress ? { progress } : {})
   };
 }
 
@@ -858,8 +928,8 @@ export class RemoteExecutionManager {
 
   async getModelRunJobLogs(jobId: string, cursor: number | undefined, limit: number | undefined): Promise<ModelRunJobLogsPayload> {
     const job = await this.findJob('manual', jobId);
-    const lines = await this.getJobLogLines(job);
-    const slice = sliceLogLines(lines, cursor, limit);
+    const logPayload = await this.getJobLogPayload(job);
+    const slice = sliceLogLines(logPayload.lines, cursor, limit);
     return {
       jobId,
       ...slice,
@@ -1036,12 +1106,13 @@ export class RemoteExecutionManager {
     limit: number | undefined
   ): Promise<SensitivityExperimentLogsPayload> {
     const job = await this.findJob('sensitivity', experimentId);
-    const lines = await this.getJobLogLines(job);
-    const slice = sliceLogLines(lines, cursor, limit);
+    const logPayload = await this.getJobLogPayload(job);
+    const slice = sliceLogLines(logPayload.lines, cursor, limit);
     return {
       experimentId,
       ...slice,
-      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore
+      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore,
+      progress: logPayload.progress
     };
   }
 
@@ -1065,13 +1136,14 @@ export class RemoteExecutionManager {
 
   async getExperimentJobLogs(jobRef: string, cursor: number | undefined, limit: number | undefined): Promise<ExperimentJobLogsPayload> {
     const job = await this.findJobByRef(jobRef);
-    const lines = await this.getJobLogLines(job);
-    const slice = sliceLogLines(lines, cursor, limit);
+    const logPayload = await this.getJobLogPayload(job);
+    const slice = sliceLogLines(logPayload.lines, cursor, limit);
     return {
       jobRef: job.jobRef,
       type: job.type,
       ...slice,
-      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore
+      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore,
+      ...(logPayload.progress ? { progress: logPayload.progress } : {})
     };
   }
 
@@ -1420,19 +1492,28 @@ export class RemoteExecutionManager {
     };
   }
 
-  private async getJobLogLines(job: RemoteJobRecord): Promise<string[]> {
+  private async getJobLogPayload(job: RemoteJobRecord): Promise<RemoteLogPayload> {
     const artifactLog = await this.adapter.getText(this.config.artifactsBucket, `${job.artifactS3Prefix}logs/remote-runner.log`);
     if (artifactLog) {
-      return toLines(artifactLog);
+      const lines = toLines(artifactLog);
+      return job.type === 'sensitivity' ? createRemoteSensitivityLogPayload(job, lines) : { lines };
     }
     if (!job.ssmCommandId) {
-      return [`[system] Remote job ${job.jobRef} has not been dispatched yet.`];
+      return { lines: [`[system] Remote job ${job.jobRef} has not been dispatched yet.`] };
     }
     const invocation = await this.adapter.getCommandInvocation(this.config.runnerInstanceId, job.ssmCommandId);
-    return [
-      `[system] Remote job ${job.jobRef} status=${job.status}`,
-      ...toLines(invocation?.stdout ?? null).map((line) => `[stdout] ${line}`),
-      ...toLines(invocation?.stderr ?? null).map((line) => `[stderr] ${line}`)
-    ];
+    if (job.type === 'sensitivity') {
+      return createRemoteSensitivityLogPayload(job, [
+        ...toLines(invocation?.stdout ?? null),
+        ...toLines(invocation?.stderr ?? null).map((line) => `[stderr] ${line}`)
+      ]);
+    }
+    return {
+      lines: [
+        `[system] Remote job ${job.jobRef} status=${job.status}`,
+        ...toLines(invocation?.stdout ?? null).map((line) => `[stdout] ${line}`),
+        ...toLines(invocation?.stderr ?? null).map((line) => `[stderr] ${line}`)
+      ]
+    };
   }
 }

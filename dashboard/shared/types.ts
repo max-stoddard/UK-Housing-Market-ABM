@@ -791,6 +791,28 @@ export interface SensitivityExperimentSubmitResponse {
   experiment?: SensitivityExperimentSummary;
 }
 
+export interface ExperimentProgressSnapshot {
+  kind: 'sensitivity';
+  status: ExperimentJobStatus;
+  totalRuns: number;
+  completedRuns: number;
+  failedRuns: number;
+  canceledRuns: number;
+  activeRuns: number;
+  totalWorkers: number;
+  activeWorkers: number;
+  completedRunEquivalents: number;
+  percentComplete: number;
+  throughputRunsPerMinute: number | null;
+  completedRunsPerMinute: number | null;
+  etaSeconds: number | null;
+  estimatedFinishAt: string | null;
+  elapsedSeconds: number;
+  startedAt?: string;
+  endedAt?: string;
+  updatedAt: string;
+}
+
 export interface SensitivityExperimentLogsPayload {
   experimentId: string;
   cursor: number;
@@ -799,6 +821,7 @@ export interface SensitivityExperimentLogsPayload {
   hasMore: boolean;
   done: boolean;
   truncated: boolean;
+  progress?: ExperimentProgressSnapshot;
 }
 
 export type ExperimentJobType = 'manual' | 'sensitivity';
@@ -839,6 +862,7 @@ export interface ExperimentJobLogsPayload {
   hasMore: boolean;
   done: boolean;
   truncated: boolean;
+  progress?: ExperimentProgressSnapshot;
 }
 
 export interface ExperimentJobCancelResponse {

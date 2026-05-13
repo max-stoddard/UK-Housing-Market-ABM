@@ -455,7 +455,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
       }
       const payload = submitSensitivityExperiment(context.runtimePaths, req.body, {
         launcher: context.launcher,
-        logSink: context.modelLogSink
+        logSink: context.modelLogSink,
+        rawLogSink: context.modelLogSink
       });
       res.json(payload);
     } catch (error) {
