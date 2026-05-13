@@ -1267,6 +1267,9 @@ interface ResultsFixtureRunIds {
   complete: string;
   emptyOutput: string;
   sparseCore: string;
+  mixedNanCore: string;
+  allNanCore: string;
+  malformedCore: string;
   noConfig: string;
 }
 
@@ -1282,6 +1285,7 @@ interface ResultsFixtureRunOptions {
   includeTransactionFile: boolean;
   microSnapshotFiles?: string[];
   emptyCoreFiles?: Set<string>;
+  coreFileOverrides?: Partial<Record<(typeof RESULTS_CORE_FILE_NAMES)[number], string>>;
   modifiedAtMs: number;
 }
 
@@ -1317,6 +1321,24 @@ function buildCoreCsv(seed: number, rowCount: number): string {
   return `${values.join(';')}\n`;
 }
 
+function buildCoreCsvFromTokens(tokens: string[]): string {
+  return `${tokens.join(';')}\n`;
+}
+
+function buildMixedNonFiniteCoreCsv(rowCount: number): string {
+  const missingMarkers = new Map([
+    [5, 'NaN'],
+    [6, '+NaN'],
+    [7, '-NaN'],
+    [1985, 'Infinity'],
+    [1990, '+Infinity'],
+    [1995, '-Infinity']
+  ]);
+  return buildCoreCsvFromTokens(
+    Array.from({ length: rowCount }, (_value, index) => missingMarkers.get(index) ?? String(50 + index))
+  );
+}
+
 function writeSensitivityCoreOutputs(outputPath: string, parameterValue: number): void {
   fs.mkdirSync(outputPath, { recursive: true });
   for (let index = 0; index < RESULTS_CORE_FILE_NAMES.length; index += 1) {
@@ -1342,7 +1364,8 @@ function writeResultsFixtureRun(resultsRoot: string, options: ResultsFixtureRunO
   for (let index = 0; index < RESULTS_CORE_FILE_NAMES.length; index += 1) {
     const fileName = RESULTS_CORE_FILE_NAMES[index];
     const content =
-      options.emptyCoreFiles?.has(fileName) === true ? '' : buildCoreCsv((index + 1) * 100, RESULTS_ROW_COUNT);
+      options.coreFileOverrides?.[fileName] ??
+      (options.emptyCoreFiles?.has(fileName) === true ? '' : buildCoreCsv((index + 1) * 100, RESULTS_ROW_COUNT));
     fs.writeFileSync(path.join(runPath, fileName), content, 'utf-8');
   }
 
@@ -1371,6 +1394,9 @@ function createResultsFixtureRepo(): ResultsFixtureContext {
     complete: 'fixture-complete-output',
     emptyOutput: 'fixture-empty-output',
     sparseCore: 'fixture-sparse-core-output',
+    mixedNanCore: 'fixture-mixed-nan-core-output',
+    allNanCore: 'fixture-all-nan-core-output',
+    malformedCore: 'fixture-malformed-core-output',
     noConfig: 'fixture-no-config-output'
   };
 
@@ -1408,6 +1434,38 @@ function createResultsFixtureRepo(): ResultsFixtureContext {
     includeTransactionFile: false,
     emptyCoreFiles: new Set(['coreIndicator-mortgageApprovals.csv']),
     modifiedAtMs: baseTime + 1000
+  });
+  writeResultsFixtureRun(resultsRoot, {
+    runId: runIds.mixedNanCore,
+    outputMode: 'full',
+    includeConfig: true,
+    includeTransactionFile: false,
+    coreFileOverrides: {
+      'coreIndicator-btlLTV.csv': buildMixedNonFiniteCoreCsv(RESULTS_ROW_COUNT)
+    },
+    modifiedAtMs: baseTime + 500
+  });
+  writeResultsFixtureRun(resultsRoot, {
+    runId: runIds.allNanCore,
+    outputMode: 'full',
+    includeConfig: true,
+    includeTransactionFile: false,
+    coreFileOverrides: {
+      'coreIndicator-btlLTV.csv': buildCoreCsvFromTokens(Array.from({ length: RESULTS_ROW_COUNT }, () => 'NaN'))
+    },
+    modifiedAtMs: baseTime + 400
+  });
+  writeResultsFixtureRun(resultsRoot, {
+    runId: runIds.malformedCore,
+    outputMode: 'full',
+    includeConfig: true,
+    includeTransactionFile: false,
+    coreFileOverrides: {
+      'coreIndicator-btlLTV.csv': buildCoreCsvFromTokens(
+        Array.from({ length: RESULTS_ROW_COUNT }, (_value, index) => (index === 17 ? 'abc' : String(75 + index)))
+      )
+    },
+    modifiedAtMs: baseTime + 300
   });
 
   return { root, runIds };
@@ -3638,7 +3696,7 @@ assert.equal(nmgRight?.year, '2024', 'Expected v4.0 NMG year to be 2024 for rent
 const fixture = createResultsFixtureRepo();
 try {
   const resultsRuns = getResultsRuns(fixture.root);
-  assert.equal(resultsRuns.length, 4, 'Expected only synthetic fixture runs to be discovered');
+  assert.equal(resultsRuns.length, 7, 'Expected only synthetic fixture runs to be discovered');
   for (let index = 1; index < resultsRuns.length; index += 1) {
     const prev = Date.parse(resultsRuns[index - 1]?.modifiedAt ?? '');
     const current = Date.parse(resultsRuns[index]?.modifiedAt ?? '');
@@ -3684,6 +3742,12 @@ try {
     runDetail.kpiSummary.some((kpi) => kpi.indicatorId === 'output_interestRate'),
     'Expected KPI summary to include output indicators such as output interest rate'
   );
+  const numericBtlKpi = runDetail.kpiSummary.find((kpi) => kpi.indicatorId === 'core_btlLTV');
+  assert.equal(
+    typeof numericBtlKpi?.mean,
+    'number',
+    'Expected all-numeric BTL LTV core indicator to produce a finite mean KPI'
+  );
 
   const scenarioDetail = getResultsRunDetail(fixture.root, fixture.runIds.noConfig);
   assert.equal(
@@ -3698,6 +3762,17 @@ try {
       (file) => file.fileName === 'Output-run1.csv' && file.coverageStatus === 'supported'
     ),
     'Expected Output-run1.csv to be marked supported in manifest'
+  );
+  const numericBtlManifest = manifestFull.find((file) => file.fileName === 'coreIndicator-btlLTV.csv');
+  assert.equal(
+    numericBtlManifest?.coverageStatus,
+    'supported',
+    'Expected all-numeric BTL LTV core indicator to remain supported'
+  );
+  assert.equal(
+    numericBtlManifest?.note,
+    undefined,
+    'Expected all-numeric BTL LTV core indicator to have no missing-value note'
   );
   assert.ok(
     manifestFull.some(
@@ -3728,6 +3803,129 @@ try {
   assert.ok(
     !missingMicroManifest.some((file) => file.fileName === 'BankBalance-run1.csv'),
     'Expected manifest to tolerate runs missing optional micro snapshot files'
+  );
+
+  const mixedNanRun = resultsRuns.find((run) => run.runId === fixture.runIds.mixedNanCore);
+  assert.ok(mixedNanRun, 'Expected mixed-NaN fixture run in discovery results');
+  assert.equal(mixedNanRun?.status, 'complete', 'Expected mixed-NaN core run to remain complete');
+  const mixedNanDetail = getResultsRunDetail(fixture.root, fixture.runIds.mixedNanCore);
+  const mixedNanIndicator = mixedNanDetail.indicators.find((indicator) => indicator.id === 'core_btlLTV');
+  assert.equal(
+    mixedNanIndicator?.coverageStatus,
+    'supported',
+    'Expected mixed-NaN BTL LTV indicator to parse as supported'
+  );
+  assert.ok(
+    mixedNanIndicator?.note?.includes('6 missing core indicator values'),
+    'Expected mixed-NaN BTL LTV indicator to report missing-value count'
+  );
+  const mixedNanManifest = getResultsRunFiles(fixture.root, fixture.runIds.mixedNanCore).find(
+    (file) => file.fileName === 'coreIndicator-btlLTV.csv'
+  );
+  assert.equal(
+    mixedNanManifest?.coverageStatus,
+    'supported',
+    'Expected mixed-NaN BTL LTV manifest entry to remain supported'
+  );
+  assert.ok(
+    mixedNanManifest?.note?.includes('6 missing core indicator values'),
+    'Expected mixed-NaN BTL LTV manifest entry to report missing-value count'
+  );
+  const mixedNanSeries = getResultsSeries(fixture.root, fixture.runIds.mixedNanCore, 'core_btlLTV', 0);
+  assert.equal(mixedNanSeries.points[5]?.value, null, 'Expected NaN core token to become a null point');
+  assert.equal(mixedNanSeries.points[6]?.value, null, 'Expected +NaN core token to become a null point');
+  assert.equal(mixedNanSeries.points[7]?.value, null, 'Expected -NaN core token to become a null point');
+  assert.equal(mixedNanSeries.points[1985]?.value, null, 'Expected Infinity core token to become a null point');
+  assert.equal(mixedNanSeries.points[1990]?.value, null, 'Expected +Infinity core token to become a null point');
+  assert.equal(mixedNanSeries.points[1995]?.value, null, 'Expected -Infinity core token to become a null point');
+  assert.equal(
+    mixedNanSeries.points[1986]?.value,
+    2036,
+    'Expected finite BTL LTV values around NaN tokens to parse normally'
+  );
+  const mixedNanKpi = mixedNanDetail.kpiSummary.find((kpi) => kpi.indicatorId === 'core_btlLTV');
+  const mixedNanTailFiniteValues = Array.from({ length: 120 }, (_value, offset) => RESULTS_ROW_COUNT - 120 + offset)
+    .filter((modelTime) => modelTime !== 1985 && modelTime !== 1990 && modelTime !== 1995)
+    .map((modelTime) => 50 + modelTime);
+  const expectedMixedNanKpi = computeKpiFromValues(mixedNanTailFiniteValues);
+  assertClose(
+    mixedNanKpi?.mean ?? NaN,
+    expectedMixedNanKpi.mean ?? NaN,
+    1e-9,
+    'Expected mixed-NaN BTL LTV mean KPI to ignore null points'
+  );
+  assertClose(
+    mixedNanKpi?.annualisedTrend ?? NaN,
+    expectedMixedNanKpi.annualisedTrend ?? NaN,
+    1e-9,
+    'Expected mixed-NaN BTL LTV trend KPI to ignore null points'
+  );
+
+  const allNanRun = resultsRuns.find((run) => run.runId === fixture.runIds.allNanCore);
+  assert.ok(allNanRun, 'Expected all-NaN fixture run in discovery results');
+  assert.equal(allNanRun?.status, 'complete', 'Expected all-NaN core run to remain complete');
+  const allNanDetail = getResultsRunDetail(fixture.root, fixture.runIds.allNanCore);
+  const allNanIndicator = allNanDetail.indicators.find((indicator) => indicator.id === 'core_btlLTV');
+  assert.equal(
+    allNanIndicator?.coverageStatus,
+    'supported',
+    'Expected all-NaN BTL LTV indicator to parse as supported'
+  );
+  assert.equal(allNanIndicator?.available, false, 'Expected all-NaN BTL LTV indicator to be unavailable for charting');
+  assert.ok(
+    allNanIndicator?.note?.includes(`${RESULTS_ROW_COUNT} missing core indicator values`),
+    'Expected all-NaN BTL LTV indicator to report all missing values'
+  );
+  const allNanKpi = allNanDetail.kpiSummary.find((kpi) => kpi.indicatorId === 'core_btlLTV');
+  assert.deepEqual(
+    {
+      mean: allNanKpi?.mean,
+      cv: allNanKpi?.cv,
+      annualisedTrend: allNanKpi?.annualisedTrend,
+      range: allNanKpi?.range
+    },
+    { mean: null, cv: null, annualisedTrend: null, range: null },
+    'Expected all-NaN BTL LTV KPI fields to be null'
+  );
+  const allNanSeries = getResultsSeries(fixture.root, fixture.runIds.allNanCore, 'core_btlLTV', 0);
+  assert.ok(
+    allNanSeries.points.every((point) => point.value === null),
+    'Expected all-NaN BTL LTV series points to be null'
+  );
+
+  const malformedRun = resultsRuns.find((run) => run.runId === fixture.runIds.malformedCore);
+  assert.ok(malformedRun, 'Expected malformed-token fixture run in discovery results');
+  assert.equal(malformedRun?.status, 'partial', 'Expected malformed-token core run to be classified as partial');
+  assert.equal(malformedRun?.parseCoverage.errorCount, 1, 'Expected malformed-token run to count one parse error');
+  const malformedManifest = getResultsRunFiles(fixture.root, fixture.runIds.malformedCore).find(
+    (file) => file.fileName === 'coreIndicator-btlLTV.csv'
+  );
+  assert.equal(
+    malformedManifest?.coverageStatus,
+    'error',
+    'Expected malformed BTL LTV manifest entry to remain a parse error'
+  );
+  assert.ok(
+    malformedManifest?.note?.includes('abc'),
+    'Expected malformed BTL LTV manifest entry to report the malformed token'
+  );
+  const malformedDetail = getResultsRunDetail(fixture.root, fixture.runIds.malformedCore);
+  const malformedIndicator = malformedDetail.indicators.find((indicator) => indicator.id === 'core_btlLTV');
+  assert.equal(
+    malformedIndicator?.coverageStatus,
+    'error',
+    'Expected malformed BTL LTV indicator coverage to be error'
+  );
+  const malformedKpi = malformedDetail.kpiSummary.find((kpi) => kpi.indicatorId === 'core_btlLTV');
+  assert.deepEqual(
+    {
+      mean: malformedKpi?.mean,
+      cv: malformedKpi?.cv,
+      annualisedTrend: malformedKpi?.annualisedTrend,
+      range: malformedKpi?.range
+    },
+    { mean: null, cv: null, annualisedTrend: null, range: null },
+    'Expected malformed BTL LTV KPI fields to stay null'
   );
 
   const rawSeries = getResultsSeries(fixture.root, fixture.runIds.complete, 'core_mortgageApprovals', 0);
