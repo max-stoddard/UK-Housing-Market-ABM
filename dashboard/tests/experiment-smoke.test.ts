@@ -13,6 +13,7 @@ import { createDevelopmentRuntimePaths } from '../server/lib/runtimePaths.js';
 import {
   __resetSensitivityRunsForTests,
   getSensitivityExperiment,
+  getSensitivityExperimentLogs,
   submitSensitivityExperiment
 } from '../server/lib/sensitivityRuns.js';
 
@@ -117,6 +118,16 @@ try {
   );
   assert.equal(sensitivityDetail.maxWorkers, 2, 'Expected sensitivity smoke to record two parallel workers');
   assert.equal(sensitivityDetail.seedsPerPoint, 1, 'Expected sensitivity smoke to use one seed per sampled point');
+  const sensitivityLogs = getSensitivityExperimentLogs(paths, experimentId, 0, 200);
+  assert.equal(sensitivityLogs.progress?.percentComplete, 100, 'Expected sensitivity smoke logs to expose final progress');
+  assert.ok(
+    sensitivityLogs.lines.some((line) => /Worker \d+\/2 (started|finished) point/.test(line)),
+    'Expected sensitivity smoke logs to include summarized worker lifecycle lines'
+  );
+  assert.ok(
+    sensitivityLogs.lines.every((line) => !line.includes('Simulation: 1, time:')),
+    'Expected sensitivity smoke Live Logs to hide raw JVM progress lines'
+  );
 } finally {
   __resetModelRunManagerForTests();
   __resetSensitivityRunsForTests();

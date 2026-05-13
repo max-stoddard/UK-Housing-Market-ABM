@@ -1661,6 +1661,39 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   }
 
   async getCommandInvocation(_instanceId: string, commandId: string): Promise<{ status: string; stdout: string; stderr: string } | null> {
+    const command = this.commands.find((item) => item.commandId === commandId);
+    if (command?.jobRef.startsWith('sensitivity:')) {
+      const experimentId = command.jobRef.slice('sensitivity:'.length);
+      return {
+        status: this.commandStatuses.get(commandId) ?? 'InProgress',
+        stdout: [
+          `[sensitivity:${experimentId}] [system] Worker 1/2 started point 0 (point-0) seed-1; progress 0.0/2 (0.0%), completed 0/2, active workers 1/2, throughput pending, ETA pending, finish pending`,
+          `[progress] ${JSON.stringify({
+            kind: 'sensitivity',
+            status: 'running',
+            totalRuns: 2,
+            completedRuns: 0,
+            failedRuns: 0,
+            canceledRuns: 0,
+            activeRuns: 1,
+            totalWorkers: 2,
+            activeWorkers: 1,
+            completedRunEquivalents: 0.5,
+            percentComplete: 25,
+            throughputRunsPerMinute: 1.5,
+            completedRunsPerMinute: 0,
+            etaSeconds: 60,
+            estimatedFinishAt: '2026-05-11T00:01:00.000Z',
+            elapsedSeconds: 20,
+            startedAt: '2026-05-11T00:00:00.000Z',
+            updatedAt: '2026-05-11T00:00:20.000Z'
+          })}`,
+          'Simulation: 1, time: 500',
+          'remote stdout fixture'
+        ].join('\n'),
+        stderr: ''
+      };
+    }
     return {
       status: this.commandStatuses.get(commandId) ?? 'InProgress',
       stdout: 'remote stdout fixture',
@@ -1958,6 +1991,16 @@ try {
     true,
     'Expected active remote sensitivity job to lock manual submission'
   );
+  const remoteSensitivityLogs = await remoteManager.getExperimentJobLogs(`sensitivity:${sensitivityExperimentId}`, 0, 20);
+  assert.equal(remoteSensitivityLogs.progress?.percentComplete, 25, 'Expected remote SSM sensitivity logs to expose progress');
+  assert.ok(
+    remoteSensitivityLogs.lines.some((line) => line.includes('Worker 1/2 started point')),
+    'Expected remote SSM sensitivity logs to expose summarized worker lifecycle lines'
+  );
+  assert.ok(
+    remoteSensitivityLogs.lines.every((line) => !line.includes('Simulation: 1, time') && !line.includes('remote stdout fixture')),
+    'Expected remote SSM sensitivity logs to filter raw JVM and shell stdout noise'
+  );
   await assert.rejects(
     () => remoteManager.deleteExperimentJob(`sensitivity:${sensitivityExperimentId}`),
     /Only finished remote experiment jobs can be deleted/,
@@ -2015,6 +2058,45 @@ try {
   remoteAdapter.objects.set(
     `fixture-bucket/${sensitivityResultPrefix}remote-sensitivity-fixture.csv`,
     Buffer.from('value\n1\n', 'utf-8')
+  );
+  remoteAdapter.objects.set(
+    `fixture-bucket/${sensitivityArtifactPrefix}logs/remote-runner.log`,
+    Buffer.from([
+      '[system] Remote runner starting sensitivity fixture',
+      `[sensitivity:${sensitivityExperimentId}] [system] Worker 2/2 finished point 1 (point-1) seed-1 with status succeeded; progress 2.0/2 (100.0%), completed 2/2, active workers 0/2, throughput 3.00/min, ETA pending, finish pending`,
+      `[progress] ${JSON.stringify({
+        kind: 'sensitivity',
+        status: 'succeeded',
+        totalRuns: 2,
+        completedRuns: 2,
+        failedRuns: 0,
+        canceledRuns: 0,
+        activeRuns: 0,
+        totalWorkers: 2,
+        activeWorkers: 0,
+        completedRunEquivalents: 2,
+        percentComplete: 100,
+        throughputRunsPerMinute: 3,
+        completedRunsPerMinute: 3,
+        etaSeconds: null,
+        estimatedFinishAt: null,
+        elapsedSeconds: 40,
+        startedAt: '2026-05-11T00:00:01.000Z',
+        endedAt: '2026-05-11T00:00:41.000Z',
+        updatedAt: '2026-05-11T00:00:41.000Z'
+      })}`,
+      'Simulation: 1, time: 1000'
+    ].join('\n'), 'utf-8')
+  );
+  const remoteArtifactLogs = await remoteManager.getExperimentJobLogs(`sensitivity:${sensitivityExperimentId}`, 0, 20);
+  assert.equal(remoteArtifactLogs.progress?.percentComplete, 100, 'Expected remote artifact sensitivity logs to expose final progress');
+  assert.ok(
+    remoteArtifactLogs.lines.some((line) => line.includes('Worker 2/2 finished point')),
+    'Expected remote artifact sensitivity logs to expose summarized worker finish lines'
+  );
+  assert.ok(
+    remoteArtifactLogs.lines.every((line) => !line.includes('Simulation: 1, time')),
+    'Expected remote artifact sensitivity logs to filter raw JVM progress lines'
   );
   const remoteSensitivityDetail = await remoteManager.getSensitivityExperiment(sensitivityExperimentId);
   assert.equal(
@@ -4984,6 +5066,7 @@ try {
     const process = new FakeModelProcess();
     sensitivityProcesses.push(process);
     setTimeout(() => {
+      process.emitStdout('Simulation: 1, time: 100');
       process.emitStdout(`running point ${baseRate}`);
       process.emitStderr(`warn point ${baseRate}`);
       process.succeed();
@@ -5268,12 +5351,23 @@ try {
     'Expected sensitivity logs to include lifecycle system markers'
   );
   assert.ok(
-    logsPayload.lines.some((line) => line.includes('[stdout]')),
-    'Expected sensitivity logs to include stdout output lines'
+    logsPayload.lines.some((line) => /Worker \d+\/\d+ started point/.test(line)),
+    'Expected sensitivity logs to include summarized worker start lines'
   );
   assert.ok(
-    logsPayload.lines.some((line) => line.includes('[stderr]')),
-    'Expected sensitivity logs to include stderr output lines'
+    logsPayload.lines.some((line) => line.includes('finished point') && line.includes('throughput')),
+    'Expected sensitivity logs to include summarized worker finish lines with throughput'
+  );
+  assert.ok(
+    logsPayload.lines.every((line) => !line.includes('Simulation: 1, time:') && !line.includes('[stdout]') && !line.includes('[stderr]')),
+    'Expected sensitivity live logs to hide raw JVM stdout and stderr lines'
+  );
+  assert.equal(logsPayload.progress?.totalRuns, 25, 'Expected sensitivity logs payload to expose total run progress');
+  assert.equal(logsPayload.progress?.completedRuns, 25, 'Expected final sensitivity progress to count all completed runs');
+  assert.equal(
+    logsPayload.progress?.percentComplete,
+    100,
+    'Expected final sensitivity progress to reach 100%'
   );
   const sensitivityPersistentModelLogText = fs.readFileSync(
     path.join(sensitivityPersistentLogPaths.logsRoot, 'model.log'),
@@ -5284,13 +5378,69 @@ try {
     'Expected sensitivity system lifecycle lines to be persisted under logsRoot/model.log'
   );
   assert.ok(
-    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [stdout] running point`),
-    'Expected sensitivity stdout lines to be persisted under logsRoot/model.log'
+    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [raw:stdout] running point`),
+    'Expected sensitivity raw stdout lines to be persisted under logsRoot/model.log'
   );
   assert.ok(
-    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [stderr] warn point`),
-    'Expected sensitivity stderr lines to be persisted under logsRoot/model.log'
+    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [raw:stderr] warn point`),
+    'Expected sensitivity raw stderr lines to be persisted under logsRoot/model.log'
   );
+  assert.ok(
+    sensitivityPersistentModelLogText.includes(`[sensitivity:${successExperimentId}] [raw:stdout] Simulation: 1, time: 100`),
+    'Expected raw JVM progress lines to be retained only in persistent logs'
+  );
+
+  const liveProgressProcesses: FakeModelProcess[] = [];
+  const liveProgressLauncher = createFakeLauncher('maven', (request) => {
+    const config = parseConfigFile(request.configPath);
+    const baseRate = Number.parseFloat(config.get('CENTRAL_BANK_INITIAL_BASE_RATE') ?? '0');
+    writeSensitivityCoreOutputs(request.outputPath, baseRate);
+    const process = new FakeModelProcess();
+    liveProgressProcesses.push(process);
+    return process;
+  });
+  const liveProgressSubmit = submitSensitivityExperiment(
+    sensitivityFixtureRoot,
+    {
+      baseline: 'v1.0',
+      basePolicy: '2011',
+      title: 'live-progress-fixture',
+      parameterKey: 'CENTRAL_BANK_INITIAL_BASE_RATE',
+      min: 0.004,
+      max: 0.006,
+      sampleCount: 2,
+      overrides: { N_SIMS: 1, N_STEPS: 1000 },
+      maxWorkers: 1,
+      confirmWarnings: true
+    },
+    { launcher: liveProgressLauncher }
+  );
+  assert.equal(liveProgressSubmit.accepted, true, 'Expected live-progress sensitivity submit to be accepted');
+  const liveProgressExperimentId = liveProgressSubmit.experiment?.experimentId ?? '';
+  await waitUntil(() => liveProgressProcesses.length === 1);
+  liveProgressProcesses[0]?.emitStdout('Simulation: 1, time: 500');
+  liveProgressProcesses[0]?.emitStdout('raw output that should stay hidden');
+  await waitForAsyncTick();
+  const liveProgressLogs = getSensitivityExperimentLogs(sensitivityFixtureRoot, liveProgressExperimentId, 0, 200);
+  assert.ok(
+    (liveProgressLogs.progress?.percentComplete ?? 0) > 0 && (liveProgressLogs.progress?.percentComplete ?? 100) < 100,
+    'Expected parsed JVM model-time ticks to advance progress before the task finishes'
+  );
+  assert.ok(
+    liveProgressLogs.lines.some((line) => line.includes('Worker 1/1 started point')),
+    'Expected in-progress logs to identify the active worker'
+  );
+  assert.ok(
+    liveProgressLogs.lines.every(
+      (line) => !line.includes('Simulation: 1, time: 500') && !line.includes('raw output that should stay hidden')
+    ),
+    'Expected in-progress Live Logs to hide raw JVM output'
+  );
+  cancelSensitivityExperiment(sensitivityFixtureRoot, liveProgressExperimentId);
+  await waitUntil(() => {
+    const detail = getSensitivityExperiment(sensitivityFixtureRoot, liveProgressExperimentId).experiment;
+    return detail.status === 'canceled';
+  });
 
   const forcedExperimentId = 'sensitivity-20260511T000000Z-abcdef12';
   const forcedSubmit = submitSensitivityExperiment(

@@ -69,6 +69,20 @@ async function fetchJobLogTail(jobRef, token) {
   }
 }
 
+async function assertSensitivityLogs(jobRef, token) {
+  const payload = await requestJson(`/api/experiments/jobs/${encodeURIComponent(jobRef)}/logs?limit=200`, { token });
+  if (!payload.progress || payload.progress.percentComplete !== 100) {
+    throw new Error(`Sensitivity job ${jobRef} did not expose final progress: ${JSON.stringify(payload.progress)}`);
+  }
+  const lines = payload.lines || [];
+  if (!lines.some((line) => /Worker \d+\/\d+ (started|finished) point/.test(line))) {
+    throw new Error(`Sensitivity job ${jobRef} did not expose summarized worker logs.\n${lines.slice(-30).join('\n')}`);
+  }
+  if (lines.some((line) => line.includes('Simulation: 1, time:'))) {
+    throw new Error(`Sensitivity job ${jobRef} exposed raw JVM progress spam.\n${lines.slice(-30).join('\n')}`);
+  }
+}
+
 async function pollJob(jobRef, token) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -159,7 +173,9 @@ async function main() {
   if (!sensitivity.accepted || !sensitivity.experiment?.experimentId) {
     throw new Error(`Cloud sensitivity smoke was rejected: ${JSON.stringify(sensitivity)}`);
   }
-  await pollJob(`sensitivity:${sensitivity.experiment.experimentId}`, token);
+  const sensitivityJobRef = `sensitivity:${sensitivity.experiment.experimentId}`;
+  await pollJob(sensitivityJobRef, token);
+  await assertSensitivityLogs(sensitivityJobRef, token);
 
   console.log(`Cloud experiment smoke passed against ${baseUrl} with v0o2.`);
 }
