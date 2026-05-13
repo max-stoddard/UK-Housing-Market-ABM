@@ -154,6 +154,17 @@ import { computeKpiFromValues, selectPost200Window } from '../server/lib/stats/k
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '../..');
+let currentSmokeStep = 'initialising smoke test';
+
+function markSmokeStep(step: string): void {
+  currentSmokeStep = step;
+}
+
+process.on('exit', (code) => {
+  if (code !== 0) {
+    console.error(`[smoke] process exited with code ${code} near: ${currentSmokeStep}`);
+  }
+});
 
 function sum(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
@@ -4425,6 +4436,7 @@ try {
 
   assertSettingHelpCopy();
   const policyParameters = runOptions.parameters.filter((parameter) => parameter.group === 'Central Bank policy');
+  markSmokeStep('checking experiment setup option metadata');
   const centralBankPolicyKeys = policyParameters.map((parameter) => parameter.key);
   assert.deepEqual(
     runOptions.basePolicies.map((policy) => policy.id),
@@ -4501,6 +4513,7 @@ try {
   });
   assert.equal(sensitivitySeedOneOverrides.N_SIMS, 1, 'Expected sensitivity submit overrides to include N_SIMS=1');
   const noop = () => {};
+  markSmokeStep('rendering experiment setup controls');
   const manualSetupMarkup = renderToStaticMarkup(
     createElement(
       MemoryRouter,
@@ -4585,6 +4598,7 @@ try {
     'Expected experiment setup visible text to hide implementation parameter keys'
   );
 
+  markSmokeStep('checking manual results storage cap handling');
   const optionsForInProgress = getModelRunOptions(modelRunFixtureRoot, 'v1.1', true);
   assert.equal(optionsForInProgress.requestedBaseline, 'v1.1', 'Expected baseline override selection to be honored');
 
@@ -4687,6 +4701,7 @@ try {
   assert.ok((warningResponse.warnings?.length ?? 0) > 0, 'Expected warning payload when confirmation is missing');
   assert.equal(listModelRunJobs().length, 0, 'Expected warning-only submit not to enqueue a job');
 
+  markSmokeStep('checking cross-era manual base-policy config');
   __resetModelRunManagerForTests();
   let crossEraManualConfig = new Map<string, string>();
   const crossEraManualLauncher = createFakeLauncher('packaged', (request) => {
@@ -4747,6 +4762,7 @@ try {
     return fakeProcess as never;
   });
 
+  markSmokeStep('checking manual run queue lifecycle');
   const manualPersistentLogPaths = createDevelopmentRuntimePaths(modelRunFixtureRoot);
   const manualPersistentModelLog = createRotatingLogWriter(manualPersistentLogPaths.logsRoot, 'model');
   const firstSubmit = submitModelRun(
@@ -5211,6 +5227,7 @@ try {
   fs.rmSync(modelRunFixtureRoot, { recursive: true, force: true });
 }
 
+markSmokeStep('checking desktop manual runtime paths');
 const desktopManualFixture = createDesktopRuntimeFixture('dashboard-manual-runtime-smoke-');
 
 try {
@@ -5276,6 +5293,7 @@ try {
   fs.rmSync(desktopManualFixture.root, { recursive: true, force: true });
 }
 
+markSmokeStep('checking Windows-safe manual run paths');
 const windowsPathModelRunFixtureRoot = createModelRunFixtureRepo('dashboard model-runs modèle 用户-');
 
 try {
