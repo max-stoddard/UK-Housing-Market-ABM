@@ -193,6 +193,25 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 10000): Promise<v
   }
 }
 
+async function waitForModelRunStatus(
+  jobId: string | undefined,
+  expectedStatus: 'succeeded' | 'failed' | 'canceled',
+  label: string
+) {
+  const resolvedJobId = jobId ?? '';
+  await waitUntil(() => {
+    const job = listModelRunJobs().find((item) => item.jobId === resolvedJobId);
+    if (job && !['queued', 'running', expectedStatus].includes(job.status)) {
+      const logs = getModelRunJobLogs(resolvedJobId, 0, 200).lines.join('\n');
+      throw new Error(`${label} ended with status ${job.status} before ${expectedStatus}.${logs ? `\n${logs}` : ''}`);
+    }
+    return job?.status === expectedStatus;
+  });
+  const job = listModelRunJobs().find((item) => item.jobId === resolvedJobId);
+  assert.equal(job?.status, expectedStatus, label);
+  return job;
+}
+
 async function fetchText(url: string, init?: Parameters<typeof fetch>[1]): Promise<{
   status: number;
   contentType: string;
@@ -4594,9 +4613,11 @@ try {
     writeSizedFile(path.join(overCapOutputPath, 'overflow.bin'), 1200 * 1024);
 
     spawnedProcesses[spawnedProcesses.length - 1]?.succeed();
-    await waitForAsyncTick();
-    const completedOverCapJob = listModelRunJobs().find((job) => job.jobId === overCapSubmit.job?.jobId);
-    assert.equal(completedOverCapJob?.status, 'succeeded', 'Expected run to finish successfully when crossing cap');
+    await waitForModelRunStatus(
+      overCapSubmit.job?.jobId,
+      'succeeded',
+      'Expected run to finish successfully when crossing cap'
+    );
     assert.ok(fs.existsSync(overCapOutputPath), 'Expected over-cap completed run output folder to remain visible');
 
     const storageAfter = getResultsStorageSummary(modelRunFixtureRoot);
@@ -4634,9 +4655,11 @@ try {
     );
     assert.equal(spawnedProcesses.length, 2, 'Expected bypass over-cap submit to start a second process');
     spawnedProcesses[spawnedProcesses.length - 1]?.succeed();
-    await waitForAsyncTick();
-    const completedBypassJob = listModelRunJobs().find((job) => job.jobId === bypassOverCapSubmit.job?.jobId);
-    assert.equal(completedBypassJob?.status, 'succeeded', 'Expected bypass over-cap job to complete successfully');
+    await waitForModelRunStatus(
+      bypassOverCapSubmit.job?.jobId,
+      'succeeded',
+      'Expected bypass over-cap job to complete successfully'
+    );
     clearModelRunJob(bypassOverCapSubmit.job?.jobId ?? '');
     clearModelRunJob(overCapSubmit.job?.jobId ?? '');
   } finally {
@@ -4688,10 +4711,11 @@ try {
     { launcher: crossEraManualLauncher }
   );
   assert.equal(crossEraManualSubmit.accepted, true, 'Expected 2011 model with 2024 base policy to be accepted');
-  await waitUntil(() => {
-    const job = listModelRunJobs().find((item) => item.jobId === crossEraManualSubmit.job?.jobId);
-    return job?.status === 'succeeded';
-  });
+  await waitForModelRunStatus(
+    crossEraManualSubmit.job?.jobId,
+    'succeeded',
+    'Expected 2011 model with 2024 base policy to complete'
+  );
   const originalV0Config = parseConfigFile(path.join(modelRunFixtureRoot, 'input-data-versions', 'v0', 'config.properties'));
   const policy2024 = runOptions.basePolicies.find((policy) => policy.id === '2024');
   assert.ok(policy2024, 'Expected 2024 base policy option in run options');
@@ -4774,9 +4798,11 @@ try {
   assert.equal(canceledQueuedJob?.status, 'canceled', 'Expected queued cancel to mark job as canceled');
 
   spawnedProcesses[0]?.succeed();
-  await waitForAsyncTick();
-  const completedFirstJob = listModelRunJobs().find((job) => job.jobId === firstSubmit.job?.jobId);
-  assert.equal(completedFirstJob?.status, 'succeeded', 'Expected first job to complete successfully');
+  const completedFirstJob = await waitForModelRunStatus(
+    firstSubmit.job?.jobId,
+    'succeeded',
+    'Expected first job to complete successfully'
+  );
   assert.ok(
     completedFirstJob && fs.existsSync(path.join(modelRunFixtureRoot, completedFirstJob.outputPath)),
     'Expected successful run output folder to persist'
@@ -4857,9 +4883,11 @@ try {
     'Expected running jobs to be non-clearable'
   );
   spawnedProcesses[1]?.succeed();
-  await waitForAsyncTick();
-  const overwriteCompleted = listModelRunJobs().find((job) => job.jobId === overwriteSubmit.job?.jobId);
-  assert.equal(overwriteCompleted?.status, 'succeeded', 'Expected overwrite-confirmed run to complete successfully');
+  const overwriteCompleted = await waitForModelRunStatus(
+    overwriteSubmit.job?.jobId,
+    'succeeded',
+    'Expected overwrite-confirmed run to complete successfully'
+  );
 
   const thirdSubmit = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
@@ -4875,9 +4903,11 @@ try {
     'Expected running manual jobs to be protected from unified queue deletion'
   );
   cancelModelRunJob(modelRunFixtureRoot, thirdSubmit.job?.jobId ?? '');
-  await waitForAsyncTick();
-  const canceledRunningJob = listModelRunJobs().find((job) => job.jobId === thirdSubmit.job?.jobId);
-  assert.equal(canceledRunningJob?.status, 'canceled', 'Expected running cancel to transition to canceled');
+  const canceledRunningJob = await waitForModelRunStatus(
+    thirdSubmit.job?.jobId,
+    'canceled',
+    'Expected running cancel to transition to canceled'
+  );
   assert.ok(
     canceledRunningJob && !fs.existsSync(path.join(modelRunFixtureRoot, canceledRunningJob.outputPath)),
     'Expected canceled running job output folder to be removed'
@@ -4895,10 +4925,8 @@ try {
   lateCancelProcess?.disableSigtermDelivery();
   cancelModelRunJob(modelRunFixtureRoot, lateCancelSubmit.job?.jobId ?? '');
   lateCancelProcess?.succeed();
-  await waitForAsyncTick();
-  const lateCancelCompleted = listModelRunJobs().find((job) => job.jobId === lateCancelSubmit.job?.jobId);
-  assert.equal(
-    lateCancelCompleted?.status,
+  const lateCancelCompleted = await waitForModelRunStatus(
+    lateCancelSubmit.job?.jobId,
     'canceled',
     'Expected cancellation intent to win even when SIGTERM delivery fails'
   );
@@ -4933,10 +4961,11 @@ try {
     { launcher: cancelBeforeSeedLauncher }
   );
   assert.equal(cancelBeforeSeedSubmit.accepted, true, 'Expected pre-seed cancel submit to be accepted');
-  await waitUntil(() => {
-    const job = listModelRunJobs().find((item) => item.jobId === cancelBeforeSeedSubmit.job?.jobId);
-    return job?.status === 'canceled';
-  });
+  await waitForModelRunStatus(
+    cancelBeforeSeedSubmit.job?.jobId,
+    'canceled',
+    'Expected pre-seed cancel job to finish canceled'
+  );
   assert.equal(
     cancelBeforeSeedLaunches.length,
     0,
@@ -5049,9 +5078,11 @@ try {
     'Expected manual injected launcher to receive a seed-scoped output folder'
   );
   spawnedProcesses[0]?.succeed();
-  await waitForAsyncTick();
-  const injectedManualJob = listModelRunJobs().find((job) => job.jobId === injectedManualSubmit.job?.jobId);
-  assert.equal(injectedManualJob?.status, 'succeeded', 'Expected injected manual launcher job to complete normally');
+  const injectedManualJob = await waitForModelRunStatus(
+    injectedManualSubmit.job?.jobId,
+    'succeeded',
+    'Expected injected manual launcher job to complete normally'
+  );
   const injectedManualManifestPath = path.join(
     modelRunFixtureRoot,
     injectedManualJob?.outputPath ?? '',
@@ -5128,10 +5159,11 @@ try {
     { launcher: multiSeedManualLauncher }
   );
   assert.equal(multiSeedManualSubmit.accepted, true, 'Expected multi-seed manual submit to be accepted');
-  await waitUntil(() => {
-    const job = listModelRunJobs().find((item) => item.jobId === multiSeedManualSubmit.job?.jobId);
-    return job?.status === 'succeeded';
-  });
+  await waitForModelRunStatus(
+    multiSeedManualSubmit.job?.jobId,
+    'succeeded',
+    'Expected multi-seed manual job to complete successfully'
+  );
   assert.equal(multiSeedManualLaunches.length, 3, 'Expected manual N_SIMS=3 to launch three seed child runs');
   assert.ok(multiSeedManualPeakActive <= 2, 'Expected manual maxWorkers to cap concurrent seed child runs');
   assert.deepEqual(
@@ -5220,10 +5252,11 @@ try {
     path.join(desktopManualFixture.paths.dataRoot, 'v1.0'),
     'desktop manual run'
   );
-  await waitUntil(() => {
-    const job = listModelRunJobs().find((item) => item.jobId === desktopManualSubmit.job?.jobId);
-    return job?.status === 'succeeded';
-  });
+  await waitForModelRunStatus(
+    desktopManualSubmit.job?.jobId,
+    'succeeded',
+    'Expected desktop runtime manual run to complete successfully'
+  );
   assert.ok(
     fs.existsSync(path.join(desktopManualFixture.paths.resultsRoot, desktopManualSubmit.job?.runId ?? '')),
     'Expected desktop manual aggregate output to live under resultsRoot after completion'
@@ -5283,10 +5316,11 @@ try {
     path.join(windowsPathModelRunFixtureRoot, 'input-data-versions', 'v1.0'),
     'manual run'
   );
-  await waitUntil(() => {
-    const job = listModelRunJobs().find((item) => item.jobId === windowsPathSubmit.job?.jobId);
-    return job?.status === 'succeeded';
-  });
+  await waitForModelRunStatus(
+    windowsPathSubmit.job?.jobId,
+    'succeeded',
+    'Expected path-safety manual run to complete successfully'
+  );
 } finally {
   __resetModelRunManagerForTests();
   fs.rmSync(windowsPathModelRunFixtureRoot, { recursive: true, force: true });
