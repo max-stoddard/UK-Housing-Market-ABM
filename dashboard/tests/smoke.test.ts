@@ -158,6 +158,7 @@ let currentSmokeStep = 'initialising smoke test';
 
 function markSmokeStep(step: string): void {
   currentSmokeStep = step;
+  console.log(`[smoke] ${step}`);
 }
 
 process.on('exit', (code) => {
