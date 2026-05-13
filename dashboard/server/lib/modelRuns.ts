@@ -941,7 +941,23 @@ function copyDirectoryContents(source: string, destination: string): void {
   }
   fs.mkdirSync(destination, { recursive: true });
   for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
-    fs.cpSync(path.join(source, entry.name), path.join(destination, entry.name), { recursive: true });
+    copyPath(path.join(source, entry.name), path.join(destination, entry.name));
+  }
+}
+
+function copyPath(source: string, destination: string): void {
+  const stat = fs.statSync(source);
+  if (stat.isDirectory()) {
+    fs.mkdirSync(destination, { recursive: true });
+    for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+      copyPath(path.join(source, entry.name), path.join(destination, entry.name));
+    }
+    return;
+  }
+
+  if (stat.isFile()) {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.copyFileSync(source, destination);
   }
 }
 
@@ -1106,7 +1122,7 @@ async function runManualSeed(
   if (executionResult.status === 'succeeded') {
     fs.rmSync(seedPaths.persistedOutputPath, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(seedPaths.persistedOutputPath), { recursive: true });
-    fs.cpSync(seedPaths.outputPath, seedPaths.persistedOutputPath, { recursive: true });
+    copyPath(seedPaths.outputPath, seedPaths.persistedOutputPath);
   }
   fs.rmSync(seedPaths.seedTempRoot, { recursive: true, force: true });
 
