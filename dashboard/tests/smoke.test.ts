@@ -218,39 +218,59 @@ async function waitUntil(predicate: () => boolean, timeoutMs = 10000): Promise<v
 async function waitForModelRunStatus(
   jobId: string | undefined,
   expectedStatus: 'succeeded' | 'failed' | 'canceled',
-  label: string
+  label: string,
+  timeoutMs = 10000
 ) {
   const resolvedJobId = jobId ?? '';
-  await waitUntil(() => {
+  const start = Date.now();
+  while (true) {
     const job = listModelRunJobs().find((item) => item.jobId === resolvedJobId);
-    if (job && !['queued', 'running', expectedStatus].includes(job.status)) {
-      const logs = getModelRunJobLogs(resolvedJobId, 0, 200).lines.join('\n');
-      throw new Error(`${label} ended with status ${job.status} before ${expectedStatus}.${logs ? `\n${logs}` : ''}`);
+    if (job?.status === expectedStatus) {
+      assert.equal(job.status, expectedStatus, label);
+      return job;
     }
-    return job?.status === expectedStatus;
-  });
-  const job = listModelRunJobs().find((item) => item.jobId === resolvedJobId);
-  assert.equal(job?.status, expectedStatus, label);
-  return job;
+    const unexpectedStatus = job && !['queued', 'running', expectedStatus].includes(job.status);
+    const timedOut = Date.now() - start > timeoutMs;
+    if (unexpectedStatus || timedOut) {
+      const logs = resolvedJobId ? getModelRunJobLogs(resolvedJobId, 0, 200).lines.join('\n') : '';
+      const message = unexpectedStatus
+        ? `${label} ended with status ${job.status} before ${expectedStatus}.`
+        : `${label} timed out waiting for ${expectedStatus}; latest status was ${job?.status ?? 'missing'}.`;
+      const detail = `${message}${logs ? `\n${logs}` : ''}`;
+      console.error(`[smoke] ${detail}`);
+      throw new Error(detail);
+    }
+    await waitForAsyncTick(10);
+  }
 }
 
 async function waitForSensitivityStatus(
   paths: RuntimePaths | string,
   experimentId: string,
   expectedStatus: 'succeeded' | 'failed' | 'canceled',
-  label: string
+  label: string,
+  timeoutMs = 10000
 ) {
-  await waitUntil(() => {
+  const start = Date.now();
+  while (true) {
     const detail = getSensitivityExperiment(paths, experimentId).experiment;
-    if (!['queued', 'running', expectedStatus].includes(detail.status)) {
-      const logs = getSensitivityExperimentLogs(paths, experimentId, 0, 200).lines.join('\n');
-      throw new Error(`${label} ended with status ${detail.status} before ${expectedStatus}.${logs ? `\n${logs}` : ''}`);
+    if (detail.status === expectedStatus) {
+      assert.equal(detail.status, expectedStatus, label);
+      return detail;
     }
-    return detail.status === expectedStatus;
-  });
-  const detail = getSensitivityExperiment(paths, experimentId).experiment;
-  assert.equal(detail.status, expectedStatus, label);
-  return detail;
+    const unexpectedStatus = !['queued', 'running', expectedStatus].includes(detail.status);
+    const timedOut = Date.now() - start > timeoutMs;
+    if (unexpectedStatus || timedOut) {
+      const logs = getSensitivityExperimentLogs(paths, experimentId, 0, 200).lines.join('\n');
+      const message = unexpectedStatus
+        ? `${label} ended with status ${detail.status} before ${expectedStatus}.`
+        : `${label} timed out waiting for ${expectedStatus}; latest status was ${detail.status}.`;
+      const diagnostic = `${message}${logs ? `\n${logs}` : ''}`;
+      console.error(`[smoke] ${diagnostic}`);
+      throw new Error(diagnostic);
+    }
+    await waitForAsyncTick(10);
+  }
 }
 
 async function fetchText(url: string, init?: Parameters<typeof fetch>[1]): Promise<{
@@ -5335,6 +5355,8 @@ try {
     markSmokeStep('launching Windows-safe manual run process');
     windowsPathLaunches.push(request);
     generatedConfigText = fs.readFileSync(request.configPath, 'utf-8');
+    fs.mkdirSync(request.outputPath, { recursive: true });
+    fs.writeFileSync(path.join(request.outputPath, 'Output-run1.csv'), 'Model time;nRenting\n0;1\n', 'utf-8');
     const process = new FakeModelProcess();
     setTimeout(() => {
       process.succeed();
