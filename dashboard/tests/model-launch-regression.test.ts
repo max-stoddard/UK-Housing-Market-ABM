@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createPackagedModelLauncher,
   getConfiguredMavenBin,
+  normalizeMavenRuntimeClasspath,
   spawnCommand,
   type ModelLauncher,
   type ModelLaunchRequest
@@ -234,7 +235,7 @@ async function resolveRuntimeClasspath(): Promise<string> {
   );
   const classpath = result.stdout.trim().split(/\r?\n/).at(-1)?.trim();
   assert.ok(classpath, `Expected Maven to resolve a runtime classpath.\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
-  return classpath;
+  return normalizeMavenRuntimeClasspath(repoRoot, classpath);
 }
 
 function resolveJavaExe(): string {

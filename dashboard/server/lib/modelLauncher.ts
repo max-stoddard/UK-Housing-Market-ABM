@@ -1,6 +1,7 @@
 // Author: Max Stoddard
 import { spawnSync } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams, SpawnOptionsWithoutStdio } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import crossSpawn from 'cross-spawn';
 
@@ -89,11 +90,34 @@ function parseClasspathOutput(output: string): string {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
+    .filter(
+      (line) =>
+        line.includes(path.delimiter) ||
+        /(?:^|[/\\])target[/\\]classes(?:$|[:;])/.test(line) ||
+        /\.jar(?:$|[:;])/.test(line)
+    )
     .at(-1);
   if (!classpath) {
-    throw new Error('Failed to resolve Maven runtime classpath: Maven returned empty classpath output.');
+    throw new Error('Failed to resolve Maven runtime classpath: Maven did not print a recognizable classpath.');
   }
   return classpath;
+}
+
+export function normalizeMavenRuntimeClasspath(repoRoot: string, classpath: string): string {
+  const projectClassesDir = path.join(repoRoot, 'target', 'classes');
+  const modelClassPath = path.join(projectClassesDir, 'housing', 'Model.class');
+  if (!fs.existsSync(modelClassPath)) {
+    throw new Error(`Maven compile did not produce the model entrypoint class: ${modelClassPath}`);
+  }
+
+  const normalizedProjectClassesDir = path.resolve(projectClassesDir);
+  const entries = classpath
+    .split(path.delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .filter((entry) => path.resolve(repoRoot, entry) !== normalizedProjectClassesDir);
+
+  return [projectClassesDir, ...entries].join(path.delimiter);
 }
 
 export function buildMavenModelLaunchCommand(
@@ -156,7 +180,7 @@ export function createMavenModelLauncher(mavenBin = getConfiguredMavenBin(), jav
     );
     const preparedRuntime = {
       javaExe,
-      classpath: parseClasspathOutput(classpathOutput)
+      classpath: normalizeMavenRuntimeClasspath(repoRoot, parseClasspathOutput(classpathOutput))
     };
     preparedByRepoRoot.set(repoRoot, preparedRuntime);
     return preparedRuntime;
