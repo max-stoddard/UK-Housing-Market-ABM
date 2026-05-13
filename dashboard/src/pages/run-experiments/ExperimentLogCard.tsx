@@ -45,7 +45,7 @@ function formatFinishTime(value: string | null | undefined): string {
 function ProgressPanel({ progress }: { progress: ExperimentProgressSnapshot }) {
   const percent = Math.max(0, Math.min(100, progress.percentComplete));
   return (
-    <section className="job-progress-panel" aria-label="Sensitivity run progress">
+    <section className="job-progress-panel" aria-label="Experiment run progress">
       <div className="job-progress-head">
         <strong>{formatNumber(percent)}%</strong>
         <span>{progress.status}</span>
@@ -97,7 +97,7 @@ export function ExperimentLogCard({ selectedJob, lines, progress }: ExperimentLo
   return (
     <article className="results-card">
       <h3>Live Logs {selectedJob ? `(${selectedJob.title})` : ''}</h3>
-      {selectedJob?.type === 'sensitivity' && progress && <ProgressPanel progress={progress} />}
+      {selectedJob && progress && <ProgressPanel progress={progress} />}
       {selectedJob ? (
         <pre className="job-log-view">{lines.length === 0 ? 'No logs yet.' : lines.join('\n')}</pre>
       ) : (

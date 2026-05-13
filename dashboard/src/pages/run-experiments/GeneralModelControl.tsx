@@ -25,7 +25,7 @@ export function isRecordSetting(parameter: ModelRunParameterDefinition): boolean
   return parameter.key.startsWith('record') || parameter.key === 'TIME_TO_START_RECORDING_TRANSACTIONS';
 }
 
-function shouldShowParameter(parameter: ModelRunParameterDefinition, mode: ControlMode): boolean {
+function shouldShowParameter(parameter: ModelRunParameterDefinition): boolean {
   if (parameter.group !== 'General model control') {
     return false;
   }
@@ -34,7 +34,7 @@ function shouldShowParameter(parameter: ModelRunParameterDefinition, mode: Contr
     return false;
   }
 
-  if (mode === 'sensitivity' && parameter.key === 'SEED') {
+  if (parameter.key === 'SEED') {
     return false;
   }
 
@@ -42,10 +42,10 @@ function shouldShowParameter(parameter: ModelRunParameterDefinition, mode: Contr
 }
 
 function displayParameter(parameter: ModelRunParameterDefinition, mode: ControlMode): ModelRunParameterDefinition {
-  if (mode === 'sensitivity' && parameter.key === 'N_SIMS') {
+  if (parameter.key === 'N_SIMS') {
     return {
       ...parameter,
-      title: 'Seeds per sampled point'
+      title: mode === 'sensitivity' ? 'Seeds per sampled point' : 'Seeds per run'
     };
   }
 
@@ -97,7 +97,7 @@ export function GeneralModelControl({
   showRecordSettings = true
 }: GeneralModelControlProps) {
   const visibleParameters = parameters
-    .filter((parameter) => shouldShowParameter(parameter, mode))
+    .filter((parameter) => shouldShowParameter(parameter))
     .map((parameter) => displayParameter(parameter, mode));
   const modelParameters = visibleParameters.filter((parameter) => !isRecordSetting(parameter));
   const recordParameters = visibleParameters.filter(isRecordSetting);

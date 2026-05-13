@@ -80,6 +80,9 @@ export interface ManualRunManifest {
     configPath: string;
     generatedConfigHash: RunManifestFileHash | null;
     seed: number | null;
+    seedsPerPoint: number | null;
+    seeds: number[];
+    maxWorkers: number | null;
     overriddenParameters: Record<string, number | boolean>;
     outputHash: RunManifestDirectoryHash | null;
     exitCode: number | null;
@@ -327,6 +330,9 @@ export function buildManualRunManifest(input: {
   configPath: string;
   outputPath: string;
   seed: number | null;
+  seedsPerPoint?: number | null;
+  seeds?: number[];
+  maxWorkers?: number | null;
   overriddenParameters: Record<string, number | boolean>;
   outputHash: RunManifestDirectoryHash | null;
 }): ManualRunManifest {
@@ -353,6 +359,9 @@ export function buildManualRunManifest(input: {
       configPath: input.configPath,
       generatedConfigHash: hashFile(input.configPath),
       seed: input.seed,
+      seedsPerPoint: input.seedsPerPoint ?? null,
+      seeds: input.seeds ?? [],
+      maxWorkers: input.maxWorkers ?? null,
       overriddenParameters: input.overriddenParameters,
       outputHash: input.outputHash,
       exitCode: input.job.exitCode ?? null,

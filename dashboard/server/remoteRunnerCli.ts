@@ -181,7 +181,8 @@ function copyIfExists(source: string, destination: string): void {
 async function runManual(request: RemoteRunRequest, paths: ReturnType<typeof createDevelopmentRuntimePaths>, artifactRoot: string, logPath: string): Promise<void> {
   const submit = submitModelRun(paths, request.payload as ModelRunSubmitRequest, {
     ignoreStorageCap: true,
-    logSink: (line) => appendLog(logPath, line)
+    logSink: (line) => appendVisibleLog(logPath, line),
+    progressSink: (progress) => appendVisibleLog(logPath, `[progress] ${JSON.stringify(progress)}`)
   });
   if (!submit.accepted || !submit.job) {
     writeJson(path.join(artifactRoot, 'remote-status.json'), {

@@ -18,9 +18,9 @@ export const SETTING_HELP = {
 } as const;
 
 const PARAMETER_HELP_BY_KEY: Record<string, string> = {
-  SEED: 'Random seed for a single manual run. Changing it gives a different stochastic draw.',
+  SEED: 'Seeded dashboard experiments run deterministic seed blocks starting at 1.',
   N_STEPS: 'Number of model time steps to simulate. Longer runs cost more but allow slower dynamics to emerge.',
-  N_SIMS: 'Independent runs used to average stochastic outcomes. More runs reduce noise and increase runtime.',
+  N_SIMS: 'Independent seed runs used to average stochastic outcomes. More seeds reduce noise and increase runtime.',
   ROLLING_WINDOW_SIZE_FOR_CORE_INDICATORS:
     'Months included in rolling averages for core indicators. This smooths short-term variation.',
   TIME_TO_START_RECORDING_TRANSACTIONS:
@@ -64,6 +64,9 @@ const PARAMETER_HELP_BY_KEY: Record<string, string> = {
 export function getParameterHelp(parameter: ModelRunParameterDefinition, mode: ExperimentControlMode): string {
   if (mode === 'sensitivity' && parameter.key === 'N_SIMS') {
     return 'Independent seed runs for every sampled value. More seeds reduce noise and increase runtime.';
+  }
+  if (mode === 'manual' && parameter.key === 'N_SIMS') {
+    return 'Independent seed runs for this parameter set. More seeds reduce noise and increase runtime.';
   }
 
   return PARAMETER_HELP_BY_KEY[parameter.key] ?? parameter.description;

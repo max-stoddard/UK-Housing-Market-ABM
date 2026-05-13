@@ -23,6 +23,9 @@ export function ManualRunSetupPanel({ controller, runActionsDisabled }: ManualRu
       policyParameters={controller.policyParameters}
       formValues={controller.formValues}
       onFormValueChange={controller.onFormValueChange}
+      maxWorkers={controller.manualMaxWorkers}
+      maxWorkersCap={controller.maxWorkersCap}
+      onMaxWorkersChange={controller.setManualMaxWorkers}
       warnings={controller.warnings}
       isSubmitting={controller.isSubmitting}
       manualSubmissionLockedBySensitivity={controller.manualSubmissionLockedBySensitivity}

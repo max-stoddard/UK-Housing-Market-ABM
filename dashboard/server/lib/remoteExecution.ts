@@ -101,6 +101,9 @@ interface RemoteJobRecord {
   endedAt?: string;
   baseline: string;
   runId?: string;
+  seedsPerPoint?: number;
+  seeds?: number[];
+  maxWorkers?: number;
   outputPath: string;
   configPath: string;
   artifactS3Prefix: string;
@@ -253,11 +256,13 @@ interface RemoteLogPayload {
   progress?: ExperimentProgressSnapshot;
 }
 
+const PROGRESS_LOG_PREFIX = '[progress] ';
+
 function isExperimentProgressSnapshot(value: unknown): value is ExperimentProgressSnapshot {
   const candidate = value as Partial<ExperimentProgressSnapshot> | null;
   return Boolean(
     candidate &&
-      candidate.kind === 'sensitivity' &&
+      (candidate.kind === 'sensitivity' || candidate.kind === 'manual') &&
       typeof candidate.totalRuns === 'number' &&
       typeof candidate.percentComplete === 'number' &&
       typeof candidate.updatedAt === 'string'
@@ -265,12 +270,11 @@ function isExperimentProgressSnapshot(value: unknown): value is ExperimentProgre
 }
 
 function parseProgressLogLine(line: string): ExperimentProgressSnapshot | null {
-  const prefix = '[progress] ';
-  if (!line.startsWith(prefix)) {
+  if (!line.startsWith(PROGRESS_LOG_PREFIX)) {
     return null;
   }
   try {
-    const parsed = JSON.parse(line.slice(prefix.length)) as unknown;
+    const parsed = JSON.parse(line.slice(PROGRESS_LOG_PREFIX.length)) as unknown;
     return isExperimentProgressSnapshot(parsed) ? parsed : null;
   } catch {
     return null;
@@ -278,7 +282,7 @@ function parseProgressLogLine(line: string): ExperimentProgressSnapshot | null {
 }
 
 function normalizeRemoteSensitivityLogLine(job: RemoteJobRecord, line: string): string | null {
-  if (line.startsWith('[progress] ')) {
+  if (line.startsWith(PROGRESS_LOG_PREFIX)) {
     return null;
   }
   const jobPrefix = `[sensitivity:${job.id}] `;
@@ -315,6 +319,32 @@ function createRemoteSensitivityLogPayload(job: RemoteJobRecord, rawLines: strin
     lines,
     ...(progress ? { progress } : {})
   };
+}
+
+function createRemoteManualLogPayload(job: RemoteJobRecord, rawLines: string[]): RemoteLogPayload {
+  let progress: ExperimentProgressSnapshot | undefined;
+  const lines = [`[system] Remote job ${job.jobRef} status=${job.status}`];
+
+  for (const line of rawLines) {
+    const parsedProgress = parseProgressLogLine(line);
+    if (parsedProgress) {
+      progress = {
+        ...parsedProgress,
+        status: job.status
+      };
+      continue;
+    }
+    lines.push(line);
+  }
+
+  return {
+    lines,
+    ...(progress ? { progress } : {})
+  };
+}
+
+function normalizeRemoteManualSsmLogLine(streamName: 'stdout' | 'stderr', line: string): string {
+  return line.startsWith(PROGRESS_LOG_PREFIX) ? line : `[${streamName}] ${line}`;
 }
 
 function mapSsmStatus(status: string): RemoteJobStatus {
@@ -354,14 +384,14 @@ function runnerVCpusFromCpuOptions(cpuOptions: { CoreCount?: number; ThreadsPerC
   return coreCount * threadsPerCore;
 }
 
-function sensitivityWorkerCapFromStatus(status: RemoteExecutionStatus): number {
+function workerCapFromStatus(status: RemoteExecutionStatus): number {
   return normalizePositiveInteger(status.runnerVCpus) ?? 1;
 }
 
-function capSensitivityPayloadMaxWorkers(
-  payload: SensitivityExperimentCreateRequest,
+function capPayloadMaxWorkers<T extends { maxWorkers?: number }>(
+  payload: T,
   workerCap: number
-): SensitivityExperimentCreateRequest {
+): T {
   const cappedWorkerCap = Math.max(1, Math.trunc(workerCap));
   if (payload.maxWorkers === undefined || payload.maxWorkers === null) {
     return {
@@ -807,7 +837,7 @@ export class RemoteExecutionManager {
 
   async decorateModelRunOptions(options: ModelRunOptionsPayload): Promise<ModelRunOptionsPayload> {
     const status = await this.getStatus();
-    const sensitivityMaxWorkersCap = sensitivityWorkerCapFromStatus(status);
+    const sensitivityMaxWorkersCap = workerCapFromStatus(status);
     return {
       ...options,
       executionEnabled: status.available,
@@ -822,7 +852,12 @@ export class RemoteExecutionManager {
     pathsInput: RuntimePathInput,
     payload: ModelRunSubmitRequest
   ): Promise<ModelRunSubmitResponse> {
-    const preparedResult = prepareModelRunSubmission(pathsInput, payload, { ignoreStorageCap: true });
+    const status = await this.getStatus();
+    if (!status.available) {
+      throw new Error(status.reason ?? 'EC2 experiment runner is unavailable.');
+    }
+    const cappedPayload = capPayloadMaxWorkers(payload, workerCapFromStatus(status));
+    const preparedResult = prepareModelRunSubmission(pathsInput, cappedPayload, { ignoreStorageCap: true });
     if (!preparedResult.accepted) {
       return preparedResult;
     }
@@ -844,6 +879,9 @@ export class RemoteExecutionManager {
       createdAt: now.toISOString(),
       baseline: prepared.baseline,
       runId: prepared.runId,
+      seedsPerPoint: prepared.seedsPerPoint,
+      seeds: prepared.seeds,
+      maxWorkers: prepared.maxWorkers,
       outputPath: `s3://${this.config.artifactsBucket}/${artifactS3Prefix}Results/${prepared.runId}`,
       configPath: `s3://${this.config.artifactsBucket}/${artifactS3Prefix}request.json`,
       artifactS3Prefix,
@@ -853,7 +891,7 @@ export class RemoteExecutionManager {
       warnings: prepared.warnings
     };
 
-    await this.dispatchRemoteJob(job, payload);
+    await this.dispatchRemoteJob(job, cappedPayload);
     return {
       accepted: true,
       warnings: prepared.warnings,
@@ -869,7 +907,7 @@ export class RemoteExecutionManager {
     if (!status.available) {
       throw new Error(status.reason ?? 'EC2 experiment runner is unavailable.');
     }
-    const cappedPayload = capSensitivityPayloadMaxWorkers(payload, sensitivityWorkerCapFromStatus(status));
+    const cappedPayload = capPayloadMaxWorkers(payload, workerCapFromStatus(status));
     const preparedResult = prepareSensitivityExperimentSubmission(pathsInput, cappedPayload);
     if (!preparedResult.accepted) {
       return preparedResult;
@@ -934,7 +972,8 @@ export class RemoteExecutionManager {
     return {
       jobId,
       ...slice,
-      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore
+      done: TERMINAL_STATUSES.has(job.status) && !slice.hasMore,
+      ...(logPayload.progress ? { progress: logPayload.progress } : {})
     };
   }
 
@@ -1398,6 +1437,9 @@ export class RemoteExecutionManager {
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       endedAt: job.endedAt,
+      seedsPerPoint: job.seedsPerPoint,
+      seeds: job.seeds,
+      maxWorkers: job.maxWorkers,
       outputPath: job.outputPath,
       configPath: job.configPath,
       exitCode: job.status === 'succeeded' ? 0 : null,
@@ -1497,7 +1539,7 @@ export class RemoteExecutionManager {
     const artifactLog = await this.adapter.getText(this.config.artifactsBucket, `${job.artifactS3Prefix}logs/remote-runner.log`);
     if (artifactLog) {
       const lines = toLines(artifactLog);
-      return job.type === 'sensitivity' ? createRemoteSensitivityLogPayload(job, lines) : { lines };
+      return job.type === 'sensitivity' ? createRemoteSensitivityLogPayload(job, lines) : createRemoteManualLogPayload(job, lines);
     }
     if (!job.ssmCommandId) {
       return { lines: [`[system] Remote job ${job.jobRef} has not been dispatched yet.`] };
@@ -1509,12 +1551,9 @@ export class RemoteExecutionManager {
         ...toLines(invocation?.stderr ?? null).map((line) => `[stderr] ${line}`)
       ]);
     }
-    return {
-      lines: [
-        `[system] Remote job ${job.jobRef} status=${job.status}`,
-        ...toLines(invocation?.stdout ?? null).map((line) => `[stdout] ${line}`),
-        ...toLines(invocation?.stderr ?? null).map((line) => `[stderr] ${line}`)
-      ]
-    };
+    return createRemoteManualLogPayload(job, [
+      ...toLines(invocation?.stdout ?? null).map((line) => normalizeRemoteManualSsmLogLine('stdout', line)),
+      ...toLines(invocation?.stderr ?? null).map((line) => normalizeRemoteManualSsmLogLine('stderr', line))
+    ]);
   }
 }

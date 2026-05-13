@@ -16,7 +16,8 @@ import type {
   ModelRunSubmitRequest,
   ModelRunSubmitResponse,
   ModelRunWarning,
-  BasePolicyId
+  BasePolicyId,
+  ExperimentProgressSnapshot
 } from '../../shared/types';
 import {
   BASE_POLICY_OPTIONS,
@@ -29,8 +30,6 @@ import {
 import { getInProgressVersions, getVersions } from './service';
 import {
   appendLogLine,
-  appendOutputChunk,
-  flushPartialLine,
   readLogSlice,
   type LogBufferState,
   type LogLineSink
@@ -57,12 +56,32 @@ import {
   isDashboardManagedRun,
   writeDashboardManagedRunMarker
 } from './runOwnership';
+import {
+  buildSeeds,
+  createProgressSnapshot,
+  createSeededProgressState,
+  finishProgressTask,
+  formatProgressBrief,
+  parseMaxWorkers,
+  parseSeedCount,
+  runSeededModelProcess,
+  runSeededWorkerPool,
+  seededTaskId,
+  startProgressTask,
+  updateProgressEnded,
+  updateProgressStarted,
+  type SeededProgressState,
+  type SeededRunStatus
+} from './seededExperimentRunner';
 
 const TMP_RUNS_DIR = 'dashboard-model-runs';
 const MAX_QUEUE_SIZE = 10;
 const MAX_LOG_LINES = 10_000;
 const CANCEL_KILL_TIMEOUT_MS = 10_000;
 const DEFAULT_RESULTS_CAP_MB = 400;
+const MANUAL_POINT_ID = 'manual';
+const MANUAL_POINT_LABEL = 'manual parameters';
+const OUTPUT_FILE_NAME = 'Output-run1.csv';
 
 type ParameterDefinitionSeed = {
   key: string;
@@ -318,14 +337,22 @@ interface ModelRunJobInternal {
   runtimePaths: RuntimePaths;
   warnings: ModelRunWarning[];
   logBuffer: LogBufferState;
-  process?: ChildProcessWithoutNullStreams;
   launcher: ModelLauncher;
+  progress: SeededProgressState;
+  progressSink?: (progress: ExperimentProgressSnapshot) => void;
+  lastProgressSinkAtMs: number;
+  activeProcesses: Set<ChildProcessWithoutNullStreams>;
   cancelRequested: boolean;
   killTimer?: NodeJS.Timeout;
   tempDirPath: string;
   configAbsolutePath: string;
   runAbsolutePath: string;
-  seed: number | null;
+  baselineConfigPath: string;
+  baselineDirPath: string;
+  normalizedOverrides: Map<string, string>;
+  seeds: number[];
+  seedsPerPoint: number;
+  maxWorkers: number;
   overriddenParameters: Record<string, number | boolean>;
   ignoreStorageCap: boolean;
 }
@@ -334,6 +361,7 @@ interface SubmitModelRunOptions {
   ignoreStorageCap?: boolean;
   launcher?: ModelLauncher;
   logSink?: LogLineSink;
+  progressSink?: (progress: ExperimentProgressSnapshot) => void;
 }
 
 interface PrepareModelRunSubmissionOptions {
@@ -357,6 +385,9 @@ interface PreparedModelRunSubmission {
   normalizedOverrides: Map<string, string>;
   valuesByKey: Map<string, number | boolean>;
   overriddenParameters: Record<string, number | boolean>;
+  seeds: number[];
+  seedsPerPoint: number;
+  maxWorkers: number;
   ignoreStorageCap: boolean;
 }
 
@@ -439,6 +470,15 @@ function parseConfigAssignments(configPath: string): Map<string, string> {
   }
 
   return values;
+}
+
+function readConfigPositiveInteger(configPath: string, key: string): number | null {
+  const rawValue = parseConfigAssignments(configPath).get(key);
+  if (rawValue === undefined) {
+    return null;
+  }
+  const parsed = Number.parseFloat(rawValue);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
 }
 
 function unquote(value: string): string {
@@ -865,6 +905,342 @@ function removeRunDirectoryIfDashboardManaged(runPath: string, runId: string): v
   }
 }
 
+function manualSeedLabel(seed: number): string {
+  return `seed-${seed}`;
+}
+
+function manualTaskId(seed: number): string {
+  return seededTaskId(MANUAL_POINT_ID, seed);
+}
+
+function buildManualSeedPaths(job: ModelRunJobInternal, seed: number): {
+  seedLabel: string;
+  seedTempRoot: string;
+  configPath: string;
+  outputPath: string;
+  persistedOutputPath: string;
+} {
+  const seedLabel = manualSeedLabel(seed);
+  const seedTempRoot = path.join(job.tempDirPath, seedLabel);
+  return {
+    seedLabel,
+    seedTempRoot,
+    configPath: path.join(seedTempRoot, 'config.properties'),
+    outputPath: path.join(seedTempRoot, 'output'),
+    persistedOutputPath: path.join(job.runAbsolutePath, 'seeds', seedLabel)
+  };
+}
+
+function appendLifecycle(job: ModelRunJobInternal, line: string): void {
+  appendLogLine(job.logBuffer, `[system] ${line}`, MAX_LOG_LINES);
+}
+
+function copyDirectoryContents(source: string, destination: string): void {
+  if (!fs.existsSync(source)) {
+    return;
+  }
+  fs.mkdirSync(destination, { recursive: true });
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    fs.cpSync(path.join(source, entry.name), path.join(destination, entry.name), { recursive: true });
+  }
+}
+
+function readNonEmptyLines(filePath: string): string[] {
+  return fs
+    .readFileSync(filePath, 'utf-8')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+function parseSemicolonRow(line: string): string[] {
+  return line.split(';').map((token) => token.trim());
+}
+
+function parseFiniteNumber(token: string | undefined): number | null {
+  if (token === undefined || token.trim() === '') {
+    return null;
+  }
+  const parsed = Number.parseFloat(token);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mean(values: number[]): number | null {
+  return values.length === 0 ? null : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function formatAggregateNumber(value: number | null, missingToken = ''): string {
+  return value === null ? missingToken : String(value);
+}
+
+function aggregateCoreIndicatorFile(seedOutputPaths: string[], fileName: string, destinationPath: string): void {
+  const rows = seedOutputPaths
+    .map((outputPath) => path.join(outputPath, fileName))
+    .filter((filePath) => fs.existsSync(filePath))
+    .map((filePath) => parseSemicolonRow(readNonEmptyLines(filePath)[0] ?? ''));
+  if (rows.length === 0) {
+    return;
+  }
+
+  const width = Math.max(...rows.map((row) => row.length));
+  const values = Array.from({ length: width }, (_unused, index) => {
+    const numericValues = rows
+      .map((row) => parseFiniteNumber(row[index]))
+      .filter((value): value is number => value !== null);
+    return formatAggregateNumber(mean(numericValues), 'NaN');
+  });
+  fs.writeFileSync(destinationPath, `${values.join(';')}\n`, 'utf-8');
+}
+
+function aggregateOutputFile(seedOutputPaths: string[], destinationPath: string): void {
+  const parsedOutputs = seedOutputPaths
+    .map((outputPath) => path.join(outputPath, OUTPUT_FILE_NAME))
+    .filter((filePath) => fs.existsSync(filePath))
+    .map((filePath) => {
+      const lines = readNonEmptyLines(filePath);
+      const header = parseSemicolonRow(lines[0] ?? '');
+      const modelTimeIndex = header.indexOf('Model time');
+      const rows = new Map<number, string[]>();
+      for (const line of lines.slice(1)) {
+        const tokens = parseSemicolonRow(line);
+        const modelTime = Number.parseInt(tokens[modelTimeIndex] ?? '', 10);
+        if (Number.isFinite(modelTime)) {
+          rows.set(modelTime, tokens);
+        }
+      }
+      return { header, modelTimeIndex, rows };
+    })
+    .filter((output) => output.header.length > 0 && output.modelTimeIndex >= 0);
+
+  const first = parsedOutputs[0];
+  if (!first) {
+    return;
+  }
+
+  const modelTimes = [...new Set(parsedOutputs.flatMap((output) => [...output.rows.keys()]))].sort((left, right) => left - right);
+  const lines = [first.header.join(';')];
+  for (const modelTime of modelTimes) {
+    const row = first.header.map((columnName, index) => {
+      if (index === first.modelTimeIndex || columnName === 'Model time') {
+        return String(modelTime);
+      }
+      const numericValues = parsedOutputs
+        .map((output) => parseFiniteNumber(output.rows.get(modelTime)?.[index]))
+        .filter((value): value is number => value !== null);
+      return formatAggregateNumber(mean(numericValues));
+    });
+    lines.push(row.join(';'));
+  }
+  fs.writeFileSync(destinationPath, `${lines.join('\n')}\n`, 'utf-8');
+}
+
+function aggregateManualOutputs(job: ModelRunJobInternal): void {
+  const seedOutputPaths = job.seeds
+    .map((seed) => buildManualSeedPaths(job, seed).persistedOutputPath)
+    .filter((outputPath) => fs.existsSync(outputPath));
+  fs.mkdirSync(job.runAbsolutePath, { recursive: true });
+
+  if (seedOutputPaths.length === 1) {
+    copyDirectoryContents(seedOutputPaths[0], job.runAbsolutePath);
+  } else {
+    aggregateOutputFile(seedOutputPaths, path.join(job.runAbsolutePath, OUTPUT_FILE_NAME));
+    const coreFileNames = [...new Set(seedOutputPaths.flatMap((outputPath) =>
+      fs.readdirSync(outputPath, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && entry.name.startsWith('coreIndicator-') && entry.name.endsWith('.csv'))
+        .map((entry) => entry.name)
+    ))].sort();
+    for (const fileName of coreFileNames) {
+      aggregateCoreIndicatorFile(seedOutputPaths, fileName, path.join(job.runAbsolutePath, fileName));
+    }
+  }
+
+  fs.copyFileSync(job.configAbsolutePath, path.join(job.runAbsolutePath, 'config.properties'));
+}
+
+async function runManualSeed(
+  job: ModelRunJobInternal,
+  seed: number,
+  workerIndex: number
+): Promise<{ seed: number; status: SeededRunStatus; error?: string }> {
+  const paths = job.runtimePaths;
+  const seedPaths = buildManualSeedPaths(job, seed);
+  fs.rmSync(seedPaths.seedTempRoot, { recursive: true, force: true });
+
+  const overrides = new Map(job.normalizedOverrides);
+  overrides.set('SEED', String(seed));
+  overrides.set('N_SIMS', '1');
+  rewriteConfigForJob(job.baselineConfigPath, job.baselineDirPath, seedPaths.configPath, overrides);
+  const nSteps = readConfigPositiveInteger(seedPaths.configPath, 'N_STEPS');
+
+  fs.mkdirSync(seedPaths.outputPath, { recursive: true });
+  const currentTaskId = manualTaskId(seed);
+  startProgressTask(
+    job,
+    {
+      pointId: MANUAL_POINT_ID,
+      pointLabel: MANUAL_POINT_LABEL,
+      seed,
+      taskId: currentTaskId
+    },
+    workerIndex,
+    nSteps,
+    job.job.status
+  );
+  appendLifecycle(
+    job,
+    `Worker ${workerIndex}/${job.progress.totalWorkers} started ${seedPaths.seedLabel}; ${formatProgressBrief(createProgressSnapshot(job, job.job.status))}`
+  );
+
+  const executionResult = await runSeededModelProcess({
+    paths,
+    owner: job,
+    configPath: seedPaths.configPath,
+    outputPath: seedPaths.outputPath,
+    taskId: currentTaskId,
+    status: () => job.job.status,
+    rawLogSink: (streamName, line) => appendLogLine(job.logBuffer, `[${streamName}] ${line}`, MAX_LOG_LINES),
+    formatLaunchError: (error) => formatLauncherProcessError(job.launcher, error)
+  });
+
+  finishProgressTask(job, currentTaskId, executionResult.status, job.job.status);
+  if (executionResult.status === 'succeeded') {
+    fs.rmSync(seedPaths.persistedOutputPath, { recursive: true, force: true });
+    fs.mkdirSync(path.dirname(seedPaths.persistedOutputPath), { recursive: true });
+    fs.cpSync(seedPaths.outputPath, seedPaths.persistedOutputPath, { recursive: true });
+  }
+  fs.rmSync(seedPaths.seedTempRoot, { recursive: true, force: true });
+
+  appendLifecycle(
+    job,
+    `Worker ${workerIndex}/${job.progress.totalWorkers} finished ${seedPaths.seedLabel} with status ${executionResult.status}; ${formatProgressBrief(
+      createProgressSnapshot(job, job.job.status)
+    )}${executionResult.error ? `: ${executionResult.error}` : ''}`
+  );
+
+  return {
+    seed,
+    status: executionResult.status,
+    error: executionResult.error
+  };
+}
+
+function writeManualManifestForJob(
+  job: ModelRunJobInternal,
+  outputHash: ReturnType<typeof hashDirectory>
+): void {
+  writeManualRunManifest({
+    paths: job.runtimePaths,
+    launcher: job.launcher,
+    job: job.job,
+    configPath: job.configAbsolutePath,
+    outputPath: job.runAbsolutePath,
+    seed: job.seeds.length === 1 ? job.seeds[0] : null,
+    seedsPerPoint: job.seedsPerPoint,
+    seeds: job.seeds,
+    maxWorkers: job.maxWorkers,
+    overriddenParameters: job.overriddenParameters,
+    outputHash
+  });
+}
+
+async function executeRunningModelJob(job: ModelRunJobInternal): Promise<void> {
+  const paths = job.runtimePaths;
+  updateProgressStarted(job, job.job.status, job.job.startedAt);
+
+  fs.mkdirSync(job.runAbsolutePath, { recursive: true });
+  writeDashboardManagedRunMarker(job.runAbsolutePath, {
+    jobId: job.job.jobId,
+    runId: job.job.runId,
+    baseline: job.job.baseline,
+    title: job.job.title ?? null,
+    createdAt: job.job.createdAt
+  });
+  writeManualManifestForJob(job, null);
+  appendLifecycle(
+    job,
+    `Run ${job.job.jobId} running with ${job.progress.totalRuns} seed runs across ${job.progress.totalWorkers} workers; ${formatProgressBrief(
+      createProgressSnapshot(job, job.job.status)
+    )}`
+  );
+
+  const seedResults: Array<{ seed: number; status: SeededRunStatus; error?: string }> = [];
+
+  try {
+    job.launcher.prepare?.({ repoRoot: paths.repoRoot });
+    await runSeededWorkerPool({
+      tasks: job.seeds,
+      maxWorkers: job.maxWorkers,
+      isCancelRequested: () => job.cancelRequested,
+      runTask: (seed, workerIndex) => runManualSeed(job, seed, workerIndex),
+      onResult: (_seed, result) => {
+        seedResults.push(result);
+      },
+      shouldStopOnResult: (result) => result.status === 'failed' || result.status === 'canceled'
+    });
+
+    const failedSeed = seedResults.find((result) => result.status === 'failed');
+    const canceledSeed = seedResults.find((result) => result.status === 'canceled');
+    job.job.endedAt = new Date().toISOString();
+
+    if (failedSeed) {
+      job.job.status = 'failed';
+      job.job.exitCode = 1;
+      job.job.signal = null;
+      appendLogLine(
+        job.logBuffer,
+        `[stderr] Seed ${failedSeed.seed} failed${failedSeed.error ? `: ${failedSeed.error}` : '.'}`,
+        MAX_LOG_LINES
+      );
+    } else if (job.cancelRequested || canceledSeed) {
+      job.job.status = 'canceled';
+      job.job.exitCode = null;
+      job.job.signal = 'SIGTERM';
+    } else {
+      aggregateManualOutputs(job);
+      job.job.status = 'succeeded';
+      job.job.exitCode = 0;
+      job.job.signal = null;
+    }
+  } catch (error) {
+    job.job.status = 'failed';
+    job.job.endedAt = new Date().toISOString();
+    job.job.exitCode = null;
+    job.job.signal = null;
+    appendLogLine(
+      job.logBuffer,
+      `[stderr] Failed to run seeded model job: ${formatLauncherProcessError(job.launcher, error as Error)}`,
+      MAX_LOG_LINES
+    );
+  } finally {
+    job.job.endedAt = job.job.endedAt ?? new Date().toISOString();
+    updateProgressEnded(job, job.job.status, job.job.endedAt);
+
+    if (job.job.status === 'succeeded') {
+      writeManualManifestForJob(
+        job,
+        hashDirectory(job.runAbsolutePath, new Set([RUN_MANIFEST_FILE_NAME, MANAGED_RUN_MARKER]))
+      );
+    }
+
+    if (job.job.status === 'failed' || job.job.status === 'canceled') {
+      removeRunDirectoryIfDashboardManaged(job.runAbsolutePath, job.job.runId);
+    }
+
+    fs.rmSync(job.tempDirPath, { recursive: true, force: true });
+    job.activeProcesses.clear();
+    if (job.killTimer) {
+      clearTimeout(job.killTimer);
+      job.killTimer = undefined;
+    }
+    appendLifecycle(
+      job,
+      `Run ${job.job.jobId} ended with status ${job.job.status}; ${formatProgressBrief(createProgressSnapshot(job, job.job.status))}`
+    );
+    runningJobId = null;
+    startNextQueuedJob();
+  }
+}
+
 function startNextQueuedJob(): void {
   if (shutdownRequested) {
     return;
@@ -919,113 +1295,7 @@ function startNextQueuedJob(): void {
   queuedJob.job.status = 'running';
   queuedJob.job.startedAt = new Date().toISOString();
   runningJobId = queuedJob.job.jobId;
-
-  fs.mkdirSync(queuedJob.runAbsolutePath, { recursive: true });
-  writeDashboardManagedRunMarker(queuedJob.runAbsolutePath, {
-    jobId: queuedJob.job.jobId,
-    runId: queuedJob.job.runId,
-    baseline: queuedJob.job.baseline,
-    title: queuedJob.job.title ?? null,
-    createdAt: queuedJob.job.createdAt
-  });
-  writeManualRunManifest({
-    paths,
-    launcher: queuedJob.launcher,
-    job: queuedJob.job,
-    configPath: queuedJob.configAbsolutePath,
-    outputPath: queuedJob.runAbsolutePath,
-    seed: queuedJob.seed,
-    overriddenParameters: queuedJob.overriddenParameters,
-    outputHash: null
-  });
-
-  let child: ChildProcessWithoutNullStreams;
-  try {
-    queuedJob.launcher.prepare?.({ repoRoot: paths.repoRoot });
-    child = queuedJob.launcher.launch({
-      repoRoot: paths.repoRoot,
-      configPath: queuedJob.configAbsolutePath,
-      outputPath: queuedJob.runAbsolutePath
-    });
-  } catch (error) {
-    queuedJob.job.status = 'failed';
-    queuedJob.job.endedAt = new Date().toISOString();
-    queuedJob.job.exitCode = null;
-    queuedJob.job.signal = null;
-    appendLogLine(
-      queuedJob.logBuffer,
-      `[stderr] Failed to prepare or spawn model process: ${formatLauncherProcessError(queuedJob.launcher, error as Error)}`,
-      MAX_LOG_LINES
-    );
-    runningJobId = null;
-    removeRunDirectoryIfDashboardManaged(queuedJob.runAbsolutePath, queuedJob.job.runId);
-    fs.rmSync(queuedJob.tempDirPath, { recursive: true, force: true });
-    startNextQueuedJob();
-    return;
-  }
-
-  queuedJob.process = child;
-
-  child.stdout.on('data', (chunk: Buffer) => {
-    appendOutputChunk(queuedJob.logBuffer, 'stdout', chunk, MAX_LOG_LINES);
-  });
-
-  child.stderr.on('data', (chunk: Buffer) => {
-    appendOutputChunk(queuedJob.logBuffer, 'stderr', chunk, MAX_LOG_LINES);
-  });
-
-  child.on('error', (error: Error) => {
-    appendLogLine(
-      queuedJob.logBuffer,
-      `[stderr] Model process error: ${formatLauncherProcessError(queuedJob.launcher, error)}`,
-      MAX_LOG_LINES
-    );
-  });
-
-  child.on('close', (code, signal) => {
-    flushPartialLine(queuedJob.logBuffer, MAX_LOG_LINES);
-
-    if (queuedJob.killTimer) {
-      clearTimeout(queuedJob.killTimer);
-      queuedJob.killTimer = undefined;
-    }
-
-    queuedJob.job.endedAt = new Date().toISOString();
-    queuedJob.job.exitCode = code;
-    queuedJob.job.signal = signal;
-
-    if (queuedJob.cancelRequested) {
-      queuedJob.job.status = 'canceled';
-    } else if (code === 0) {
-      queuedJob.job.status = 'succeeded';
-    } else {
-      queuedJob.job.status = 'failed';
-    }
-
-    if (queuedJob.job.status === 'succeeded') {
-      writeManualRunManifest({
-        paths,
-        launcher: queuedJob.launcher,
-        job: queuedJob.job,
-        configPath: queuedJob.configAbsolutePath,
-        outputPath: queuedJob.runAbsolutePath,
-        seed: queuedJob.seed,
-        overriddenParameters: queuedJob.overriddenParameters,
-        outputHash: hashDirectory(
-          queuedJob.runAbsolutePath,
-          new Set([RUN_MANIFEST_FILE_NAME, MANAGED_RUN_MARKER])
-        )
-      });
-    }
-
-    if (queuedJob.job.status === 'failed' || queuedJob.job.status === 'canceled') {
-      removeRunDirectoryIfDashboardManaged(queuedJob.runAbsolutePath, queuedJob.job.runId);
-    }
-
-    fs.rmSync(queuedJob.tempDirPath, { recursive: true, force: true });
-    runningJobId = null;
-    startNextQueuedJob();
-  });
+  void executeRunningModelJob(queuedJob);
 }
 
 function toPublicJob(job: ModelRunJobInternal): ModelRunJob {
@@ -1095,7 +1365,8 @@ export function getModelRunJobLogs(jobId: string, cursor: number | undefined, li
     lines: slice.lines,
     hasMore: slice.hasMore,
     done: isTerminal(job.job.status) && !slice.hasMore,
-    truncated: slice.truncated
+    truncated: slice.truncated,
+    progress: createProgressSnapshot(job, job.job.status)
   };
 }
 
@@ -1122,22 +1393,31 @@ export function cancelModelRunJob(_pathsInput: RuntimePathInput, jobId: string):
     return toPublicJob(job);
   }
 
-  if (job.job.status === 'running' && job.process) {
+  if (job.job.status === 'running') {
     if (!job.cancelRequested) {
-      const sigtermSent = job.process.kill('SIGTERM');
-      if (sigtermSent) {
-        job.cancelRequested = true;
-        job.killTimer = setTimeout(() => {
-          if (job.process && !isTerminal(job.job.status)) {
-            job.process.kill('SIGKILL');
-          }
-        }, CANCEL_KILL_TIMEOUT_MS);
-      } else {
-        appendLogLine(
-          job.logBuffer,
-          '[stderr] Cancel requested but SIGTERM could not be delivered; waiting for process close.',
-          MAX_LOG_LINES
+      job.cancelRequested = true;
+      const activeProcesses = [...job.activeProcesses];
+      if (activeProcesses.length === 0) {
+        appendLifecycle(
+          job,
+          'Cancel requested while no model process is active; cancellation intent recorded and future seed launches will stop.'
         );
+      } else {
+        const sigtermSent = activeProcesses.map((process) => process.kill('SIGTERM'));
+        if (sigtermSent.some(Boolean)) {
+          job.killTimer = setTimeout(() => {
+            if (!isTerminal(job.job.status)) {
+              for (const process of job.activeProcesses) {
+                process.kill('SIGKILL');
+              }
+            }
+          }, CANCEL_KILL_TIMEOUT_MS);
+        } else {
+          appendLifecycle(
+            job,
+            'Cancel requested but SIGTERM could not be delivered to active model processes; cancellation intent recorded and waiting for process close.'
+          );
+        }
       }
     }
     return toPublicJob(job);
@@ -1203,12 +1483,25 @@ export function prepareModelRunSubmission(
     if (!definition) {
       throw new Error(`Unsupported override key: ${key}`);
     }
+    if (definition.key === 'SEED') {
+      throw new Error('SEED is fixed to 1 for manual seeded runs and cannot be overridden.');
+    }
 
     const parsedOverride = normalizeOverrideValue(key, rawValue, definition.type);
     normalizedOverrides.set(key, parsedOverride.serialized);
     valuesByKey.set(key, parsedOverride.typed);
     overriddenParameters[key] = parsedOverride.typed;
   }
+
+  const seedsPerPoint = parseSeedCount(valuesByKey.get('N_SIMS') ?? 1, 'Manual seeds per run');
+  const seeds = buildSeeds(seedsPerPoint);
+  const maxWorkers = parseMaxWorkers(payload.maxWorkers, seeds.length);
+  valuesByKey.set('SEED', 1);
+  valuesByKey.set('N_SIMS', seedsPerPoint);
+  normalizedOverrides.set('SEED', '1');
+  normalizedOverrides.set('N_SIMS', String(seedsPerPoint));
+  overriddenParameters.SEED = 1;
+  overriddenParameters.N_SIMS = seedsPerPoint;
 
   const now = options.now ?? new Date();
   const trimmedTitle = payload.title?.trim();
@@ -1275,6 +1568,9 @@ export function prepareModelRunSubmission(
       normalizedOverrides,
       valuesByKey,
       overriddenParameters,
+      seeds,
+      seedsPerPoint,
+      maxWorkers,
       ignoreStorageCap
     }
   };
@@ -1306,8 +1602,10 @@ export function submitModelRun(
     baselineConfigPath,
     baselineDirPath,
     normalizedOverrides,
-    valuesByKey,
     overriddenParameters,
+    seeds,
+    seedsPerPoint,
+    maxWorkers,
     ignoreStorageCap
   } = preparedResult.prepared;
 
@@ -1320,6 +1618,9 @@ export function submitModelRun(
     baseline,
     status: 'queued',
     createdAt,
+    seedsPerPoint,
+    seeds,
+    maxWorkers,
     outputPath: toRuntimePath(paths, runAbsolutePath),
     configPath: toRuntimePath(paths, configAbsolutePath)
   };
@@ -1335,11 +1636,29 @@ export function submitModelRun(
       ...(options.logSink ? { sink: (line) => options.logSink?.(`[manual:${jobId}] ${line}`) } : {})
     },
     launcher,
+    progress: createSeededProgressState(
+      'manual',
+      seeds.map((seed) => ({
+        pointId: MANUAL_POINT_ID,
+        pointLabel: MANUAL_POINT_LABEL,
+        seed,
+        taskId: seededTaskId(MANUAL_POINT_ID, seed)
+      })),
+      maxWorkers
+    ),
+    progressSink: options.progressSink,
+    lastProgressSinkAtMs: 0,
+    activeProcesses: new Set(),
     cancelRequested: false,
     tempDirPath,
     configAbsolutePath,
     runAbsolutePath,
-    seed: typeof valuesByKey.get('SEED') === 'number' ? Number(valuesByKey.get('SEED')) : null,
+    baselineConfigPath,
+    baselineDirPath,
+    normalizedOverrides,
+    seeds,
+    seedsPerPoint,
+    maxWorkers,
     overriddenParameters,
     ignoreStorageCap
   };
@@ -1367,11 +1686,13 @@ export function shutdownModelRunProcesses(): void {
       clearTimeout(job.killTimer);
       job.killTimer = undefined;
     }
-    if (job.process && !isTerminal(job.job.status)) {
+    if (job.job.status === 'running' && !isTerminal(job.job.status)) {
       job.cancelRequested = true;
       job.job.status = 'canceled';
       job.job.endedAt = now;
-      job.process.kill('SIGKILL');
+      for (const process of job.activeProcesses) {
+        process.kill('SIGKILL');
+      }
     } else if (job.job.status === 'queued') {
       job.cancelRequested = true;
       job.job.status = 'canceled';

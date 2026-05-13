@@ -106,7 +106,8 @@ export function getExperimentJobLogs(
       lines: payload.lines,
       hasMore: payload.hasMore,
       done: payload.done,
-      truncated: payload.truncated
+      truncated: payload.truncated,
+      progress: payload.progress
     };
   }
 

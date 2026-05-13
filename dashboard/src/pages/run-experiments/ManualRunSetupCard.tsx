@@ -31,6 +31,9 @@ interface ManualRunSetupCardProps {
   policyParameters: ModelRunParameterDefinition[];
   formValues: Record<string, FormValue>;
   onFormValueChange: (parameter: ModelRunParameterDefinition, value: FormValue) => void;
+  maxWorkers: string;
+  maxWorkersCap?: number;
+  onMaxWorkersChange: (value: string) => void;
   warnings: ModelRunWarning[];
   isSubmitting: boolean;
   manualSubmissionLockedBySensitivity: boolean;
@@ -53,6 +56,9 @@ export function ManualRunSetupCard({
   policyParameters,
   formValues,
   onFormValueChange,
+  maxWorkers,
+  maxWorkersCap,
+  onMaxWorkersChange,
   warnings,
   isSubmitting,
   manualSubmissionLockedBySensitivity,
@@ -148,6 +154,10 @@ export function ManualRunSetupCard({
               formValues={formValues}
               executionDisabled={executionDisabled}
               onFormValueChange={onFormValueChange}
+              maxWorkers={maxWorkers}
+              maxWorkersCap={maxWorkersCap}
+              onMaxWorkersChange={onMaxWorkersChange}
+              maxWorkersHint={SETTING_HELP.maxWorkers}
             />
 
             {policyParameters.length > 0 && (

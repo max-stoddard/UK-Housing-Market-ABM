@@ -42,6 +42,9 @@ export interface ExperimentRunController {
   title: string;
   setTitle: (value: string) => void;
   formValues: Record<string, FormValue>;
+  manualMaxWorkers: string;
+  setManualMaxWorkers: (value: string) => void;
+  maxWorkersCap?: number;
   warnings: ModelRunWarning[];
   sensitivityTitle: string;
   setSensitivityTitle: (value: string) => void;
@@ -203,6 +206,8 @@ export function useExperimentRunController({
 
   const [title, setTitle] = useState<string>('');
   const [formValues, setFormValues] = useState<Record<string, FormValue>>({});
+  const [manualMaxWorkers, setManualMaxWorkers] = useState<string>('1');
+  const [manualMaxWorkersTouched, setManualMaxWorkersTouched] = useState<boolean>(false);
   const [warnings, setWarnings] = useState<ModelRunWarning[]>([]);
 
   const [sensitivityTitle, setSensitivityTitle] = useState<string>('');
@@ -285,6 +290,8 @@ export function useExperimentRunController({
       setSensitivityBasePolicyState(defaultBasePolicy);
       setFormValues(initialValues);
       setSensitivityFormValues(initialSensitivityValues);
+      setManualMaxWorkers(defaultMaxWorkers(parsePositiveInteger(initialValues.N_SIMS), payload.sensitivityMaxWorkersCap));
+      setManualMaxWorkersTouched(false);
       setWarnings([]);
       return payload;
     } catch (error) {
@@ -406,6 +413,14 @@ export function useExperimentRunController({
     setSensitivityMin(defaults.min);
     setSensitivityMax(defaults.max);
   }, [selectedSensitivityBasePolicy, selectedSensitivityPackage?.id, selectedBaseline]);
+
+  useEffect(() => {
+    if (manualMaxWorkersTouched) {
+      return;
+    }
+    const seedCount = parsePositiveInteger(formValues.N_SIMS);
+    setManualMaxWorkers(defaultMaxWorkers(seedCount, options?.sensitivityMaxWorkersCap));
+  }, [formValues.N_SIMS, manualMaxWorkersTouched, options?.sensitivityMaxWorkersCap]);
 
   useEffect(() => {
     if (sensitivityMaxWorkersTouched) {
@@ -541,6 +556,7 @@ export function useExperimentRunController({
       ...current,
       [parameter.key]: value
     }));
+    setWarnings([]);
   };
 
   const onSensitivityFormValueChange = (parameter: ModelRunParameterDefinition, value: FormValue) => {
@@ -551,7 +567,7 @@ export function useExperimentRunController({
     setSensitivityWarnings([]);
   };
 
-  const buildSubmitPayload = (confirmWarnings: boolean): ModelRunSubmitRequest => {
+  const buildSubmitPayload = (confirmWarnings: boolean, maxWorkers: number): ModelRunSubmitRequest => {
     if (!options) {
       throw new Error('Run options are not loaded yet.');
     }
@@ -559,6 +575,9 @@ export function useExperimentRunController({
     const overrides: Record<string, number | boolean> = {};
 
     for (const parameter of options.parameters) {
+      if (parameter.key === 'SEED') {
+        continue;
+      }
       const rawValue = formValues[parameter.key];
       const parsedValue = parseFormValue(parameter, rawValue);
       if (parameter.group === 'Central Bank policy') {
@@ -575,6 +594,7 @@ export function useExperimentRunController({
       basePolicy,
       title,
       overrides,
+      maxWorkers: Math.min(maxWorkers, options.sensitivityMaxWorkersCap ?? maxWorkers),
       confirmWarnings
     };
   };
@@ -592,7 +612,11 @@ export function useExperimentRunController({
     setIsSubmitting(true);
 
     try {
-      const payload = buildSubmitPayload(confirmWarnings);
+      const maxWorkers = Number(manualMaxWorkers);
+      if (!Number.isFinite(maxWorkers) || !Number.isInteger(maxWorkers) || maxWorkers < 1) {
+        throw new Error('Max workers must be a positive integer.');
+      }
+      const payload = buildSubmitPayload(confirmWarnings, maxWorkers);
       const response = await submitModelRun(payload);
       if (!response.accepted) {
         setWarnings(response.warnings);
@@ -721,6 +745,12 @@ export function useExperimentRunController({
     setSensitivityWarnings([]);
   };
 
+  const onManualMaxWorkersChange = (value: string) => {
+    setManualMaxWorkers(value);
+    setManualMaxWorkersTouched(true);
+    setWarnings([]);
+  };
+
   return {
     options,
     selectedBaseline,
@@ -729,6 +759,9 @@ export function useExperimentRunController({
     title,
     setTitle,
     formValues,
+    manualMaxWorkers,
+    setManualMaxWorkers: onManualMaxWorkersChange,
+    maxWorkersCap: options?.sensitivityMaxWorkersCap,
     warnings,
     sensitivityTitle,
     setSensitivityTitle,

@@ -76,7 +76,6 @@ import {
   type SensitivityRunManifest
 } from '../server/lib/runManifest.js';
 import {
-  MANAGED_RUN_MARKER,
   isDashboardManagedRun,
   writeDashboardManagedRunMarker
 } from '../server/lib/runOwnership.js';
@@ -1754,7 +1753,30 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
     }
     return {
       status: this.commandStatuses.get(commandId) ?? 'InProgress',
-      stdout: 'remote stdout fixture',
+      stdout: [
+        `[progress] ${JSON.stringify({
+          kind: 'manual',
+          status: 'running',
+          totalRuns: 3,
+          completedRuns: 1,
+          failedRuns: 0,
+          canceledRuns: 0,
+          activeRuns: 2,
+          totalWorkers: 2,
+          activeWorkers: 2,
+          completedRunEquivalents: 1.5,
+          percentComplete: 50,
+          throughputRunsPerMinute: 3,
+          completedRunsPerMinute: 2,
+          etaSeconds: 30,
+          estimatedFinishAt: '2026-05-11T00:00:50.000Z',
+          elapsedSeconds: 30,
+          startedAt: '2026-05-11T00:00:00.000Z',
+          updatedAt: '2026-05-11T00:00:20.000Z'
+        })}`,
+        'Simulation: 1, time: 500',
+        'remote stdout fixture'
+      ].join('\n'),
       stderr: ''
     };
   }
@@ -1802,7 +1824,7 @@ try {
     () => remoteManager.submitModelRun(remoteFixtureRoot, {
       baseline: 'v1.0',
       title: 'remote stopped fixture',
-      overrides: { SEED: 44 },
+      overrides: {},
       confirmWarnings: true
     }),
     /stopped/,
@@ -1819,10 +1841,12 @@ try {
   const manualSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
     baseline: 'v1.0',
     title: 'remote manual fixture',
-    overrides: { SEED: 45 },
+    overrides: { N_SIMS: 3 },
+    maxWorkers: 20,
     confirmWarnings: true
   });
   assert.equal(manualSubmit.accepted, true, 'Expected remote manual run to be accepted');
+  assert.equal(manualSubmit.job?.maxWorkers, 2, 'Expected remote manual metadata to cap maxWorkers by runner vCPUs');
   assert.equal(remoteAdapter.commands.length, 1, 'Expected remote manual submit to dispatch one SSM command');
   const manualCommand = remoteAdapter.commands[0];
   assert.ok(
@@ -1935,10 +1959,40 @@ try {
     remoteAdapter.objects.has(`fixture-bucket/${manualCommand?.requestKey ?? ''}`),
     'Expected remote submit to persist a request JSON to S3 before dispatch'
   );
+  const manualRequest = JSON.parse(
+    remoteAdapter.objects.get(`fixture-bucket/${manualCommand?.requestKey ?? ''}`)?.toString('utf-8') ?? '{}'
+  ) as { artifactS3Prefix?: string; payload?: Record<string, unknown> };
+  const manualArtifactPrefix = manualRequest.artifactS3Prefix ?? '';
+  assert.ok(manualArtifactPrefix, 'Expected remote manual request to include an artifact prefix');
+  assert.equal(
+    manualRequest.payload?.maxWorkers,
+    2,
+    'Expected remote manual request payload to cap maxWorkers by runner vCPUs'
+  );
+  const liveManualLogs = await remoteManager.getExperimentJobLogs(`manual:${manualSubmit.job?.jobId ?? ''}`, 0, 20);
+  assert.equal(liveManualLogs.progress?.percentComplete, 50, 'Expected remote SSM manual logs to expose progress');
+  assert.ok(
+    liveManualLogs.lines.every((line) => !line.includes('[progress]') && !line.includes('"percentComplete"')),
+    'Expected remote SSM manual logs to consume raw progress JSON as structured progress'
+  );
+  assert.ok(
+    liveManualLogs.lines.some((line) => line.includes('remote stdout fixture')),
+    'Expected remote logs endpoint to expose SSM output while artifacts are not yet synced'
+  );
+  assert.ok(
+    liveManualLogs.lines.some((line) => line.includes('Simulation: 1, time: 500')),
+    'Expected remote SSM manual logs to preserve Java simulation-time stdout'
+  );
+  const liveManualModelLogs = await remoteManager.getModelRunJobLogs(manualSubmit.job?.jobId ?? '', 0, 20);
+  assert.equal(
+    liveManualModelLogs.progress?.percentComplete,
+    50,
+    'Expected remote manual model-run logs endpoint to expose SSM fallback progress'
+  );
   remoteAdapter.commandStatuses.set(manualCommand?.commandId ?? '', 'Success');
   const remoteRunPrefix = manualSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
   const remoteManualBinaryFixture = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x61, 0xc3, 0x28, 0x0a]);
-  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/config.properties`, Buffer.from('SEED=45\n', 'utf-8'));
+  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/config.properties`, Buffer.from('SEED=1\n', 'utf-8'));
   remoteAdapter.objects.set(
     `fixture-bucket/${remoteRunPrefix}/Output-run1.csv`,
     Buffer.from('Model time; nHomeless\n0; 1\n', 'utf-8')
@@ -1962,7 +2016,7 @@ try {
     (await remoteManager.getRemoteManualResultArchive(manualSubmit.job?.runId ?? '')).stream
   );
   assert.ok(
-    remoteManualArchiveText.includes('Output-run1.csv') && remoteManualArchiveText.includes('SEED=45'),
+    remoteManualArchiveText.includes('Output-run1.csv') && remoteManualArchiveText.includes('SEED=1'),
     'Expected remote manual result archive to include S3 artifact files'
   );
   const remoteManualArchiveEntries = await readArchiveEntries(
@@ -1975,10 +2029,44 @@ try {
     remoteManualBinaryFixture,
     'Expected remote manual result archive to preserve binary S3 artifact bytes'
   );
+  remoteAdapter.objects.set(
+    `fixture-bucket/${manualArtifactPrefix}logs/remote-runner.log`,
+    Buffer.from([
+      `[manual:${manualSubmit.job?.jobId ?? ''}] [system] Worker 2/2 finished seed-3 with status succeeded; progress 3.0/3 (100.0%), completed 3/3, active workers 0/2, throughput 3.00/min, ETA pending, finish pending`,
+      `[progress] ${JSON.stringify({
+        kind: 'manual',
+        status: 'succeeded',
+        totalRuns: 3,
+        completedRuns: 3,
+        failedRuns: 0,
+        canceledRuns: 0,
+        activeRuns: 0,
+        totalWorkers: 2,
+        activeWorkers: 0,
+        completedRunEquivalents: 3,
+        percentComplete: 100,
+        throughputRunsPerMinute: 3,
+        completedRunsPerMinute: 3,
+        etaSeconds: null,
+        estimatedFinishAt: null,
+        elapsedSeconds: 60,
+        startedAt: '2026-05-11T00:00:00.000Z',
+        endedAt: '2026-05-11T00:01:00.000Z',
+        updatedAt: '2026-05-11T00:01:00.000Z'
+      })}`,
+      `[manual:${manualSubmit.job?.jobId ?? ''}] [stdout] Simulation: 1, time: 1000`,
+      `[manual:${manualSubmit.job?.jobId ?? ''}] [stdout] remote artifact stdout fixture`
+    ].join('\n'), 'utf-8')
+  );
   const manualLogs = await remoteManager.getExperimentJobLogs(`manual:${manualSubmit.job?.jobId ?? ''}`, 0, 20);
+  assert.equal(manualLogs.progress?.percentComplete, 100, 'Expected remote artifact manual logs to expose final progress');
   assert.ok(
-    manualLogs.lines.some((line) => line.includes('remote stdout fixture')),
-    'Expected remote logs endpoint to expose SSM output while artifacts are not yet synced'
+    manualLogs.lines.every((line) => !line.includes('[progress]') && !line.includes('"percentComplete"')),
+    'Expected remote artifact manual logs to consume raw progress JSON as structured progress'
+  );
+  assert.ok(
+    manualLogs.lines.some((line) => line.includes('Simulation: 1, time: 1000')),
+    'Expected remote artifact manual logs to preserve Java simulation-time stdout'
   );
   remoteAdapter.objects.set(
     'fixture-bucket/experiments/manual/2099-01-01/unrelated/keep.txt',
@@ -2218,13 +2306,13 @@ try {
   const remoteApiSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
     baseline: 'v1.0',
     title: 'remote API delete fixture',
-    overrides: { SEED: 46 },
+    overrides: {},
     confirmWarnings: true
   });
   const remoteApiCommand = remoteAdapter.commands[2];
   remoteAdapter.commandStatuses.set(remoteApiCommand?.commandId ?? '', 'Success');
   const remoteApiRunPrefix = remoteApiSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
-  remoteAdapter.objects.set(`fixture-bucket/${remoteApiRunPrefix}/config.properties`, Buffer.from('SEED=46\n', 'utf-8'));
+  remoteAdapter.objects.set(`fixture-bucket/${remoteApiRunPrefix}/config.properties`, Buffer.from('SEED=1\n', 'utf-8'));
 
   let missingDeleteKeyServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
   try {
@@ -4303,12 +4391,17 @@ try {
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 4).map((snapshot) => formatExperimentModelOption(snapshot, orderedExperimentSnapshots)),
     [
-      'Optimised 2011 model (Stable)',
-      'Original 2011 model (Stable)',
-      'Latest 2024 model v1.0 (Beta)',
+      'Optimised 2011 model (Stable, v0o2)',
+      'Original 2011 model (Stable, v0)',
+      'Latest 2024 model (Beta, v1.0)',
       '2024 model v1.1 (Beta, In progress)'
     ],
-    'Expected experiment model option labels to use user-facing model names and lifecycle badges'
+    'Expected canonical experiment model option labels to include version ids inside lifecycle badges'
+  );
+  assert.equal(
+    formatExperimentModelOption({ version: 'v4.4', status: 'stable' }, [{ version: 'v4.4', status: 'stable' }]),
+    'Best 2024 model (Beta, v4.4)',
+    'Expected the canonical best 2024 experiment label to move the version id into the lifecycle badge'
   );
 
   assertSettingHelpCopy();
@@ -4408,6 +4501,8 @@ try {
         policyParameters,
         formValues: defaultExperimentFormValues,
         onFormValueChange: noop,
+        maxWorkers: '1',
+        onMaxWorkersChange: noop,
         warnings: [],
         isSubmitting: false,
         manualSubmissionLockedBySensitivity: false,
@@ -4489,7 +4584,7 @@ try {
     const overCapSubmit = submitModelRun(modelRunFixtureRoot, {
       baseline: 'v1.0',
       title: 'cap-overflow-visible',
-      overrides: { SEED: 12 },
+      overrides: {},
       confirmWarnings: true
     });
     assert.equal(overCapSubmit.accepted, true, 'Expected run submission to be accepted while still under cap');
@@ -4511,7 +4606,7 @@ try {
         submitModelRun(modelRunFixtureRoot, {
           baseline: 'v1.0',
           title: 'blocked-after-over-cap',
-          overrides: { SEED: 13 },
+          overrides: {},
           confirmWarnings: true
         }),
       /Results storage cap reached/,
@@ -4527,7 +4622,7 @@ try {
       {
         baseline: 'v1.0',
         title: 'allowed-over-cap-dev-bypass',
-        overrides: { SEED: 14 },
+        overrides: {},
         confirmWarnings: true
       },
       { ignoreStorageCap: true }
@@ -4587,7 +4682,7 @@ try {
       baseline: 'v0',
       basePolicy: '2024',
       title: '2011-model-2024-policy',
-      overrides: { SEED: 444 },
+      overrides: {},
       confirmWarnings: true
     },
     { launcher: crossEraManualLauncher }
@@ -4618,7 +4713,7 @@ try {
       `Expected non-policy key ${key} to stay on the selected 2011 calibration snapshot`
     );
   }
-  assert.equal(crossEraManualConfig.get('SEED'), '444', 'Expected manual edits to apply after base policy selection');
+  assert.equal(crossEraManualConfig.get('SEED'), '1', 'Expected manual seeded runs to pin the first seed to 1');
 
   __resetModelRunManagerForTests();
   spawnedProcesses.length = 0;
@@ -4648,7 +4743,7 @@ try {
   const secondSubmit = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
     title: 'second-run',
-    overrides: { SEED: 77 },
+    overrides: {},
     confirmWarnings: true
   });
   assert.equal(secondSubmit.accepted, true, 'Expected second submit to be accepted into queue');
@@ -4707,7 +4802,7 @@ try {
       submitModelRun(modelRunFixtureRoot, {
         baseline: 'v1.0',
         title: 'unmarked-overwrite',
-        overrides: { SEED: 5 },
+        overrides: {},
         confirmWarnings: true
       }),
     /not marked as a dashboard-managed run/,
@@ -4728,7 +4823,7 @@ try {
   const overwriteWarning = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
     title: 'overwrite-case',
-    overrides: { SEED: 5 },
+    overrides: {},
     confirmWarnings: false
   });
   assert.equal(overwriteWarning.accepted, false, 'Expected overwrite warning to require explicit confirmation');
@@ -4740,7 +4835,7 @@ try {
   const overwriteSubmit = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
     title: 'overwrite-case',
-    overrides: { SEED: 5 },
+    overrides: {},
     confirmWarnings: true
   });
   assert.equal(overwriteSubmit.accepted, true, 'Expected overwrite-confirmed submit to enqueue run');
@@ -4750,7 +4845,7 @@ try {
       submitModelRun(modelRunFixtureRoot, {
         baseline: 'v1.0',
         title: 'overwrite-case',
-        overrides: { SEED: 6 },
+        overrides: {},
         confirmWarnings: true
       }),
     /already targeting output folder/,
@@ -4769,7 +4864,7 @@ try {
   const thirdSubmit = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
     title: 'cancel-running',
-    overrides: { SEED: 9 },
+    overrides: {},
     confirmWarnings: true
   });
   assert.equal(thirdSubmit.accepted, true, 'Expected third submit accepted');
@@ -4791,7 +4886,7 @@ try {
   const lateCancelSubmit = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
     title: 'late-cancel-race',
-    overrides: { SEED: 10 },
+    overrides: {},
     confirmWarnings: true
   });
   assert.equal(lateCancelSubmit.accepted, true, 'Expected late-cancel race submit to be accepted');
@@ -4804,12 +4899,61 @@ try {
   const lateCancelCompleted = listModelRunJobs().find((job) => job.jobId === lateCancelSubmit.job?.jobId);
   assert.equal(
     lateCancelCompleted?.status,
-    'succeeded',
-    'Expected failed SIGTERM delivery to preserve successful completion status'
+    'canceled',
+    'Expected cancellation intent to win even when SIGTERM delivery fails'
   );
   assert.ok(
-    lateCancelCompleted && fs.existsSync(path.join(modelRunFixtureRoot, lateCancelCompleted.outputPath)),
-    'Expected successful run output folder to be retained when cancel signal is not delivered'
+    lateCancelCompleted && !fs.existsSync(path.join(modelRunFixtureRoot, lateCancelCompleted.outputPath)),
+    'Expected canceled run output folder to be removed when cancel signal is not delivered'
+  );
+
+  const cancelBeforeSeedLaunches: ModelLaunchRequest[] = [];
+  const cancelBeforeSeedLauncher: ModelLauncher = {
+    ...createFakeLauncher('packaged', (request) => {
+      cancelBeforeSeedLaunches.push(request);
+      return new FakeModelProcess();
+    }),
+    prepare: () => {
+      const runningJob = listModelRunJobs().find(
+        (job) => job.title === 'cancel-before-seed-launch' && job.status === 'running'
+      );
+      assert.ok(runningJob, 'Expected prepare hook to observe the running manual job before seed launch');
+      cancelModelRunJob(modelRunFixtureRoot, runningJob.jobId);
+    }
+  };
+  const cancelBeforeSeedSubmit = submitModelRun(
+    modelRunFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'cancel-before-seed-launch',
+      overrides: { N_SIMS: 3 },
+      maxWorkers: 2,
+      confirmWarnings: true
+    },
+    { launcher: cancelBeforeSeedLauncher }
+  );
+  assert.equal(cancelBeforeSeedSubmit.accepted, true, 'Expected pre-seed cancel submit to be accepted');
+  await waitUntil(() => {
+    const job = listModelRunJobs().find((item) => item.jobId === cancelBeforeSeedSubmit.job?.jobId);
+    return job?.status === 'canceled';
+  });
+  assert.equal(
+    cancelBeforeSeedLaunches.length,
+    0,
+    'Expected cancel during prepare to stop all manual seed child launches'
+  );
+  const cancelBeforeSeedJob = listModelRunJobs().find((job) => job.jobId === cancelBeforeSeedSubmit.job?.jobId);
+  assert.equal(cancelBeforeSeedJob?.status, 'canceled', 'Expected pre-seed cancel job to finish canceled');
+  assert.ok(
+    cancelBeforeSeedJob && !fs.existsSync(path.join(modelRunFixtureRoot, cancelBeforeSeedJob.outputPath)),
+    'Expected pre-seed canceled job output folder to be removed'
+  );
+  const cancelBeforeSeedLogs = getModelRunJobLogs(cancelBeforeSeedSubmit.job?.jobId ?? '', 0, 100);
+  assert.ok(
+    cancelBeforeSeedLogs.lines.some((line) =>
+      line.includes('Cancel requested while no model process is active; cancellation intent recorded')
+    ),
+    'Expected pre-seed cancellation to log that cancellation intent was recorded without an active process'
   );
 
   const firstOutputPath = completedFirstJob?.outputPath;
@@ -4839,7 +4983,7 @@ try {
   const untitledSubmit = submitModelRun(modelRunFixtureRoot, {
     baseline: 'v1.0',
     title: '   ',
-    overrides: { SEED: 88 },
+    overrides: {},
     confirmWarnings: true
   });
   assert.equal(untitledSubmit.accepted, true, 'Expected untitled submit to be accepted with fallback folder naming');
@@ -4855,7 +4999,7 @@ try {
     const response = submitModelRun(modelRunFixtureRoot, {
       baseline: 'v1.0',
       title: `queue-fill-${index + 1}`,
-      overrides: { SEED: index + 1 },
+      overrides: {},
       confirmWarnings: true
     });
     assert.equal(response.accepted, true, 'Expected queue fill submissions to succeed before cap');
@@ -4864,7 +5008,7 @@ try {
     () =>
       submitModelRun(modelRunFixtureRoot, {
         baseline: 'v1.0',
-        overrides: { SEED: 999 },
+        overrides: {},
         confirmWarnings: true
       }),
     /capacity reached/,
@@ -4876,14 +5020,6 @@ try {
   const manualInjectedLaunches: ModelLaunchRequest[] = [];
   const manualInjectedLauncher = createFakeLauncher('packaged', (request) => {
     manualInjectedLaunches.push(request);
-    assert.ok(
-      fs.existsSync(path.join(request.outputPath, MANAGED_RUN_MARKER)),
-      'Expected dashboard-managed marker to exist before the manual launcher starts'
-    );
-    assert.ok(
-      isDashboardManagedRun(request.outputPath, 'injected-launcher v1.0'),
-      'Expected dashboard-managed marker to match the manual run id before launch'
-    );
     fs.mkdirSync(request.outputPath, { recursive: true });
     fs.writeFileSync(path.join(request.outputPath, 'Output-run1.csv'), 'Model time;nRenting\n0;1\n', 'utf-8');
     const process = new FakeModelProcess();
@@ -4895,7 +5031,7 @@ try {
     {
       baseline: 'v1.0',
       title: 'injected-launcher',
-      overrides: { SEED: 123 },
+      overrides: {},
       confirmWarnings: true
     },
     { launcher: manualInjectedLauncher }
@@ -4908,9 +5044,9 @@ try {
     'Expected manual injected launcher to receive an explicit generated config path'
   );
   assert.equal(
-    manualInjectedLaunches[0]?.outputPath,
-    path.join(modelRunFixtureRoot, injectedManualSubmit.job?.outputPath ?? ''),
-    'Expected manual injected launcher to receive the explicit output folder'
+    manualInjectedLaunches[0]?.outputPath.includes(path.join('dashboard-model-runs', injectedManualSubmit.job?.jobId ?? '', 'seed-1', 'output')),
+    true,
+    'Expected manual injected launcher to receive a seed-scoped output folder'
   );
   spawnedProcesses[0]?.succeed();
   await waitForAsyncTick();
@@ -4932,11 +5068,16 @@ try {
     'Expected manifest to record build commit SHA'
   );
   assert.equal(injectedManualManifest.launcher.mode, 'packaged', 'Expected manual manifest to record launcher mode');
-  assert.equal(injectedManualManifest.run.seed, 123, 'Expected manual manifest to record the run seed');
+  assert.ok(
+    isDashboardManagedRun(path.join(modelRunFixtureRoot, injectedManualJob?.outputPath ?? ''), 'injected-launcher v1.0'),
+    'Expected dashboard-managed marker to match the manual run id after launch'
+  );
+  assert.equal(injectedManualManifest.run.seed, 1, 'Expected manual manifest to record the first deterministic seed');
+  assert.deepEqual(injectedManualManifest.run.seeds, [1], 'Expected manual manifest to record the deterministic seed block');
   assert.equal(
     injectedManualManifest.run.overriddenParameters.SEED,
-    123,
-    'Expected manual manifest to record overridden parameters'
+    1,
+    'Expected manual manifest to record deterministic seed parameters'
   );
   assert.ok(
     injectedManualManifest.run.generatedConfigHash?.value,
@@ -4950,6 +5091,74 @@ try {
     (injectedManualManifest.run.outputHash?.fileCount ?? 0) >= 1,
     'Expected manual manifest to hash persisted run output files'
   );
+
+  __resetModelRunManagerForTests();
+  const multiSeedManualLaunches: Array<{ config: Map<string, string>; outputPath: string }> = [];
+  let multiSeedManualActive = 0;
+  let multiSeedManualPeakActive = 0;
+  const multiSeedManualLauncher = createFakeLauncher('packaged', (request) => {
+    const config = parseConfigFile(request.configPath);
+    multiSeedManualLaunches.push({ config, outputPath: request.outputPath });
+    multiSeedManualActive += 1;
+    multiSeedManualPeakActive = Math.max(multiSeedManualPeakActive, multiSeedManualActive);
+    const seed = Number.parseInt(config.get('SEED') ?? '0', 10);
+    fs.mkdirSync(request.outputPath, { recursive: true });
+    fs.writeFileSync(
+      path.join(request.outputPath, 'Output-run1.csv'),
+      `Model time;nRenting\n0;${10 + seed}\n1;${20 + seed}\n`,
+      'utf-8'
+    );
+    writeSensitivityCoreOutputs(request.outputPath, seed);
+    const process = new FakeModelProcess();
+    setTimeout(() => {
+      multiSeedManualActive -= 1;
+      process.succeed();
+    }, 0);
+    return process;
+  });
+  const multiSeedManualSubmit = submitModelRun(
+    modelRunFixtureRoot,
+    {
+      baseline: 'v1.0',
+      title: 'manual-multi-seed-workers',
+      overrides: { N_SIMS: 3 },
+      maxWorkers: 2,
+      confirmWarnings: true
+    },
+    { launcher: multiSeedManualLauncher }
+  );
+  assert.equal(multiSeedManualSubmit.accepted, true, 'Expected multi-seed manual submit to be accepted');
+  await waitUntil(() => {
+    const job = listModelRunJobs().find((item) => item.jobId === multiSeedManualSubmit.job?.jobId);
+    return job?.status === 'succeeded';
+  });
+  assert.equal(multiSeedManualLaunches.length, 3, 'Expected manual N_SIMS=3 to launch three seed child runs');
+  assert.ok(multiSeedManualPeakActive <= 2, 'Expected manual maxWorkers to cap concurrent seed child runs');
+  assert.deepEqual(
+    multiSeedManualLaunches.map((launch) => Number.parseInt(launch.config.get('SEED') ?? '0', 10)).sort(),
+    [1, 2, 3],
+    'Expected manual seeds to expand from fixed starting seed 1'
+  );
+  assert.ok(
+    multiSeedManualLaunches.every((launch) => launch.config.get('N_SIMS') === '1'),
+    'Expected each manual seed child config to force N_SIMS=1'
+  );
+  const multiSeedManualJob = listModelRunJobs().find((job) => job.jobId === multiSeedManualSubmit.job?.jobId);
+  assert.equal(multiSeedManualJob?.seedsPerPoint, 3, 'Expected manual metadata to record requested seed count');
+  assert.deepEqual(multiSeedManualJob?.seeds, [1, 2, 3], 'Expected manual metadata to record expanded seeds');
+  assert.equal(multiSeedManualJob?.maxWorkers, 2, 'Expected manual metadata to record effective max workers');
+  const multiSeedRunPath = path.join(modelRunFixtureRoot, multiSeedManualJob?.outputPath ?? '');
+  assert.ok(
+    fs.existsSync(path.join(multiSeedRunPath, 'seeds', 'seed-1', 'Output-run1.csv')),
+    'Expected manual raw per-seed outputs to be retained under the aggregate run folder'
+  );
+  assert.equal(
+    fs.readFileSync(path.join(multiSeedRunPath, 'Output-run1.csv'), 'utf-8').trim(),
+    'Model time;nRenting\n0;12\n1;22',
+    'Expected manual aggregate Output-run1.csv to average seed outputs'
+  );
+  const multiSeedRunDetail = getResultsRunDetail(modelRunFixtureRoot, multiSeedManualJob?.runId ?? '');
+  assert.equal(multiSeedRunDetail.status, 'partial', 'Expected aggregated manual run to remain parseable as a partial result');
 } finally {
   if (originalDashboardAppVersion === undefined) {
     delete process.env.DASHBOARD_APP_VERSION;
@@ -4991,7 +5200,7 @@ try {
       baseline: 'v1.0',
       basePolicy: '2011',
       title: 'desktop-runtime-paths',
-      overrides: { SEED: 456 },
+      overrides: {},
       confirmWarnings: true
     },
     { launcher: desktopManualLauncher }
@@ -5003,8 +5212,8 @@ try {
     'Expected desktop manual generated config to live under tempRoot'
   );
   assert.ok(
-    desktopManualLaunches[0]?.outputPath.startsWith(desktopManualFixture.paths.resultsRoot),
-    'Expected desktop manual output to live under resultsRoot'
+    desktopManualLaunches[0]?.outputPath.startsWith(desktopManualFixture.paths.tempRoot),
+    'Expected desktop manual child output to live under tempRoot before aggregation'
   );
   assertGeneratedDataPathsAreWindowsSafe(
     desktopGeneratedConfigText,
@@ -5015,6 +5224,10 @@ try {
     const job = listModelRunJobs().find((item) => item.jobId === desktopManualSubmit.job?.jobId);
     return job?.status === 'succeeded';
   });
+  assert.ok(
+    fs.existsSync(path.join(desktopManualFixture.paths.resultsRoot, desktopManualSubmit.job?.runId ?? '')),
+    'Expected desktop manual aggregate output to live under resultsRoot after completion'
+  );
   assert.equal(
     fs.existsSync(path.join(desktopManualFixture.appResourcesRoot, 'Results')),
     false,
@@ -5050,7 +5263,7 @@ try {
     {
       baseline: 'v1.0',
       title: 'windows-safe-paths',
-      overrides: { SEED: 321 },
+      overrides: {},
       confirmWarnings: true
     },
     { launcher: windowsPathLauncher }
@@ -6185,7 +6398,7 @@ try {
   const lockedManualSubmit = submitModelRun(sensitivityFixtureRoot, {
     baseline: 'v1.0',
     title: 'manual-lock',
-    overrides: { SEED: 42 },
+    overrides: {},
     confirmWarnings: true
   });
   assert.equal(lockedManualSubmit.accepted, true, 'Expected manual queue submit to seed unified job lock test');
