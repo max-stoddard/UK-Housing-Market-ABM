@@ -4,6 +4,7 @@
 const baseUrl = (process.env.DASHBOARD_CLOUD_SMOKE_BASE_URL || 'https://d2fb77ex4myvdf.cloudfront.net').replace(/\/+$/, '');
 const username = process.env.DASHBOARD_SMOKE_USERNAME || '';
 const password = process.env.DASHBOARD_SMOKE_PASSWORD || '';
+const deleteKey = process.env.DASHBOARD_SMOKE_DELETE_KEY || '';
 const runLabel = `${process.env.GITHUB_SHA?.slice(0, 7) || 'local'}-${process.env.GITHUB_RUN_ID || Date.now()}`;
 const pollIntervalMs = 5_000;
 const timeoutMs = 20 * 60_000;
@@ -106,6 +107,23 @@ async function pollJob(jobRef, token) {
   throw new Error(`Cloud smoke job ${jobRef} timed out after ${timeoutMs}ms.\n${logs}`);
 }
 
+async function deleteJob(jobRef, token) {
+  await requestJson(`/api/experiments/jobs/${encodeURIComponent(jobRef)}`, {
+    method: 'DELETE',
+    token,
+    headers: {
+      'X-Dashboard-Delete-Key': deleteKey
+    }
+  });
+}
+
+async function assertJobDeleted(jobRef, token) {
+  const payload = await requestJson('/api/experiments/jobs', { token });
+  if ((payload.jobs || []).some((candidate) => candidate.jobRef === jobRef)) {
+    throw new Error(`Cloud smoke job ${jobRef} was still listed after deletion.`);
+  }
+}
+
 function assertRunnerAvailable(runtimeDeps) {
   const remote = runtimeDeps.remoteExecution;
   if (!remote?.configured) {
@@ -125,6 +143,7 @@ function assertRunnerAvailable(runtimeDeps) {
 async function main() {
   requireConfigured(username, 'DASHBOARD_SMOKE_USERNAME');
   requireConfigured(password, 'DASHBOARD_SMOKE_PASSWORD');
+  requireConfigured(deleteKey, 'DASHBOARD_SMOKE_DELETE_KEY');
 
   const runtimeDeps = await requestJson('/api/runtime-deps');
   assertRunnerAvailable(runtimeDeps);
@@ -152,7 +171,8 @@ async function main() {
   if (!manual.accepted || !manual.job?.jobId) {
     throw new Error(`Cloud manual smoke was rejected: ${JSON.stringify(manual)}`);
   }
-  await pollJob(`manual:${manual.job.jobId}`, token);
+  const manualJobRef = `manual:${manual.job.jobId}`;
+  await pollJob(manualJobRef, token);
 
   const sensitivity = await requestJson('/api/experiments/sensitivity', {
     method: 'POST',
@@ -176,6 +196,10 @@ async function main() {
   const sensitivityJobRef = `sensitivity:${sensitivity.experiment.experimentId}`;
   await pollJob(sensitivityJobRef, token);
   await assertSensitivityLogs(sensitivityJobRef, token);
+  await deleteJob(manualJobRef, token);
+  await assertJobDeleted(manualJobRef, token);
+  await deleteJob(sensitivityJobRef, token);
+  await assertJobDeleted(sensitivityJobRef, token);
 
   console.log(`Cloud experiment smoke passed against ${baseUrl} with v0o2.`);
 }

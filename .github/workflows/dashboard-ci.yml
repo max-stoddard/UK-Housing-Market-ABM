@@ -561,6 +561,7 @@ jobs:
       DASHBOARD_CLOUD_SMOKE_BASE_URL: ${{ vars.DASHBOARD_CLOUD_SMOKE_BASE_URL || 'https://d2fb77ex4myvdf.cloudfront.net' }}
       DASHBOARD_SMOKE_USERNAME: ${{ secrets.DASHBOARD_SMOKE_USERNAME }}
       DASHBOARD_SMOKE_PASSWORD: ${{ secrets.DASHBOARD_SMOKE_PASSWORD }}
+      DASHBOARD_SMOKE_DELETE_KEY: ${{ secrets.DASHBOARD_SMOKE_DELETE_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
