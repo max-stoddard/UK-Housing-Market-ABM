@@ -143,8 +143,6 @@ function assertRunnerAvailable(runtimeDeps) {
 async function main() {
   requireConfigured(username, 'DASHBOARD_SMOKE_USERNAME');
   requireConfigured(password, 'DASHBOARD_SMOKE_PASSWORD');
-  requireConfigured(deleteKey, 'DASHBOARD_SMOKE_DELETE_KEY');
-
   const runtimeDeps = await requestJson('/api/runtime-deps');
   assertRunnerAvailable(runtimeDeps);
 
@@ -196,10 +194,14 @@ async function main() {
   const sensitivityJobRef = `sensitivity:${sensitivity.experiment.experimentId}`;
   await pollJob(sensitivityJobRef, token);
   await assertSensitivityLogs(sensitivityJobRef, token);
-  await deleteJob(manualJobRef, token);
-  await assertJobDeleted(manualJobRef, token);
-  await deleteJob(sensitivityJobRef, token);
-  await assertJobDeleted(sensitivityJobRef, token);
+  if (deleteKey) {
+    await deleteJob(manualJobRef, token);
+    await assertJobDeleted(manualJobRef, token);
+    await deleteJob(sensitivityJobRef, token);
+    await assertJobDeleted(sensitivityJobRef, token);
+  } else {
+    console.warn('DASHBOARD_SMOKE_DELETE_KEY is not configured; leaving cloud smoke jobs for manual cleanup.');
+  }
 
   console.log(`Cloud experiment smoke passed against ${baseUrl} with v0o2.`);
 }
