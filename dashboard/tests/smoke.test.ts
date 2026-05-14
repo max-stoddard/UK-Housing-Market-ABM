@@ -2020,6 +2020,11 @@ try {
     manualScript.includes('aws s3 sync "$ARTIFACT_DIR/"'),
     'Expected fixed SSM command to sync only the artifact directory'
   );
+  assert.ok(
+    manualScript.includes('sync_remote_runner_log &') &&
+      manualScript.includes('aws s3 cp "$ARTIFACT_DIR/logs/remote-runner.log"'),
+    'Expected SSM command to sync the remote runner log while the job is still running'
+  );
   assert.equal(
     manualScript.includes('aws s3 sync "$SOURCE_DIR"'),
     false,
@@ -2068,6 +2073,43 @@ try {
     liveManualModelLogs.progress?.percentComplete,
     50,
     'Expected remote manual model-run logs endpoint to expose SSM fallback progress'
+  );
+  remoteAdapter.objects.set(
+    `fixture-bucket/${manualArtifactPrefix}logs/remote-runner.log`,
+    Buffer.from([
+      `[manual:${manualSubmit.job?.jobId ?? ''}] [system] Worker 2/2 running seed-2; progress 2.0/3 (66.7%), completed 2/3, active workers 1/2, throughput 3.00/min, ETA 20s, finish pending`,
+      `[progress] ${JSON.stringify({
+        kind: 'manual',
+        status: 'running',
+        totalRuns: 3,
+        completedRuns: 2,
+        failedRuns: 0,
+        canceledRuns: 0,
+        activeRuns: 1,
+        totalWorkers: 2,
+        activeWorkers: 1,
+        completedRunEquivalents: 2,
+        percentComplete: 66.6666666667,
+        throughputRunsPerMinute: 3,
+        completedRunsPerMinute: 3,
+        etaSeconds: 20,
+        estimatedFinishAt: '2026-05-11T00:00:50.000Z',
+        elapsedSeconds: 40,
+        startedAt: '2026-05-11T00:00:00.000Z',
+        updatedAt: '2026-05-11T00:00:40.000Z'
+      })}`,
+      `[manual:${manualSubmit.job?.jobId ?? ''}] [stdout] live remote-runner artifact fixture`
+    ].join('\n'), 'utf-8')
+  );
+  const liveManualArtifactLogs = await remoteManager.getExperimentJobLogs(`manual:${manualSubmit.job?.jobId ?? ''}`, 0, 20);
+  assert.equal(
+    Math.round(liveManualArtifactLogs.progress?.percentComplete ?? 0),
+    67,
+    'Expected running remote manual jobs to expose progress from live S3 remote-runner logs'
+  );
+  assert.ok(
+    liveManualArtifactLogs.lines.some((line) => line.includes('live remote-runner artifact fixture')),
+    'Expected running remote manual jobs to expose live S3 remote-runner log lines before completion'
   );
   remoteAdapter.commandStatuses.set(manualCommand?.commandId ?? '', 'Success');
   const remoteRunPrefix = manualSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
@@ -2240,6 +2282,49 @@ try {
     remoteSensitivityLogs.lines.every((line) => !line.includes('Simulation: 1, time') && !line.includes('remote stdout fixture')),
     'Expected remote SSM sensitivity logs to filter raw JVM and shell stdout noise'
   );
+  const sensitivityArtifactPrefix = sensitivityRequest.artifactS3Prefix ?? '';
+  remoteAdapter.objects.set(
+    `fixture-bucket/${sensitivityArtifactPrefix}logs/remote-runner.log`,
+    Buffer.from([
+      '[system] Remote runner starting sensitivity fixture',
+      `[sensitivity:${sensitivityExperimentId}] [system] Worker 2/2 started point 1 (point-1) seed-1; progress 1.0/2 (50.0%), completed 1/2, active workers 1/2, throughput 3.00/min, ETA 20s, finish pending`,
+      `[progress] ${JSON.stringify({
+        kind: 'sensitivity',
+        status: 'running',
+        totalRuns: 2,
+        completedRuns: 1,
+        failedRuns: 0,
+        canceledRuns: 0,
+        activeRuns: 1,
+        totalWorkers: 2,
+        activeWorkers: 1,
+        completedRunEquivalents: 1,
+        percentComplete: 50,
+        throughputRunsPerMinute: 3,
+        completedRunsPerMinute: 3,
+        etaSeconds: 20,
+        estimatedFinishAt: '2026-05-11T00:00:41.000Z',
+        elapsedSeconds: 20,
+        startedAt: '2026-05-11T00:00:01.000Z',
+        updatedAt: '2026-05-11T00:00:21.000Z'
+      })}`,
+      'Simulation: 1, time: 750'
+    ].join('\n'), 'utf-8')
+  );
+  const liveSensitivityArtifactLogs = await remoteManager.getExperimentJobLogs(`sensitivity:${sensitivityExperimentId}`, 0, 20);
+  assert.equal(
+    liveSensitivityArtifactLogs.progress?.percentComplete,
+    50,
+    'Expected running remote sensitivity jobs to expose progress from live S3 remote-runner logs'
+  );
+  assert.ok(
+    liveSensitivityArtifactLogs.lines.some((line) => line.includes('Worker 2/2 started point')),
+    'Expected running remote sensitivity jobs to expose summarized live S3 worker lines'
+  );
+  assert.ok(
+    liveSensitivityArtifactLogs.lines.every((line) => !line.includes('Simulation: 1, time')),
+    'Expected running remote sensitivity live S3 logs to filter raw JVM progress lines'
+  );
   await assert.rejects(
     () => remoteManager.deleteExperimentJob(`sensitivity:${sensitivityExperimentId}`),
     /Only finished remote experiment jobs can be deleted/,
@@ -2247,7 +2332,6 @@ try {
   );
   const canceled = await remoteManager.cancelExperimentJob(`sensitivity:${sensitivityExperimentId}`);
   assert.equal(canceled.job.status, 'canceled', 'Expected remote cancel to map to canceled job status');
-  const sensitivityArtifactPrefix = sensitivityRequest.artifactS3Prefix ?? '';
   const sensitivityResultPrefix = `${sensitivityArtifactPrefix}Results/experiments/sensitivity/${sensitivityExperimentId}/`;
   const remoteSensitivityMetadata = {
     ...(sensitivitySubmit.experiment ?? {}),

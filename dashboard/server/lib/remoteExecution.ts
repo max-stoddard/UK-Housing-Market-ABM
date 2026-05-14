@@ -753,8 +753,13 @@ ARTIFACT_DIR="$RUN_ROOT/artifact"
 mkdir -p "$RUN_ROOT" "$ARTIFACT_DIR/logs"
 exec > >(tee -a "$ARTIFACT_DIR/logs/ssm-command.log") 2>&1
 echo "[remote] job=$JOB_REF request=s3://$BUCKET/$REQUEST_KEY"
+LIVE_LOG_SYNC_PID=""
 cleanup_failure() {
   status=$?
+  if [ -n "$LIVE_LOG_SYNC_PID" ]; then
+    kill "$LIVE_LOG_SYNC_PID" >/dev/null 2>&1 || true
+    wait "$LIVE_LOG_SYNC_PID" >/dev/null 2>&1 || true
+  fi
   if [ "$status" -ne 0 ]; then
     "$NODE_BIN" - "$ARTIFACT_DIR/remote-status.json" "$JOB_REF" "$status" <<'NODE' || true
 const fs = require('node:fs');
@@ -790,7 +795,30 @@ git checkout --detach "$SOURCE_COMMIT"
 git status --short > "$ARTIFACT_DIR/logs/source-status.txt"
 cd "$SOURCE_DIR/dashboard"
 "$NPM_BIN" ci --include=dev
+upload_remote_runner_log() {
+  if [ -f "$ARTIFACT_DIR/logs/remote-runner.log" ]; then
+    aws s3 cp "$ARTIFACT_DIR/logs/remote-runner.log" "s3://$BUCKET/$ARTIFACT_PREFIX/logs/remote-runner.log" --region "$REGION" --only-show-errors || true
+  fi
+}
+sync_remote_runner_log() {
+  while true; do
+    upload_remote_runner_log
+    sleep 15
+  done
+}
+sync_remote_runner_log &
+LIVE_LOG_SYNC_PID="$!"
+set +e
 "$NODE_BIN" --import tsx/esm server/remoteRunnerCli.ts --request "$REQUEST_JSON" --run-root "$RUN_ROOT/work" --artifact-root "$ARTIFACT_DIR"
+REMOTE_RUNNER_STATUS=$?
+set -e
+kill "$LIVE_LOG_SYNC_PID" >/dev/null 2>&1 || true
+wait "$LIVE_LOG_SYNC_PID" >/dev/null 2>&1 || true
+LIVE_LOG_SYNC_PID=""
+upload_remote_runner_log
+if [ "$REMOTE_RUNNER_STATUS" -ne 0 ]; then
+  exit "$REMOTE_RUNNER_STATUS"
+fi
 find "$ARTIFACT_DIR" -type f ! -name output-manifest.sha256 -print0 | sort -z | xargs -0 sha256sum > "$ARTIFACT_DIR/output-manifest.sha256"
 aws s3 sync "$ARTIFACT_DIR/" "s3://$BUCKET/$ARTIFACT_PREFIX" --region "$REGION" --only-show-errors
 trap - EXIT
