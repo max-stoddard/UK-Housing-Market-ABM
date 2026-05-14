@@ -2574,6 +2574,114 @@ try {
       await remoteDeleteServer.shutdown();
     }
   }
+
+  const previewCloudDeleteSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
+    baseline: 'v1.0',
+    title: 'remote preview cloud delete fixture',
+    overrides: {},
+    confirmWarnings: true
+  });
+  const previewCloudDeleteCommand = remoteAdapter.commands[remoteAdapter.commands.length - 1];
+  remoteAdapter.commandStatuses.set(previewCloudDeleteCommand?.commandId ?? '', 'Success');
+  const previewCloudDeleteRunPrefix = previewCloudDeleteSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
+  remoteAdapter.objects.set(`fixture-bucket/${previewCloudDeleteRunPrefix}/config.properties`, Buffer.from('SEED=1\n', 'utf-8'));
+
+  const devDeleteSubmit = await remoteManager.submitModelRun(remoteFixtureRoot, {
+    baseline: 'v1.0',
+    title: 'remote dev delete fixture',
+    overrides: {},
+    confirmWarnings: true
+  });
+  const devDeleteCommand = remoteAdapter.commands[remoteAdapter.commands.length - 1];
+  remoteAdapter.commandStatuses.set(devDeleteCommand?.commandId ?? '', 'Success');
+  const devDeleteRunPrefix = devDeleteSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
+  remoteAdapter.objects.set(`fixture-bucket/${devDeleteRunPrefix}/config.properties`, Buffer.from('SEED=1\n', 'utf-8'));
+
+  let previewDeleteServer: Awaited<ReturnType<typeof startDashboardServer>> | null = null;
+  try {
+    previewDeleteServer = await startDashboardServer({
+      dashboardRoot: path.join(repoRoot, 'dashboard'),
+      repoRoot: remoteFixtureRoot,
+      runtimePaths: createDevelopmentRuntimePaths(remoteFixtureRoot),
+      host: '127.0.0.1',
+      port: 0,
+      writeAuth: createWriteAuthController('writer', 'secret'),
+      deleteKeyAuth: createDeleteKeyAuthController('delete-secret'),
+      remoteExecution: remoteManager,
+      modelRunsConfigured: true,
+      isDevRuntime: true,
+      staticServing: { enabled: false },
+      logStartup: false
+    });
+    const devAuthStatus = JSON.parse((await fetchText(`${previewDeleteServer.url}/api/auth/status`, {
+      headers: {
+        'X-Dashboard-View-Mode': 'dev'
+      }
+    })).text) as {
+      canDeleteResults?: boolean;
+      deleteKeyRequired?: boolean;
+    };
+    assert.equal(devAuthStatus.deleteKeyRequired, false, 'Expected dev mode not to require the remote delete key');
+    assert.equal(devAuthStatus.canDeleteResults, true, 'Expected dev mode delete access to use the existing dev write path');
+
+    const previewDesktopDeleteKeyResponse = await fetchText(
+      `${previewDeleteServer.url}/api/results/runs/${encodeURIComponent(previewCloudDeleteSubmit.job?.runId ?? '')}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_desktop',
+          'X-Dashboard-Delete-Key': 'delete-secret'
+        }
+      }
+    );
+    assert.equal(
+      previewDesktopDeleteKeyResponse.status,
+      403,
+      'Expected preview desktop mode not to accept the cloud delete key'
+    );
+
+    const previewCloudNoDeleteKeyResponse = await fetchText(
+      `${previewDeleteServer.url}/api/results/runs/${encodeURIComponent(previewCloudDeleteSubmit.job?.runId ?? '')}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_cloud'
+        }
+      }
+    );
+    assert.equal(
+      previewCloudNoDeleteKeyResponse.status,
+      403,
+      'Expected preview cloud deletion without private key to be rejected'
+    );
+
+    const previewCloudDeleteKeyResponse = await fetchText(
+      `${previewDeleteServer.url}/api/results/runs/${encodeURIComponent(previewCloudDeleteSubmit.job?.runId ?? '')}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'X-Dashboard-View-Mode': 'preview_cloud',
+          'X-Dashboard-Delete-Key': 'delete-secret'
+        }
+      }
+    );
+    assert.equal(previewCloudDeleteKeyResponse.status, 200, 'Expected preview cloud mode to accept the private delete key');
+
+    const devDeleteResponse = await fetchText(
+      `${previewDeleteServer.url}/api/results/runs/${encodeURIComponent(devDeleteSubmit.job?.runId ?? '')}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'X-Dashboard-View-Mode': 'dev'
+        }
+      }
+    );
+    assert.equal(devDeleteResponse.status, 200, 'Expected dev mode deletion to use dev write access without the delete key');
+  } finally {
+    if (previewDeleteServer) {
+      await previewDeleteServer.shutdown();
+    }
+  }
 } finally {
   fs.rmSync(remoteFixtureRoot, { recursive: true, force: true });
 }

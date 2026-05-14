@@ -14,6 +14,7 @@ export interface RuntimePolicy {
   modelRunsEnabled: boolean;
   modelRunsDisabledReason: string | null;
   writeAuthConfigurationError: string | null;
+  deleteKeyRequired: boolean;
 }
 
 export interface RouteContext {

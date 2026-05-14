@@ -249,6 +249,10 @@ function createRouteContext(input: {
           )
         : MODEL_RUNS_DISABLED_REASON_CONFIG;
     const writeAuthConfigurationError = getWriteAuthConfigurationError(input.writeAuth, modelRunsEnabled, devBypassActive);
+    const deleteKeyRequired =
+      Boolean(input.remoteExecution) &&
+      input.runtimePaths.mode !== 'desktop' &&
+      (!input.isDevRuntime || viewMode === 'preview_cloud');
 
     return {
       viewMode,
@@ -257,7 +261,8 @@ function createRouteContext(input: {
       modelRunsConfigured,
       modelRunsEnabled,
       modelRunsDisabledReason,
-      writeAuthConfigurationError
+      writeAuthConfigurationError,
+      deleteKeyRequired
     };
   };
   const requireWriteAccess = (req: express.Request, res: express.Response): boolean => {
@@ -312,7 +317,8 @@ function createRouteContext(input: {
     return false;
   };
   const requireDeleteAccess = (req: express.Request, res: express.Response): boolean => {
-    if (!input.remoteExecution) {
+    const policy = resolveRuntimePolicy(req);
+    if (!policy.deleteKeyRequired) {
       return requireWriteAccess(req, res);
     }
 

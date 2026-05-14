@@ -59,7 +59,7 @@ export function registerPublicRoutes(app: express.Express, context: RouteContext
     const cloudDownloadLoginRequired = context.runtimePaths.mode !== 'desktop' && !policy.downloadBypassActive;
     const canDownloadResults =
       policy.downloadBypassActive || ((!cloudDownloadLoginRequired || context.writeAuth.authEnabled) && access.canWrite);
-    const deleteKeyRequired = Boolean(context.remoteExecution);
+    const deleteKeyRequired = policy.deleteKeyRequired;
     const canDeleteResults = deleteKeyRequired ? context.deleteKeyAuth.configured : access.canWrite;
     const remoteExecution = context.remoteExecution ? await context.remoteExecution.getStatus() : undefined;
     res.json({
