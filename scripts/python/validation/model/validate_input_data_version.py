@@ -21,6 +21,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw)")
     parser.add_argument("--was-data-root", default=None, help="Optional WAS data root override")
     parser.add_argument(
+        "--n-steps",
+        type=int,
+        default=None,
+        help="Optional N_STEPS override for validation runs; omitted keeps the snapshot config value.",
+    )
+    parser.add_argument(
+        "--validation-window-start",
+        type=int,
+        default=None,
+        help="Optional validation metric extraction start index; omitted uses the canonical default.",
+    )
+    parser.add_argument(
+        "--validation-window-end",
+        type=int,
+        default=None,
+        help="Optional validation metric extraction end index; omitted uses the canonical default.",
+    )
+    parser.add_argument(
+        "--allow-noncanonical-seeds",
+        action="store_true",
+        help="Allow tracked publication with an explicitly supplied non-canonical seed block.",
+    )
+    parser.add_argument(
         "--reuse-existing-output",
         action="store_true",
         help="Reuse existing per-seed outputs from --output-dir instead of rerunning the model",
@@ -49,6 +72,8 @@ def main() -> None:
             seeds=seeds,
             output_dir=Path(args.output_dir),
             was_data_root=was_data_root,
+            window_start=args.validation_window_start,
+            window_end=args.validation_window_end,
         )
         print(
             f"Published reference validation overlay for {summary['version']} "
@@ -67,6 +92,10 @@ def main() -> None:
         workers=args.workers,
         was_data_root=was_data_root,
         reuse_existing_output=args.reuse_existing_output,
+        allow_noncanonical_seeds=args.allow_noncanonical_seeds,
+        n_steps=args.n_steps,
+        window_start=args.validation_window_start,
+        window_end=args.validation_window_end,
     )
     print(
         f"Published validation summary for {summary['version']} "

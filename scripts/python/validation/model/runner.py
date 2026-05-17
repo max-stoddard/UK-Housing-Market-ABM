@@ -24,6 +24,7 @@ from scripts.python.helpers.common.abm_policy_sweep import (
 from scripts.python.validation.model.extractors import (
     extract_core_indicator_mean,
     extract_household_metric_from_results,
+    extract_household_share_from_results,
     extract_output_series_metric_from_results,
 )
 from scripts.python.validation.model.publish import (
@@ -61,6 +62,7 @@ VALIDATION_RECORDING_OVERRIDES = {
     "recordRentalIncome": "false",
     "recordBankBalance": "true",
     "recordHousingWealth": "true",
+    "recordHousingStatus": "true",
     "recordNHousesOwned": "false",
     "recordAge": "false",
     "recordSavingRate": "false",
@@ -94,14 +96,24 @@ def run_validation_for_version(
     reuse_existing_output: bool = False,
     workers: int = 20,
     allow_test_override: bool = False,
+    allow_noncanonical_seeds: bool = False,
+    n_steps: int | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict:
     """Run canonical validation for one input-data version and publish artifacts."""
 
     canonical_seeds = list(CANONICAL_VALIDATION_SEEDS)
-    if seeds != canonical_seeds and not allow_test_override:
+    if seeds != canonical_seeds and not allow_test_override and not allow_noncanonical_seeds:
         raise ValueError("Canonical validation requires seeds 1..8 unless an explicit test-only override is used")
     if workers <= 0:
         raise ValueError("workers must be positive")
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
+    if n_steps is not None and n_steps < resolved_window_end:
+        raise ValueError("n_steps must be at least the validation window end")
 
     validation_profile = resolve_validation_profile(version)
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
@@ -111,6 +123,8 @@ def run_validation_for_version(
             seeds=seeds,
             was_data_root=resolved_was_data_root,
             validation_profile=validation_profile,
+            window_start=resolved_window_start,
+            window_end=resolved_window_end,
         )
     else:
         resolved_maven_bin = resolve_maven_bin(repo_root, maven_bin)
@@ -123,6 +137,9 @@ def run_validation_for_version(
             was_data_root=resolved_was_data_root,
             validation_profile=validation_profile,
             workers=workers,
+            n_steps=n_steps,
+            window_start=resolved_window_start,
+            window_end=resolved_window_end,
         )
     return publish_validation_results(
         repo_root=repo_root,
@@ -132,6 +149,8 @@ def run_validation_for_version(
         run_results=run_results,
         validation_profile=validation_profile,
         was_data_root=resolved_was_data_root,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
 
 
@@ -142,6 +161,8 @@ def publish_reference_validation_only(
     seeds: Sequence[int],
     output_dir: Path,
     was_data_root: Path | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict:
     """Publish only the optional 2011 reference overlay from existing seed output directories."""
 
@@ -149,12 +170,18 @@ def publish_reference_validation_only(
     if reference_profile is None:
         raise RuntimeError(f"No 2011 reference validation profile is available for {version}")
 
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
     reference_seed_results = _extract_reference_seed_results_from_output_dir(
         output_dir=output_dir,
         seeds=seeds,
         was_data_root=resolved_was_data_root,
         reference_profile=reference_profile,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
     return _write_reference_validation_artifacts(
         repo_root=repo_root,
@@ -162,6 +189,8 @@ def publish_reference_validation_only(
         output_dir=output_dir,
         reference_seed_results=reference_seed_results,
         reference_profile=reference_profile,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
 
 
@@ -174,6 +203,8 @@ def publish_validation_results(
     run_results: Sequence[dict[str, object]],
     validation_profile: ValidationProfile | None = None,
     was_data_root: Path | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict:
     """Publish tracked and transient outputs after all seed runs succeed."""
 
@@ -182,11 +213,17 @@ def publish_validation_results(
         raise ValueError("Tracked publication requires 8/8 successful seeds before publishing tracked JSON")
 
     resolved_profile = validation_profile or resolve_validation_profile(version)
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
     summary = build_validation_summary(
         version=version,
         seed_results=run_results,
         seeds=seeds,
         validation_profile=resolved_profile,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
     write_transient_artifacts(output_dir=output_dir, summary=summary, seed_results=run_results)
     write_validation_summary(repo_root=repo_root, summary=summary)
@@ -196,6 +233,8 @@ def publish_validation_results(
         output_dir=output_dir,
         run_results=run_results,
         was_data_root=was_data_root,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
     return summary
 
@@ -210,6 +249,9 @@ def run_snapshot_local_validation(
     was_data_root: Path,
     validation_profile: ValidationProfile,
     workers: int,
+    n_steps: int | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> list[dict[str, object]]:
     """Execute the Java model snapshot-locally for each seed and extract metrics."""
 
@@ -233,6 +275,9 @@ def run_snapshot_local_validation(
                     maven_bin=maven_bin,
                     was_data_root=was_data_root,
                     validation_profile=validation_profile,
+                    n_steps=n_steps,
+                    window_start=window_start,
+                    window_end=window_end,
                 )
             )
         return seed_results
@@ -249,6 +294,9 @@ def run_snapshot_local_validation(
                 maven_bin=maven_bin,
                 was_data_root=was_data_root,
                 validation_profile=validation_profile,
+                n_steps=n_steps,
+                window_start=window_start,
+                window_end=window_end,
             ): seed
             for seed in seeds
         }
@@ -269,6 +317,9 @@ def run_validation_seed(
     maven_bin: str,
     was_data_root: Path,
     validation_profile: ValidationProfile,
+    n_steps: int | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict[str, object]:
 
     """Run one snapshot-local validation seed and return its extracted metrics."""
@@ -286,6 +337,8 @@ def run_validation_seed(
 
     overrides = dict(VALIDATION_RECORDING_OVERRIDES)
     overrides["SEED"] = str(seed)
+    if n_steps is not None:
+        overrides["N_STEPS"] = str(n_steps)
     config_text = build_snapshot_local_config_text(version_config_path, overrides)
     config_path = configs_dir / f"seed-{seed}.properties"
     config_path.write_text(config_text, encoding="utf-8")
@@ -317,6 +370,8 @@ def run_validation_seed(
             seed_output_dir=seed_output_dir,
             was_data_root=was_data_root,
             validation_profile=validation_profile,
+            window_start=window_start,
+            window_end=window_end,
         ),
     }
 
@@ -328,6 +383,8 @@ def load_reused_validation_results(
     seeds: Sequence[int],
     was_data_root: Path,
     validation_profile: ValidationProfile,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> list[dict[str, object]]:
     """Reuse existing per-seed outputs instead of rerunning the model."""
 
@@ -349,6 +406,8 @@ def load_reused_validation_results(
                     was_data_root=was_data_root,
                     metric_ids=missing_metric_ids,
                     validation_profile=validation_profile,
+                    window_start=window_start,
+                    window_end=window_end,
                 )
             )
         seed_results.append(
@@ -373,6 +432,20 @@ def _log_validation_run_start(
         f"[validation] version={version} seed={seed} worker={worker_name}",
         flush=True,
     )
+
+
+def _resolve_validation_window(
+    *,
+    window_start: int | None,
+    window_end: int | None,
+) -> tuple[int, int]:
+    resolved_start = VALIDATION_WINDOW_START if window_start is None else int(window_start)
+    resolved_end = VALIDATION_WINDOW_END if window_end is None else int(window_end)
+    if resolved_start < 0:
+        raise ValueError("window_start must be non-negative")
+    if resolved_end <= resolved_start:
+        raise ValueError("window_end must be greater than window_start")
+    return resolved_start, resolved_end
 
 
 def resolve_was_data_root(*, repo_root: Path, explicit_root: Path | None) -> Path:
@@ -400,6 +473,8 @@ def build_validation_summary(
     seeds: Sequence[int],
     validation_profile: ValidationProfile | None = None,
     targets_by_id: Mapping[str, object] | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict:
     """Build the dashboard-facing summary JSON from per-seed metric values."""
 
@@ -407,6 +482,10 @@ def build_validation_summary(
         raise ValueError("Tracked publication requires 8/8 successful seeds before publishing tracked JSON")
 
     resolved_profile = validation_profile or resolve_validation_profile(version)
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
     target_lookup = targets_by_id or resolved_profile.targets_by_id
     metric_ids = _ordered_metric_ids(
         seed_results=seed_results,
@@ -546,8 +625,8 @@ def build_validation_summary(
         "generatedAt": _utc_now_iso(),
         "seeds": list(seeds),
         "window": {
-            "startIndex": VALIDATION_WINDOW_START,
-            "endIndex": VALIDATION_WINDOW_END,
+            "startIndex": resolved_window_start,
+            "endIndex": resolved_window_end,
         },
         "overallCompositeLoss": compute_overall_composite_loss(
             metric_losses=scored_metric_losses,
@@ -564,8 +643,14 @@ def _extract_seed_metrics(
     was_data_root: Path,
     validation_profile: ValidationProfile,
     metric_ids: Sequence[str] | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict[str, float]:
     metrics: dict[str, float] = {}
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
     selected_metric_ids = (
         list(metric_ids) if metric_ids is not None else list(validation_profile.targets_by_id.keys())
     )
@@ -577,12 +662,16 @@ def _extract_seed_metrics(
             metrics[metric.metric_id] = extract_core_indicator_mean(
                 seed_output_dir / metric.file_name,
                 scale=metric.scale,
+                window_start=resolved_window_start,
+                window_end=resolved_window_end,
             )
         elif metric.kind == "output_series":
             metrics[metric.metric_id] = extract_output_series_metric_from_results(
                 metric_id=metric.metric_id,
                 results_dir=seed_output_dir,
                 trailing_months=validation_profile.output_series_trailing_months_by_metric.get(metric.metric_id),
+                window_start=resolved_window_start,
+                window_end=resolved_window_end,
             )
         elif metric.kind == "household_jsd":
             metrics[metric.metric_id] = extract_household_metric_from_results(
@@ -590,6 +679,15 @@ def _extract_seed_metrics(
                 results_dir=seed_output_dir,
                 was_data_root=was_data_root,
                 was_dataset=validation_profile.was_dataset,
+                window_start=resolved_window_start,
+                window_end=resolved_window_end,
+            )
+        elif metric.kind == "household_share":
+            metrics[metric.metric_id] = extract_household_share_from_results(
+                metric_id=metric.metric_id,
+                results_dir=seed_output_dir,
+                window_start=resolved_window_start,
+                window_end=resolved_window_end,
             )
         else:
             raise RuntimeError(f"Unsupported metric kind for {metric.metric_id}: {metric.kind}")
@@ -698,6 +796,8 @@ def publish_reference_validation_artifacts(
     output_dir: Path,
     run_results: Sequence[dict[str, object]],
     was_data_root: Path | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict | None:
     """Publish the tracked v0-family 2011 reference overlay plus transient audit artifacts."""
 
@@ -705,12 +805,18 @@ def publish_reference_validation_artifacts(
     if reference_profile is None:
         return None
 
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
     resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
     reference_seed_results = _extract_reference_seed_results_from_run_results(
         repo_root=repo_root,
         run_results=run_results,
         was_data_root=resolved_was_data_root,
         reference_profile=reference_profile,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
     return _write_reference_validation_artifacts(
         repo_root=repo_root,
@@ -718,6 +824,8 @@ def publish_reference_validation_artifacts(
         output_dir=output_dir,
         reference_seed_results=reference_seed_results,
         reference_profile=reference_profile,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
     )
 
 
@@ -727,6 +835,8 @@ def _extract_reference_seed_results_from_run_results(
     run_results: Sequence[dict[str, object]],
     was_data_root: Path,
     reference_profile: ValidationProfile,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> list[dict[str, object]]:
     reference_seed_results: list[dict[str, object]] = []
     for tracked_seed_result in run_results:
@@ -745,6 +855,8 @@ def _extract_reference_seed_results_from_run_results(
                     seed_output_dir=seed_output_dir,
                     was_data_root=was_data_root,
                     validation_profile=reference_profile,
+                    window_start=window_start,
+                    window_end=window_end,
                 ),
             }
         )
@@ -757,6 +869,8 @@ def _extract_reference_seed_results_from_output_dir(
     seeds: Sequence[int],
     was_data_root: Path,
     reference_profile: ValidationProfile,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> list[dict[str, object]]:
     reference_seed_results: list[dict[str, object]] = []
     for seed in seeds:
@@ -771,6 +885,8 @@ def _extract_reference_seed_results_from_output_dir(
                     seed_output_dir=seed_output_dir,
                     was_data_root=was_data_root,
                     validation_profile=reference_profile,
+                    window_start=window_start,
+                    window_end=window_end,
                 ),
             }
         )
@@ -784,6 +900,8 @@ def _write_reference_validation_artifacts(
     output_dir: Path,
     reference_seed_results: Sequence[dict[str, object]],
     reference_profile: ValidationProfile,
+    window_start: int | None = None,
+    window_end: int | None = None,
 ) -> dict:
     seeds = [int(seed_result["seed"]) for seed_result in reference_seed_results]
     summary = build_validation_summary(
@@ -791,6 +909,8 @@ def _write_reference_validation_artifacts(
         seed_results=reference_seed_results,
         seeds=seeds,
         validation_profile=reference_profile,
+        window_start=window_start,
+        window_end=window_end,
     )
     summary["artifactType"] = "reference_overlay"
     summary["artifactLabel"] = _reference_artifact_label(version)

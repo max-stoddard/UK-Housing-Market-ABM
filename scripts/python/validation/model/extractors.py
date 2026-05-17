@@ -73,6 +73,14 @@ class OutputSeriesMetricSpec:
     column_name: str
 
 
+@dataclass(frozen=True)
+class HouseholdShareMetricSpec:
+    """Locked extraction settings for one household status share metric."""
+
+    results_file_name: str
+    status_value: int
+
+
 HOUSEHOLD_DISTRIBUTION_SPECS: dict[str, HouseholdDistributionSpec] = {
     "income_distribution_jsd": HouseholdDistributionSpec(
         results_file_name="MonthlyGrossEmploymentIncome-run1.csv",
@@ -131,6 +139,21 @@ OUTPUT_SERIES_SPECS: dict[str, OutputSeriesMetricSpec] = {
         results_file_name="Output-run1.csv",
         column_name="Sale HPI",
     ),
+    "rpi_mean": OutputSeriesMetricSpec(
+        results_file_name="Output-run1.csv",
+        column_name="Rental HPI",
+    ),
+}
+
+HOUSEHOLD_SHARE_SPECS: dict[str, HouseholdShareMetricSpec] = {
+    "household_owning_share": HouseholdShareMetricSpec(
+        results_file_name="HousingStatus-run1.csv",
+        status_value=2,
+    ),
+    "household_renting_share": HouseholdShareMetricSpec(
+        results_file_name="HousingStatus-run1.csv",
+        status_value=1,
+    ),
 }
 
 WAS_DATA_FILE_BY_DATASET = {
@@ -180,19 +203,41 @@ WAS_COLUMN_MAP_BY_DATASET = {
 }
 
 
-def extract_core_indicator_mean(csv_path: Path, *, scale: float = 1.0) -> float:
+def extract_core_indicator_mean(
+    csv_path: Path,
+    *,
+    scale: float = 1.0,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
+) -> float:
     """Read a core-indicator series and return its fixed validation-window mean."""
 
     values = load_core_indicator_values(csv_path)
-    window = _complete_validation_window(values=values, source_path=csv_path)
+    window = _complete_validation_window(
+        values=values,
+        source_path=csv_path,
+        window_start=window_start,
+        window_end=window_end,
+    )
     return statistics.fmean(window) * scale
 
 
-def extract_rebased_output_series_mean(csv_path: Path, *, column_name: str) -> float:
+def extract_rebased_output_series_mean(
+    csv_path: Path,
+    *,
+    column_name: str,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
+) -> float:
     """Read one output series and return the validation-window mean after rebasing."""
 
     values = load_output_series(csv_path, column_name=column_name)
-    window = _complete_validation_window(values=values, source_path=csv_path)
+    window = _complete_validation_window(
+        values=values,
+        source_path=csv_path,
+        window_start=window_start,
+        window_end=window_end,
+    )
     return compute_rebased_mean(window)
 
 
@@ -201,6 +246,8 @@ def extract_rebased_output_series_std(
     *,
     column_name: str,
     trailing_months: int | None = None,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
 ) -> float:
     """Read one output series and return the rebased validation-window population std."""
 
@@ -209,6 +256,8 @@ def extract_rebased_output_series_std(
         values=values,
         source_path=csv_path,
         trailing_months=trailing_months,
+        window_start=window_start,
+        window_end=window_end,
     )
     return compute_rebased_std(window)
 
@@ -218,6 +267,8 @@ def extract_output_series_cycle_period(
     *,
     column_name: str,
     trailing_months: int | None = None,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
 ) -> float:
     """Read one output series and return the locked dominant cycle-period estimate."""
 
@@ -226,8 +277,45 @@ def extract_output_series_cycle_period(
         values=values,
         source_path=csv_path,
         trailing_months=trailing_months,
+        window_start=window_start,
+        window_end=window_end,
     )
     return estimate_dominant_cycle_period_months(window)
+
+
+def extract_household_status_share(
+    csv_path: Path,
+    *,
+    status_value: int,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
+) -> float:
+    """Return the mean snapshot share with a given household housing status, in percent."""
+
+    _validate_window(window_start=window_start, window_end=window_end)
+    snapshot_shares: list[float] = []
+    with csv_path.open("r", encoding="utf-8") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            cells = [cell.strip() for cell in line.split(";") if cell.strip()]
+            if len(cells) < 2:
+                continue
+            try:
+                timestamp = int(float(cells[0]))
+                statuses = [int(float(cell)) for cell in cells[1:]]
+            except ValueError as exc:
+                raise RuntimeError(f"Invalid household status row in {csv_path}:{line_number}") from exc
+            if window_start <= timestamp < window_end:
+                if not statuses:
+                    raise RuntimeError(f"Empty household status snapshot in {csv_path}:{line_number}")
+                matches = sum(1 for value in statuses if value == status_value)
+                snapshot_shares.append(100.0 * matches / len(statuses))
+
+    if not snapshot_shares:
+        raise RuntimeError(f"No household status snapshots in validation window: {csv_path}")
+    return statistics.fmean(snapshot_shares)
 
 
 def extract_household_jsd(
@@ -270,11 +358,18 @@ def extract_household_metric_from_results(
     results_dir: Path,
     was_data_root: str | Path,
     was_dataset: str = ROUND_8_DATA,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
 ) -> float:
     """Extract a household JSD metric from one run output directory."""
 
     spec = HOUSEHOLD_DISTRIBUTION_SPECS[metric_id]
-    model_values = _load_model_distribution_values(results_dir / spec.results_file_name, spec)
+    model_values = _load_model_distribution_values(
+        results_dir / spec.results_file_name,
+        spec,
+        window_start=window_start,
+        window_end=window_end,
+    )
     target_values, target_weights = _load_target_distribution_values(
         spec=spec,
         was_data_root=Path(was_data_root),
@@ -288,10 +383,38 @@ def extract_household_metric_from_results(
     )
 
 
-def _load_model_distribution_values(results_path: Path, spec: HouseholdDistributionSpec) -> list[float]:
+def extract_household_share_from_results(
+    *,
+    metric_id: str,
+    results_dir: Path,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
+) -> float:
+    """Extract one household stock/state share metric from a run output directory."""
+
+    spec = HOUSEHOLD_SHARE_SPECS[metric_id]
+    results_path = results_dir / spec.results_file_name
     if not results_path.exists():
         raise RuntimeError(f"Missing required validation results file: {results_path}")
-    raw_values = read_results(str(results_path), VALIDATION_WINDOW_START, VALIDATION_WINDOW_END)
+    return extract_household_status_share(
+        results_path,
+        status_value=spec.status_value,
+        window_start=window_start,
+        window_end=window_end,
+    )
+
+
+def _load_model_distribution_values(
+    results_path: Path,
+    spec: HouseholdDistributionSpec,
+    *,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
+) -> list[float]:
+    if not results_path.exists():
+        raise RuntimeError(f"Missing required validation results file: {results_path}")
+    _validate_window(window_start=window_start, window_end=window_end)
+    raw_values = read_results(str(results_path), window_start, window_end - 1)
     if spec.results_file_name == "MonthlyGrossEmploymentIncome-run1.csv":
         scaled_values = [12.0 * value for value in raw_values if value > 0.0]
         return [value for value in scaled_values if value >= spec.income_floor]
@@ -361,24 +484,35 @@ def extract_output_series_metric_from_results(
     metric_id: str,
     results_dir: Path,
     trailing_months: int | None = None,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
 ) -> float:
     """Extract one Output-run1.csv-backed metric from a run output directory."""
 
     spec = OUTPUT_SERIES_SPECS[metric_id]
     csv_path = results_dir / spec.results_file_name
-    if metric_id == "core_hpiMean":
-        return extract_rebased_output_series_mean(csv_path, column_name=spec.column_name)
+    if metric_id in {"core_hpiMean", "rpi_mean"}:
+        return extract_rebased_output_series_mean(
+            csv_path,
+            column_name=spec.column_name,
+            window_start=window_start,
+            window_end=window_end,
+        )
     if metric_id == "core_hpiStd":
         return extract_rebased_output_series_std(
             csv_path,
             column_name=spec.column_name,
             trailing_months=trailing_months,
+            window_start=window_start,
+            window_end=window_end,
         )
     if metric_id == "core_hpiCyclePeriod":
         return extract_output_series_cycle_period(
             csv_path,
             column_name=spec.column_name,
             trailing_months=trailing_months,
+            window_start=window_start,
+            window_end=window_end,
         )
     raise RuntimeError(f"Unsupported output-series metric: {metric_id}")
 
@@ -394,13 +528,20 @@ def _kl_divergence(left: np.ndarray, right: np.ndarray) -> float:
     return total
 
 
-def _complete_validation_window(*, values: Sequence[float], source_path: Path) -> list[float]:
+def _complete_validation_window(
+    *,
+    values: Sequence[float],
+    source_path: Path,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
+) -> list[float]:
+    _validate_window(window_start=window_start, window_end=window_end)
     window = select_post_burn_in_window(
         values,
-        start_index=VALIDATION_WINDOW_START,
-        end_index=VALIDATION_WINDOW_END,
+        start_index=window_start,
+        end_index=window_end,
     )
-    expected_count = VALIDATION_WINDOW_END - VALIDATION_WINDOW_START
+    expected_count = window_end - window_start
     if len(window) != expected_count:
         raise RuntimeError(f"Incomplete validation window in {source_path}")
     return window
@@ -411,8 +552,15 @@ def _select_output_series_window(
     values: Sequence[float],
     source_path: Path,
     trailing_months: int | None,
+    window_start: int = VALIDATION_WINDOW_START,
+    window_end: int = VALIDATION_WINDOW_END,
 ) -> list[float]:
-    window = _complete_validation_window(values=values, source_path=source_path)
+    window = _complete_validation_window(
+        values=values,
+        source_path=source_path,
+        window_start=window_start,
+        window_end=window_end,
+    )
     if trailing_months is None:
         return window
     if trailing_months <= 0:
@@ -422,3 +570,10 @@ def _select_output_series_window(
             f"Incomplete trailing output-series window in {source_path}: need {trailing_months} months"
         )
     return window[-trailing_months:]
+
+
+def _validate_window(*, window_start: int, window_end: int) -> None:
+    if window_start < 0:
+        raise ValueError("window_start must be non-negative")
+    if window_end <= window_start:
+        raise ValueError("window_end must be greater than window_start")
