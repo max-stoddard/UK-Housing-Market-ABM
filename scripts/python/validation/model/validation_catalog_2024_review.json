@@ -46,6 +46,9 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
+      "household_owning_share",
+      "household_renting_share",
       "core_ooDebtToIncome",
       "core_rentalYield"
     ],
@@ -68,6 +71,9 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
+      "household_owning_share",
+      "household_renting_share",
       "core_ooDebtToIncome",
       "core_rentalYield"
     ],
@@ -116,6 +122,9 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
+      "household_owning_share",
+      "household_renting_share",
       "core_ooDebtToIncome",
       "core_rentalYield",
       "core_interestRateSpread",
@@ -149,6 +158,9 @@
         "core_hpiMean",
         "core_hpiStd",
         "core_hpiCyclePeriod",
+        "rpi_mean",
+        "household_owning_share",
+        "household_renting_share",
         "core_ooDebtToIncome",
         "core_rentalYield",
         "core_interestRateSpread",
@@ -156,7 +168,7 @@
         "housing_wealth_distribution_jsd",
         "financial_wealth_distribution_jsd"
       ],
-      "required_metric_count": 17,
+      "required_metric_count": 20,
       "metric_weight": 1.0,
       "composite_rule": "weighted_mean"
     },
@@ -416,6 +428,97 @@
     "notes": "The direct monthly series is verified by tests; the ledger stores the reviewed quarterly and annual outputs."
   },
   {
+    "review_id": "source_market_rpi",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID.rpi_mean",
+    "metric_ids": [
+      "rpi_mean"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Great Britain Rental Price Index monthly values rebased to January 2024 and summarized as an annual mean and observed monthly range.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/catalog_review_2024.py",
+      "input-data-versions/validation-sources/2024/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx",
+      "input-data-versions/validation-sources/2024/ons-rpi/rpi-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "table": "Table 1",
+      "geography": "Great Britain"
+    },
+    "recalculation_rule": "Read the 2024 Great Britain monthly index values from ONS Table 1, rebase to January 2024 = 1.0, compute the annual arithmetic mean, and use the observed rebased monthly min/max as the target band.",
+    "methodology_rule": "RPI means Rental Price Index. The target uses Great Britain for 2024 because the same ONS workbook has no UK value for the 2011 overlay year.",
+    "expected_result": {
+      "geography": "Great Britain",
+      "rebased_monthly_values": [
+        1.0,
+        1.0090190478415961,
+        1.016467250817479,
+        1.0226030992373536,
+        1.0293615985034117,
+        1.0361922000998245,
+        1.0430532735692704,
+        1.0489519352689327,
+        1.0560335635472438,
+        1.0651685279787264,
+        1.0760995637629334,
+        1.0820584689176576
+      ],
+      "annual_mean": 1.0404173774620358,
+      "target_band": {
+        "lower": 1.0,
+        "upper": 1.082058468918
+      }
+    },
+    "rounding_policy": "rebased monthly values are full precision from workbook values; catalog target-band upper is locked to the retained evidence precision",
+    "status": "verified",
+    "notes": "This metric intentionally does not use sale or rental transaction logs; it reads the model's Rental HPI output series."
+  },
+  {
+    "review_id": "source_household_tenure",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID tenure metrics",
+    "metric_ids": [
+      "household_owning_share",
+      "household_renting_share"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "FRS 2023/24 UK household tenure shares for owner occupation and private renting.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/catalog_review_2024.py",
+      "input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx",
+      "input-data-versions/validation-sources/2024/frs/household-tenure-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "sheet": "3_6",
+      "row": "2023/24"
+    },
+    "recalculation_rule": "Read FRS table 3.6 row 2023/24. Compute owner share as owned outright plus buying with a mortgage. Use private renting sector directly for the renting share.",
+    "methodology_rule": "Bands are whole-percent rounded-value intervals. Social renting is excluded to match model HousingStatus == 1 private renting semantics.",
+    "expected_result": {
+      "household_owning_share": {
+        "raw_source_value": 65.0,
+        "normalized_source_value": 65.0,
+        "target_band": {
+          "lower": 64.5,
+          "upper": 65.5
+        }
+      },
+      "household_renting_share": {
+        "raw_source_value": 19.0,
+        "normalized_source_value": 19.0,
+        "target_band": {
+          "lower": 18.5,
+          "upper": 19.5
+        }
+      }
+    },
+    "rounding_policy": "whole-percent FRS table values with rounded-value target intervals",
+    "status": "verified",
+    "notes": "The runtime extractor uses HousingStatus-run1.csv stock snapshots and does not infer tenure from transactions."
+  },
+  {
     "review_id": "source_market_rental_yield",
     "review_category": "source_metadata",
     "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID.core_rentalYield",
@@ -509,6 +612,7 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
       "core_ooDebtToIncome",
       "core_rentalYield",
       "core_interestRateSpread"
@@ -645,6 +749,17 @@
         "file_name": "Output-run1.csv",
         "scale": 1.0
       },
+      "rpi_mean": {
+        "requirement": "required",
+        "units": "rebased index",
+        "source_label": "ONS Price Index of Private Rents historical series (Great Britain rebased to January 2024)",
+        "target_band": {
+          "lower": 1.0,
+          "upper": 1.082058468918
+        },
+        "file_name": "Output-run1.csv",
+        "scale": 1.0
+      },
       "core_ooDebtToIncome": {
         "requirement": "required",
         "units": "%",
@@ -682,6 +797,53 @@
     "rounding_policy": "exact field match against the live catalog",
     "status": "verified",
     "notes": "This entry locks the runtime fields that affect metric extraction, scaling, labeling, and scoring."
+  },
+  {
+    "review_id": "metric_definitions_household_share",
+    "review_category": "metric_definition",
+    "catalog_symbol": "TARGETS_BY_ID for household_share metrics",
+    "metric_ids": [
+      "household_owning_share",
+      "household_renting_share"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Live runtime metric-definition fields for household tenure share metrics.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/extractors.py"
+    ],
+    "source_locator": {
+      "symbol": "TARGET_CATALOG / HOUSEHOLD_SHARE_SPECS"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "Household share metric definitions are runtime methodology configuration; extraction uses household stock/state snapshots from HousingStatus-run1.csv.",
+    "expected_result": {
+      "household_owning_share": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "DWP Family Resources Survey 2023/24, UK household tenure table",
+        "target_band": {
+          "lower": 64.5,
+          "upper": 65.5
+        },
+        "file_name": "HousingStatus-run1.csv",
+        "loss_family": "bounded_share"
+      },
+      "household_renting_share": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "DWP Family Resources Survey 2023/24, UK household tenure table",
+        "target_band": {
+          "lower": 18.5,
+          "upper": 19.5
+        },
+        "file_name": "HousingStatus-run1.csv",
+        "loss_family": "bounded_share"
+      }
+    },
+    "rounding_policy": "exact field match against the live catalog",
+    "status": "verified",
+    "notes": "This entry locks the metric kind and bounded-share scoring family for tenure shares."
   },
   {
     "review_id": "metric_definitions_household_jsd",

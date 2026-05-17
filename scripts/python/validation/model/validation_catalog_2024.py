@@ -34,6 +34,9 @@ UNSUPPORTED_FPC_METRIC_IDS = (
     "core_hpiMean",
     "core_hpiStd",
     "core_hpiCyclePeriod",
+    "rpi_mean",
+    "household_owning_share",
+    "household_renting_share",
     "core_ooDebtToIncome",
     "core_rentalYield",
 )
@@ -289,6 +292,10 @@ BOE_HOUSING_TOOLS_TEXT_PATH = "input-data-versions/validation-sources/2024/boe/h
 BOE_HOUSING_TOOLS_SPREAD_TABLE = "Sheet 8. Spreads new mortgage lending"
 HMLR_HPI_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv"
 HMLR_HPI_TEXT_PATH = "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt"
+FRS_TENURE_2024_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx"
+FRS_TENURE_2024_TEXT_PATH = "input-data-versions/validation-sources/2024/frs/household-tenure-2024-validation-evidence.txt"
+ONS_RPI_2024_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx"
+ONS_RPI_2024_TEXT_PATH = "input-data-versions/validation-sources/2024/ons-rpi/rpi-2024-validation-evidence.txt"
 
 UKF_BTL_RENTAL_YIELD_TEXT_PATH = "input-data-versions/validation-sources/2024/ukf/btl-rental-yield-2024-validation-evidence.txt"
 UKF_BTL_RENTAL_YIELD_TABLE = "Page 2 summary panels"
@@ -308,6 +315,23 @@ HPI_2024_REBASED_MEAN = 1.0196877121520707
 HPI_2024_REBASED_STD = 0.013499008027934953
 HPI_FULL_HISTORY_REBASED_STD = 0.2766701944903836
 HPI_2024_CYCLE_PERIOD_MONTHS = 167.5
+HOUSEHOLD_OWNING_SHARE_2024 = 65.0
+HOUSEHOLD_RENTING_SHARE_2024 = 19.0
+RPI_2024_GB_REBASED_MEAN = 1.0404173774620358
+RPI_2024_GB_REBASED_MONTHLY_VALUES = (
+    1.0,
+    1.009019047842,
+    1.016467250817,
+    1.022603099237,
+    1.029361598503,
+    1.0361922001,
+    1.043053273569,
+    1.048951935269,
+    1.056033563547,
+    1.065168527979,
+    1.076099563763,
+    1.082058468918,
+)
 RENTAL_YIELD_2024_QUARTERLY_VALUES = (6.88, 6.90, 6.93, 7.00)
 OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES = (
     80.29246428438624,
@@ -491,6 +515,105 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
                 source_as_of="1968-04 to 2024-12 history",
                 source_units="months",
                 notes="Derived with a 12-month moving average, log transform, linear detrend, and FFT peak search over 60..240 months.",
+            ),
+        ),
+    ),
+    "rpi_mean": MetricSourceMetadata(
+        source_document_path=ONS_RPI_2024_DOCUMENT_PATH,
+        source_text_path=ONS_RPI_2024_TEXT_PATH,
+        source_table="Table 1: Great Britain index rows for 2024-01 through 2024-12, rebased to 2024-01 = 1.0",
+        source_page=1,
+        source_indicator_label="Rebased Great Britain Rental Price Index, 2024 annual mean",
+        raw_source_value=RPI_2024_GB_REBASED_MEAN,
+        normalized_source_value=RPI_2024_GB_REBASED_MEAN,
+        source_units="rebased index",
+        comparison_units="rebased index",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_rebased_monthly_range",
+        band_notes=(
+            "Uses the ONS Price Index of Private Rents historical-series Great Britain index because the downloaded "
+            "workbook marks the UK series as unavailable in 2011. The same Great Britain geography is used for 2024 "
+            "for like-for-like comparison. Monthly values are rebased to January 2024 = 1.0; the target band is the "
+            "observed 2024 rebased monthly min/max."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="ONS Price Index of Private Rents, UK: historical series",
+                source_document_path=ONS_RPI_2024_DOCUMENT_PATH,
+                source_text_path=ONS_RPI_2024_TEXT_PATH,
+                source_table="Table 1",
+                source_page=1,
+                source_indicator_label="Great Britain rental price index",
+                raw_source_value=RPI_2024_GB_REBASED_MEAN,
+                source_as_of="2024 annual mean after rebasing to January 2024",
+                source_units="rebased index",
+                notes="Rental Price Index target; this is not Retail Prices Index.",
+            ),
+        ),
+    ),
+    "household_owning_share": MetricSourceMetadata(
+        source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+        source_text_path=FRS_TENURE_2024_TEXT_PATH,
+        source_table="FRS 2023/24 table 3.6: Households by tenure, United Kingdom",
+        source_page=1,
+        source_indicator_label="Owner-occupied households, owned outright plus buying with a mortgage",
+        raw_source_value=HOUSEHOLD_OWNING_SHARE_2024,
+        normalized_source_value=HOUSEHOLD_OWNING_SHARE_2024,
+        source_units="%",
+        comparison_units="%",
+        source_as_of="financial year ending 2024",
+        mapping_status="derived_match",
+        band_method="published_rounded_percentage_interval",
+        band_notes=(
+            "FRS table 3.6 publishes whole-percent household tenure shares. Target band is the rounded-value "
+            "interval [64.5, 65.5] around the published 65% owner-occupied share."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="DWP Family Resources Survey 2023/24 tenure table 3.6",
+                source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+                source_text_path=FRS_TENURE_2024_TEXT_PATH,
+                source_table="3_6",
+                source_page=1,
+                source_indicator_label="Owned outright 37%; buying with a mortgage 28%",
+                raw_source_value=HOUSEHOLD_OWNING_SHARE_2024,
+                source_as_of="financial year ending 2024",
+                source_units="%",
+                notes="Owner-occupied share is 37% + 28% = 65%.",
+            ),
+        ),
+    ),
+    "household_renting_share": MetricSourceMetadata(
+        source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+        source_text_path=FRS_TENURE_2024_TEXT_PATH,
+        source_table="FRS 2023/24 table 3.6: Households by tenure, United Kingdom",
+        source_page=1,
+        source_indicator_label="Private renting sector households",
+        raw_source_value=HOUSEHOLD_RENTING_SHARE_2024,
+        normalized_source_value=HOUSEHOLD_RENTING_SHARE_2024,
+        source_units="%",
+        comparison_units="%",
+        source_as_of="financial year ending 2024",
+        mapping_status="derived_match",
+        band_method="published_rounded_percentage_interval",
+        band_notes=(
+            "FRS table 3.6 publishes whole-percent household tenure shares. Target band is the rounded-value "
+            "interval [18.5, 19.5] around the published 19% private-rented-sector share. Social renting is excluded "
+            "to match model HousingStatus == 1."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="DWP Family Resources Survey 2023/24 tenure table 3.6",
+                source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+                source_text_path=FRS_TENURE_2024_TEXT_PATH,
+                source_table="3_6",
+                source_page=1,
+                source_indicator_label="Private renting sector 19%",
+                raw_source_value=HOUSEHOLD_RENTING_SHARE_2024,
+                source_as_of="financial year ending 2024",
+                source_units="%",
+                notes="Private renting is used because model HousingStatus == 1 excludes social housing.",
             ),
         ),
     ),
@@ -807,6 +930,45 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         file_name="Output-run1.csv",
     ),
     MetricDefinition(
+        metric_id="rpi_mean",
+        label="RPI Mean",
+        requirement="required",
+        units="rebased index",
+        source_label="ONS Price Index of Private Rents historical series (Great Britain rebased to January 2024)",
+        kind="output_series",
+        loss_family="positive_level",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["rpi_mean"],
+        target_band=TargetBand(
+            lower=min(RPI_2024_GB_REBASED_MONTHLY_VALUES),
+            upper=max(RPI_2024_GB_REBASED_MONTHLY_VALUES),
+        ),
+        file_name="Output-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="household_owning_share",
+        label="Household Owning Share",
+        requirement="required",
+        units="%",
+        source_label="DWP Family Resources Survey 2023/24, UK household tenure table",
+        kind="household_share",
+        loss_family="bounded_share",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["household_owning_share"],
+        target_band=TargetBand(lower=64.5, upper=65.5),
+        file_name="HousingStatus-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="household_renting_share",
+        label="Household Private Renting Share",
+        requirement="required",
+        units="%",
+        source_label="DWP Family Resources Survey 2023/24, UK household tenure table",
+        kind="household_share",
+        loss_family="bounded_share",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["household_renting_share"],
+        target_band=TargetBand(lower=18.5, upper=19.5),
+        file_name="HousingStatus-run1.csv",
+    ),
+    MetricDefinition(
         metric_id="core_ooDebtToIncome",
         label="Owner-Occupier Debt to Income",
         requirement="required",
@@ -896,10 +1058,14 @@ __all__ = [
     "HPI_2024_REBASED_STD",
     "HPI_FULL_HISTORY_REBASED_STD",
     "HPI_TARGET_TOLERANCE",
+    "HOUSEHOLD_OWNING_SHARE_2024",
+    "HOUSEHOLD_RENTING_SHARE_2024",
     "INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS",
     "MARKET_SOURCE_2024_BY_METRIC_ID",
     "OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES",
     "RENTAL_YIELD_2024_QUARTERLY_VALUES",
+    "RPI_2024_GB_REBASED_MEAN",
+    "RPI_2024_GB_REBASED_MONTHLY_VALUES",
     "SUPPORTED_FPC_METRIC_IDS",
     "TARGET_CATALOG",
     "TARGETS_BY_ID",

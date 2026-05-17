@@ -31,10 +31,14 @@ from scripts.python.validation.model.validation_catalog_2024 import (
     HPI_2024_REBASED_MEAN,
     HPI_FULL_HISTORY_REBASED_STD,
     HPI_TARGET_TOLERANCE,
+    HOUSEHOLD_OWNING_SHARE_2024,
+    HOUSEHOLD_RENTING_SHARE_2024,
     INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS,
     MARKET_SOURCE_2024_BY_METRIC_ID,
     OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES,
     RENTAL_YIELD_2024_QUARTERLY_VALUES,
+    RPI_2024_GB_REBASED_MEAN,
+    RPI_2024_GB_REBASED_MONTHLY_VALUES,
     SUPPORTED_FPC_METRIC_IDS,
     TARGETS_BY_ID,
     UKF_SOURCE_2024_BY_METRIC_ID,
@@ -44,6 +48,8 @@ from scripts.python.validation.model.validation_catalog_2024 import (
 REVIEW_LEDGER_PATH = "scripts/python/validation/model/validation_catalog_2024_review.json"
 ONS_QWND_SNAPSHOT_PATH = "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json"
 HMLR_HPI_SOURCE_PATH = "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv"
+FRS_TENURE_2024_SOURCE_PATH = "input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx"
+ONS_RPI_2024_SOURCE_PATH = "input-data-versions/validation-sources/2024/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx"
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,18 @@ def _serialize_household_metric(metric_id: str) -> dict[str, object]:
         "target_band": _band(metric.target_band.lower, metric.target_band.upper),
         "legacy_validation_module": metric.legacy_validation_module,
         "results_file_name": HOUSEHOLD_DISTRIBUTION_SPECS[metric_id].results_file_name,
+    }
+
+
+def _serialize_household_share_metric(metric_id: str) -> dict[str, object]:
+    metric = TARGETS_BY_ID[metric_id]
+    return {
+        "requirement": metric.requirement,
+        "units": metric.units,
+        "source_label": metric.source_label,
+        "target_band": _band(metric.target_band.lower, metric.target_band.upper),
+        "file_name": metric.file_name,
+        "loss_family": metric.loss_family,
     }
 
 
@@ -190,6 +208,50 @@ def extract_spread_monthly_values_2024(workbook_path: Path) -> list[float]:
         workbook.close()
 
 
+def extract_frs_tenure_values_2024(workbook_path: Path) -> dict[str, float]:
+    workbook = load_workbook(workbook_path, data_only=True, read_only=True)
+    try:
+        worksheet = workbook["3_6"]
+        header = [cell for cell in next(worksheet.iter_rows(min_row=9, max_row=9, values_only=True))]
+        columns = {str(label): index for index, label in enumerate(header) if label is not None}
+        for row in worksheet.iter_rows(min_row=10, values_only=True):
+            if row[0] == "2023/24":
+                owned_outright = float(row[columns["Owned outright"]])
+                buying_with_mortgage = float(row[columns["Buying with a mortgage [Note 14]"]])
+                private_renting = float(row[columns["Private renting sector [Note 2]"]])
+                return {
+                    "household_owning_share": owned_outright + buying_with_mortgage,
+                    "household_renting_share": private_renting,
+                }
+        raise RuntimeError("Unable to locate 2023/24 row in FRS tenure table 3_6")
+    finally:
+        workbook.close()
+
+
+def extract_rpi_rebased_values(workbook_path: Path, *, year: int, geography: str = "Great Britain") -> list[float]:
+    workbook = load_workbook(workbook_path, data_only=True, read_only=True)
+    try:
+        worksheet = workbook["Table 1"]
+        header = [cell for cell in next(worksheet.iter_rows(min_row=3, max_row=3, values_only=True))]
+        try:
+            geography_column = header.index(geography)
+        except ValueError as exc:
+            raise RuntimeError(f"Unable to locate geography {geography!r} in ONS RPI table") from exc
+        values: list[float] = []
+        for row in worksheet.iter_rows(min_row=5, values_only=True):
+            timestamp = row[0]
+            if isinstance(timestamp, datetime) and timestamp.year == year:
+                values.append(float(row[geography_column]))
+        if len(values) != 12:
+            raise RuntimeError(f"Expected 12 monthly {geography} RPI values for {year}, found {len(values)}")
+        first = values[0]
+        if first <= 0.0:
+            raise RuntimeError(f"Cannot rebase non-positive {geography} RPI value for {year}")
+        return [value / first for value in values]
+    finally:
+        workbook.close()
+
+
 def _quarter_means(values: list[float]) -> list[float]:
     if len(values) % 3 != 0:
         raise ValueError("Quarter mean helper expects a multiple of three monthly values")
@@ -276,6 +338,8 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
     )
     spread_monthly_values = extract_spread_monthly_values_2024(repo_root / "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx")
     spread_quarterly_values = _quarter_means(spread_monthly_values)
+    tenure_values = extract_frs_tenure_values_2024(repo_root / FRS_TENURE_2024_SOURCE_PATH)
+    rpi_rebased_values = extract_rpi_rebased_values(repo_root / ONS_RPI_2024_SOURCE_PATH, year=2024)
     oo_source_components = extract_oo_dti_source_components_2024(repo_root / "input-data-versions/validation-sources/2024/mlar/mlar-longrun-detailed.xlsx")
     ons_qwnd_quarterly_values = load_ons_qwnd_snapshot(repo_root / ONS_QWND_SNAPSHOT_PATH)
     trailing_four_quarter_qwnd = _compute_trailing_four_quarter_qwnd(ons_qwnd_quarterly_values)
@@ -393,10 +457,33 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
                 HPI_2024_CYCLE_PERIOD_MONTHS * (1.0 + HPI_TARGET_TOLERANCE),
             ),
         },
+        "source_market_rpi": {
+            "geography": "Great Britain",
+            "rebased_monthly_values": rpi_rebased_values,
+            "annual_mean": compute_rebased_mean(rpi_rebased_values),
+            "target_band": _band(min(RPI_2024_GB_REBASED_MONTHLY_VALUES), max(RPI_2024_GB_REBASED_MONTHLY_VALUES)),
+        },
+        "source_household_tenure": {
+            "household_owning_share": {
+                "raw_source_value": tenure_values["household_owning_share"],
+                "normalized_source_value": tenure_values["household_owning_share"],
+                "target_band": _band(64.5, 65.5),
+            },
+            "household_renting_share": {
+                "raw_source_value": tenure_values["household_renting_share"],
+                "normalized_source_value": tenure_values["household_renting_share"],
+                "target_band": _band(18.5, 19.5),
+            },
+        },
         "metric_definitions_core": {
             metric_id: _serialize_core_metric(metric_id)
             for metric_id, metric in TARGETS_BY_ID.items()
             if metric.kind in {"core_indicator", "output_series"}
+        },
+        "metric_definitions_household_share": {
+            metric_id: _serialize_household_share_metric(metric_id)
+            for metric_id, metric in TARGETS_BY_ID.items()
+            if metric.kind == "household_share"
         },
         "metric_definitions_household_jsd": {
             metric_id: _serialize_household_metric(metric_id)

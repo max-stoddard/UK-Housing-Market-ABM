@@ -10,6 +10,8 @@ from pathlib import Path
 
 from scripts.python.validation.model.catalog_review_2024 import (
     build_live_review_data,
+    extract_frs_tenure_values_2024,
+    extract_rpi_rebased_values,
     extract_spread_monthly_values_2024,
     load_ons_qwnd_snapshot,
     run_catalog_review,
@@ -108,6 +110,9 @@ class TestValidationCatalog2024Review(unittest.TestCase):
             "core_hpiMean": "positive_level",
             "core_hpiStd": "positive_level",
             "core_hpiCyclePeriod": "positive_level",
+            "rpi_mean": "positive_level",
+            "household_owning_share": "bounded_share",
+            "household_renting_share": "bounded_share",
             "core_ooDebtToIncome": "positive_level",
             "core_rentalYield": "positive_level",
             "core_interestRateSpread": "signed_additive",
@@ -119,6 +124,22 @@ class TestValidationCatalog2024Review(unittest.TestCase):
             {metric_id: TARGETS_BY_ID[metric_id].loss_family for metric_id in expected_families},
             expected_families,
         )
+
+    def test_new_household_share_and_rpi_sources_recompute_from_retained_artifacts(self) -> None:
+        tenure = extract_frs_tenure_values_2024(
+            Path("input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx")
+        )
+        self.assertEqual(tenure["household_owning_share"], 65.0)
+        self.assertEqual(tenure["household_renting_share"], 19.0)
+
+        rpi_values = extract_rpi_rebased_values(
+            Path("input-data-versions/validation-sources/2024/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx"),
+            year=2024,
+        )
+        self.assertEqual(len(rpi_values), 12)
+        self.assertAlmostEqual(rpi_values[0], 1.0)
+        self.assertAlmostEqual(sum(rpi_values) / len(rpi_values), 1.0404173774620358)
+        self.assertAlmostEqual(max(rpi_values), 1.0820584689176576)
 
 
 if __name__ == "__main__":

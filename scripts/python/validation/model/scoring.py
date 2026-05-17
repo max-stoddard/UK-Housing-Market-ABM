@@ -13,6 +13,7 @@ from scripts.python.validation.model.schema import LossFamily, LossScaleBasis
 
 ZERO_FLOOR_PENALTY = math.log(100.0)
 METRIC_FLOOR = 1.0e-9
+BOUNDED_SHARE_DOMAIN_WIDTH = 100.0
 
 
 @dataclass(frozen=True)
@@ -295,6 +296,35 @@ def compute_metric_loss_audit(
             distance_component=normalized_distance,
             spread_component=spread_component,
             level_component=level_component,
+            inside_rate_component=inside_rate_component,
+        )
+
+    if loss_family == "bounded_share":
+        if lower_bound < 0.0 or upper_bound > 100.0:
+            raise ValueError("Bounded-share loss requires percentage target bands within 0..100")
+        if upper_bound <= lower_bound:
+            raise ValueError("Bounded-share loss requires a positive target-band width")
+        normalized_distance = compute_outside_distance(
+            seed_mean=seed_mean,
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
+        ) / BOUNDED_SHARE_DOMAIN_WIDTH
+        normalized_iqr = max(0.0, p75 - p25) / BOUNDED_SHARE_DOMAIN_WIDTH
+        spread_component = 0.25 * normalized_iqr
+        metric_loss = normalized_distance + spread_component + inside_rate_component
+        return MetricLossAudit(
+            metric_loss=metric_loss,
+            loss_family=loss_family,
+            loss_transform="bounded_share_domain_normalized_distance",
+            loss_scale=BOUNDED_SHARE_DOMAIN_WIDTH,
+            loss_scale_basis="bounded_share_domain_width",
+            additive_scale=None,
+            additive_scale_basis="not_applicable",
+            normalized_distance=normalized_distance,
+            normalized_iqr=normalized_iqr,
+            distance_component=normalized_distance,
+            spread_component=spread_component,
+            level_component=0.0,
             inside_rate_component=inside_rate_component,
         )
 

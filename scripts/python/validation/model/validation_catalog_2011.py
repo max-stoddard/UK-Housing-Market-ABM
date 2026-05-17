@@ -37,6 +37,10 @@ BM_2011_TEXT_PATH = "input-data-versions/validation-sources/2011/bm/btl-rental-y
 HMLR_2011_SNAPSHOT_PATH = "input-data-versions/validation-sources/2011/hmlr/uk-hpi-uk-series-through-2011-12.csv"
 HMLR_2011_TEXT_PATH = "input-data-versions/validation-sources/2011/hmlr/hpi-2011-validation-evidence.txt"
 HMLR_2011_DERIVED_VALUES_PATH = "input-data-versions/validation-sources/2011/hmlr/hpi-2011-derived-values.json"
+FRS_TENURE_2011_DOCUMENT_PATH = "input-data-versions/validation-sources/2011/frs/frs-2010-11-report.pdf"
+FRS_TENURE_2011_TEXT_PATH = "input-data-versions/validation-sources/2011/frs/household-tenure-2011-validation-evidence.txt"
+ONS_RPI_2011_DOCUMENT_PATH = "input-data-versions/validation-sources/2011/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx"
+ONS_RPI_2011_TEXT_PATH = "input-data-versions/validation-sources/2011/ons-rpi/rpi-2011-validation-evidence.txt"
 MLAR_2011_COMPONENTS_PATH = "input-data-versions/validation-sources/2011/mlar/mlar-oo-debt-to-income-2011-components.csv"
 MLAR_2011_TEXT_PATH = "input-data-versions/validation-sources/2011/mlar/oo-debt-to-income-2011-validation-evidence.txt"
 ONS_QWND_2011_SNAPSHOT_PATH = (
@@ -67,6 +71,23 @@ INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS = (
 HPI_2011_REBASED_MEAN = 0.9922839506172839
 HPI_2011_REBASED_STD = 0.06520815312915954
 HPI_2011_CYCLE_PERIOD_MONTHS = 171.33333333333334
+HOUSEHOLD_OWNING_SHARE_2011 = 66.0
+HOUSEHOLD_RENTING_SHARE_2011 = 17.0
+RPI_2011_GB_REBASED_MEAN = 1.010962279264232
+RPI_2011_GB_REBASED_MONTHLY_VALUES = (
+    1.0,
+    1.001371191823,
+    1.00324096718,
+    1.005175896361,
+    1.007316578688,
+    1.008982007963,
+    1.011082528627,
+    1.013492871667,
+    1.016491367996,
+    1.018751610671,
+    1.02120612216,
+    1.024436208035,
+)
 OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES = (
     99.75341253849653,
     99.34683471171756,
@@ -107,6 +128,9 @@ SOURCE_LABEL_2011_BY_METRIC_ID: dict[str, str] = {
     "core_hpiMean": "HM Land Registry UK HPI full history through 2011-12 (UK IndexSA rebased to January 2011)",
     "core_hpiStd": "HM Land Registry UK HPI full file December 2024 (shared official std benchmark over 2005-01 to 2024-12)",
     "core_hpiCyclePeriod": "HM Land Registry UK HPI full history through 2011-12 (UK Index history through 2011-12)",
+    "rpi_mean": "ONS Price Index of Private Rents historical series (Great Britain rebased to January 2011)",
+    "household_owning_share": "DWP Family Resources Survey 2010/11, UK household tenure table",
+    "household_renting_share": "DWP Family Resources Survey 2010/11, UK household tenure table",
     "core_ooDebtToIncome": "MLAR long-run detailed tables plus ONS QWND (full-year 2011 reconstruction)",
     "core_rentalYield": "Best-available secondary-source proxy for 2011 BM Solutions UK rental yield",
     "core_interestRateSpread": "Bank of England housing-tools workbook (repo-local 2011 monthly spread series)",
@@ -411,6 +435,104 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
             ),
         ),
     ),
+    "rpi_mean": MetricSourceMetadata(
+        source_document_path=ONS_RPI_2011_DOCUMENT_PATH,
+        source_text_path=ONS_RPI_2011_TEXT_PATH,
+        source_table="Table 1: Great Britain index rows for 2011-01 through 2011-12, rebased to 2011-01 = 1.0",
+        source_page=1,
+        source_indicator_label="Rebased Great Britain Rental Price Index, 2011 annual mean",
+        raw_source_value=RPI_2011_GB_REBASED_MEAN,
+        normalized_source_value=RPI_2011_GB_REBASED_MEAN,
+        source_units="rebased index",
+        comparison_units="rebased index",
+        source_as_of="2011 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2011_rebased_monthly_range",
+        band_notes=(
+            "Uses the ONS Price Index of Private Rents historical-series Great Britain index because the downloaded "
+            "workbook marks the UK series as unavailable in 2011. Monthly values are rebased to January 2011 = 1.0; "
+            "the target band is the observed 2011 rebased monthly min/max."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="ONS Price Index of Private Rents, UK: historical series",
+                source_document_path=ONS_RPI_2011_DOCUMENT_PATH,
+                source_text_path=ONS_RPI_2011_TEXT_PATH,
+                source_table="Table 1",
+                source_page=1,
+                source_indicator_label="Great Britain rental price index",
+                raw_source_value=RPI_2011_GB_REBASED_MEAN,
+                source_as_of="2011 annual mean after rebasing to January 2011",
+                source_units="rebased index",
+                notes="Rental Price Index target; this is not Retail Prices Index.",
+            ),
+        ),
+    ),
+    "household_owning_share": MetricSourceMetadata(
+        source_document_path=FRS_TENURE_2011_DOCUMENT_PATH,
+        source_text_path=FRS_TENURE_2011_TEXT_PATH,
+        source_table="Family Resources Survey 2010/11 table 3.1: Households by tenure, United Kingdom",
+        source_page=40,
+        source_indicator_label="Owner-occupied households, owned outright plus buying with a mortgage",
+        raw_source_value=HOUSEHOLD_OWNING_SHARE_2011,
+        normalized_source_value=HOUSEHOLD_OWNING_SHARE_2011,
+        source_units="%",
+        comparison_units="%",
+        source_as_of="financial year 2010/11",
+        mapping_status="derived_match",
+        band_method="published_rounded_percentage_interval",
+        band_notes=(
+            "FRS table 3.1 publishes whole-percent household tenure shares. Target band is the rounded-value "
+            "interval [65.5, 66.5] around the published 66% owner-occupied share."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="DWP Family Resources Survey 2010/11 table 3.1",
+                source_document_path=FRS_TENURE_2011_DOCUMENT_PATH,
+                source_text_path=FRS_TENURE_2011_TEXT_PATH,
+                source_table="Table 3.1",
+                source_page=40,
+                source_indicator_label="All owners 66%",
+                raw_source_value=HOUSEHOLD_OWNING_SHARE_2011,
+                source_as_of="financial year 2010/11",
+                source_units="%",
+                notes="Owner-occupied share is published as 66%.",
+            ),
+        ),
+    ),
+    "household_renting_share": MetricSourceMetadata(
+        source_document_path=FRS_TENURE_2011_DOCUMENT_PATH,
+        source_text_path=FRS_TENURE_2011_TEXT_PATH,
+        source_table="Family Resources Survey 2010/11 table 3.1: Households by tenure, United Kingdom",
+        source_page=40,
+        source_indicator_label="Private renting sector households",
+        raw_source_value=HOUSEHOLD_RENTING_SHARE_2011,
+        normalized_source_value=HOUSEHOLD_RENTING_SHARE_2011,
+        source_units="%",
+        comparison_units="%",
+        source_as_of="financial year 2010/11",
+        mapping_status="derived_match",
+        band_method="published_rounded_percentage_interval",
+        band_notes=(
+            "FRS table 3.1 publishes whole-percent household tenure shares. Target band is the rounded-value "
+            "interval [16.5, 17.5] around the published 17% private-rented-sector share. Social renting is excluded "
+            "to match model HousingStatus == 1."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="DWP Family Resources Survey 2010/11 table 3.1",
+                source_document_path=FRS_TENURE_2011_DOCUMENT_PATH,
+                source_text_path=FRS_TENURE_2011_TEXT_PATH,
+                source_table="Table 3.1",
+                source_page=40,
+                source_indicator_label="Rented privately 17%",
+                raw_source_value=HOUSEHOLD_RENTING_SHARE_2011,
+                source_as_of="financial year 2010/11",
+                source_units="%",
+                notes="Private renting is used because model HousingStatus == 1 excludes social housing.",
+            ),
+        ),
+    ),
     "core_ooDebtToIncome": MetricSourceMetadata(
         source_document_path=MLAR_2011_COMPONENTS_PATH,
         source_text_path=MLAR_2011_TEXT_PATH,
@@ -645,6 +767,12 @@ TARGET_BANDS_2011_BY_METRIC_ID: dict[str, TargetBand] = {
         source_value=HPI_2011_CYCLE_PERIOD_MONTHS,
         tolerance=HPI_TARGET_TOLERANCE,
     ),
+    "rpi_mean": TargetBand(
+        lower=min(RPI_2011_GB_REBASED_MONTHLY_VALUES),
+        upper=max(RPI_2011_GB_REBASED_MONTHLY_VALUES),
+    ),
+    "household_owning_share": TargetBand(lower=65.5, upper=66.5),
+    "household_renting_share": TargetBand(lower=16.5, upper=17.5),
     "core_ooDebtToIncome": TargetBand(
         lower=min(OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES),
         upper=max(OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES),
@@ -681,9 +809,13 @@ __all__ = [
     "HPI_2011_CYCLE_PERIOD_MONTHS",
     "HPI_2011_REBASED_MEAN",
     "HPI_2011_REBASED_STD",
+    "HOUSEHOLD_OWNING_SHARE_2011",
+    "HOUSEHOLD_RENTING_SHARE_2011",
     "INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS",
     "OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES",
     "RENTAL_YIELD_2011_ANNUAL",
+    "RPI_2011_GB_REBASED_MEAN",
+    "RPI_2011_GB_REBASED_MONTHLY_VALUES",
     "SOURCE_METADATA_2011_BY_METRIC_ID",
     "TARGET_BANDS_2011_BY_METRIC_ID",
     "TARGET_CATALOG",

@@ -11,8 +11,12 @@ from scripts.python.validation.model.validation_catalog_2024 import HPI_FULL_HIS
 from scripts.python.validation.model.validation_catalog_2011 import (
     HPI_2011_CYCLE_PERIOD_MONTHS,
     HPI_2011_REBASED_MEAN,
+    HOUSEHOLD_OWNING_SHARE_2011,
+    HOUSEHOLD_RENTING_SHARE_2011,
     INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS,
     OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES,
+    RPI_2011_GB_REBASED_MEAN,
+    RPI_2011_GB_REBASED_MONTHLY_VALUES,
     SOURCE_METADATA_2011_BY_METRIC_ID,
     TARGETS_BY_ID,
 )
@@ -43,6 +47,18 @@ class TestValidationCatalog2011(unittest.TestCase):
         self.assertAlmostEqual(
             SOURCE_METADATA_2011_BY_METRIC_ID["core_ooDebtToIncome"].normalized_source_value or 0.0,
             99.20166107684075,
+        )
+        self.assertAlmostEqual(
+            SOURCE_METADATA_2011_BY_METRIC_ID["rpi_mean"].normalized_source_value or 0.0,
+            RPI_2011_GB_REBASED_MEAN,
+        )
+        self.assertAlmostEqual(
+            SOURCE_METADATA_2011_BY_METRIC_ID["household_owning_share"].normalized_source_value or 0.0,
+            HOUSEHOLD_OWNING_SHARE_2011,
+        )
+        self.assertAlmostEqual(
+            SOURCE_METADATA_2011_BY_METRIC_ID["household_renting_share"].normalized_source_value or 0.0,
+            HOUSEHOLD_RENTING_SHARE_2011,
         )
 
     def test_interest_rate_spread_band_uses_corrected_2011_quarterly_mean_range(self) -> None:
@@ -101,7 +117,17 @@ class TestValidationCatalog2011(unittest.TestCase):
         self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].loss_family, "positive_level")
         self.assertEqual(TARGETS_BY_ID["core_housePriceGrowth"].loss_family, "signed_additive")
         self.assertEqual(TARGETS_BY_ID["core_interestRateSpread"].loss_family, "signed_additive")
+        self.assertEqual(TARGETS_BY_ID["household_owning_share"].loss_family, "bounded_share")
+        self.assertEqual(TARGETS_BY_ID["household_renting_share"].loss_family, "bounded_share")
         self.assertEqual(TARGETS_BY_ID["income_distribution_jsd"].loss_family, "bounded_low_is_better")
+
+    def test_2011_tenure_and_rpi_targets_use_source_backed_bands(self) -> None:
+        self.assertEqual(TARGETS_BY_ID["household_owning_share"].target_band.lower, 65.5)
+        self.assertEqual(TARGETS_BY_ID["household_owning_share"].target_band.upper, 66.5)
+        self.assertEqual(TARGETS_BY_ID["household_renting_share"].target_band.lower, 16.5)
+        self.assertEqual(TARGETS_BY_ID["household_renting_share"].target_band.upper, 17.5)
+        self.assertAlmostEqual(TARGETS_BY_ID["rpi_mean"].target_band.lower, min(RPI_2011_GB_REBASED_MONTHLY_VALUES))
+        self.assertAlmostEqual(TARGETS_BY_ID["rpi_mean"].target_band.upper, max(RPI_2011_GB_REBASED_MONTHLY_VALUES))
 
 
 if __name__ == "__main__":

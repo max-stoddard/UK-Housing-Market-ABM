@@ -32,6 +32,9 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
             "core_hpiMean",
             "core_hpiStd",
             "core_hpiCyclePeriod",
+            "rpi_mean",
+            "household_owning_share",
+            "household_renting_share",
             "core_interestRateSpread",
             "core_ooDebtToIncome",
             "core_rentalYield",
@@ -54,7 +57,7 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
                 self.assertIsNotNone(metric["lossTransform"], msg=f"{version} {metric_id}")
                 self.assertIn(
                     metric["lossFamily"],
-                    {"positive_level", "signed_additive", "bounded_low_is_better"},
+                    {"positive_level", "signed_additive", "bounded_low_is_better", "bounded_share"},
                     msg=f"{version} {metric_id}",
                 )
                 self.assertIn("distanceComponent", metric, msg=f"{version} {metric_id}")

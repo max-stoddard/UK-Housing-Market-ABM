@@ -18,7 +18,10 @@ from scripts.python.validation.model.extractors import (
     extract_core_indicator_mean,
     extract_household_metric_from_results,
     extract_household_jsd,
+    extract_household_share_from_results,
+    extract_household_status_share,
     extract_output_series_cycle_period,
+    extract_output_series_metric_from_results,
     extract_rebased_output_series_mean,
     extract_rebased_output_series_std,
 )
@@ -38,6 +41,16 @@ class TestValidationFrameworkExtractors(unittest.TestCase):
             values = [1_000.0] * 200 + [52_000.0] * 1800
             path.write_text("\n".join(str(value) for value in values), encoding="utf-8")
             self.assertAlmostEqual(extract_core_indicator_mean(path, scale=0.001), 52.0)
+
+    def test_extract_core_indicator_mean_honors_explicit_long_run_window(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "coreIndicator-mortgageApprovals.csv"
+            values = [10.0] * 500 + [30.0] * 3000 + [999.0] * 5
+            path.write_text("\n".join(str(value) for value in values), encoding="utf-8")
+            self.assertAlmostEqual(
+                extract_core_indicator_mean(path, window_start=500, window_end=3500),
+                30.0,
+            )
 
     def test_extract_rebased_output_series_mean_uses_first_window_value_as_base(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -107,6 +120,70 @@ class TestValidationFrameworkExtractors(unittest.TestCase):
                 ),
                 120.0,
                 delta=10.0,
+            )
+
+    def test_extract_rpi_mean_reads_rental_hpi_from_output_series(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            results_dir = Path(tmp_dir)
+            rental_hpi_values = [99.0] * 200 + [2.0] + [4.0] * 1799 + [999.0] * 5
+            (results_dir / "Output-run1.csv").write_text(
+                "Rental HPI\n" + "\n".join(str(value) for value in rental_hpi_values) + "\n",
+                encoding="utf-8",
+            )
+            expected_mean = (1.0 + 1799.0 * 2.0) / 1800.0
+            self.assertAlmostEqual(
+                extract_output_series_metric_from_results(metric_id="rpi_mean", results_dir=results_dir),
+                expected_mean,
+            )
+
+    def test_extract_household_status_share_averages_snapshot_shares(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "HousingStatus-run1.csv"
+            path.write_text(
+                "199;2;2;2;2\n"
+                "996;2;2;1;0\n"
+                "1008;2;1;1;1\n"
+                "2001;1;1;1;1\n",
+                encoding="utf-8",
+            )
+            self.assertAlmostEqual(extract_household_status_share(path, status_value=2), 37.5)
+            self.assertAlmostEqual(extract_household_status_share(path, status_value=1), 50.0)
+
+    def test_extract_household_status_share_honors_explicit_exclusive_window_end(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "HousingStatus-run1.csv"
+            path.write_text(
+                "499;2;2;2;2\n"
+                "500;2;2;1;1\n"
+                "3499;2;1;1;1\n"
+                "3500;2;2;2;2\n",
+                encoding="utf-8",
+            )
+            self.assertAlmostEqual(
+                extract_household_status_share(
+                    path,
+                    status_value=2,
+                    window_start=500,
+                    window_end=3500,
+                ),
+                37.5,
+            )
+
+    def test_extract_household_share_from_results_uses_housing_status_metric_specs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            results_dir = Path(tmp_dir)
+            (results_dir / "HousingStatus-run1.csv").write_text(
+                "996;2;2;1;0\n"
+                "1008;2;1;1;1\n",
+                encoding="utf-8",
+            )
+            self.assertAlmostEqual(
+                extract_household_share_from_results(metric_id="household_owning_share", results_dir=results_dir),
+                37.5,
+            )
+            self.assertAlmostEqual(
+                extract_household_share_from_results(metric_id="household_renting_share", results_dir=results_dir),
+                50.0,
             )
 
     def test_extract_household_jsd_returns_zero_for_identical_histograms(self) -> None:

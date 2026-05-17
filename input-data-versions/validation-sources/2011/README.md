@@ -25,6 +25,10 @@ Contents:
   annual mortgage totals sourced from public reports quoting CML statistics
 - `bm/`: evidence note for the 2011 UK average gross buy-to-let rental yield
   sourced from BM Solutions reporting
+- `frs/`: Family Resources Survey 2010/11 report and evidence note for
+  owner-occupied and private-rented household shares
+- `ons-rpi/`: ONS Price Index of Private Rents historical-series workbook and
+  Rental Price Index evidence note
 
 These files are tracked because they are the authoritative 2011 source snapshots
 referenced by:
@@ -45,5 +49,9 @@ Metric coverage:
 - Deliberate cross-year-normalized exception: `core_hpiStd`, which reuses the
   official `2005-01 .. 2024-12` HPI std benchmark from the 2024 framework.
 - Reconstructed historical metric: `core_ooDebtToIncome`.
+- Source-backed tenure/Rental Price Index metrics: `household_owning_share`,
+  `household_renting_share`, and `rpi_mean`.
 - Weak proxy metrics with explicit non-equivalences: `core_advancesToFTB`,
   `core_advancesToHM`, `core_advancesToBTL`, and `core_rentalYield`.
+
+The `ons-rpi/` source uses RPI to mean Rental Price Index, not Retail Prices Index.

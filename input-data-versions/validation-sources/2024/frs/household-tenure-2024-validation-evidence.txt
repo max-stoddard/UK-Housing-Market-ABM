@@ -1,0 +1,47 @@
+Household tenure validation evidence, 2024
+
+Author: Max Stoddard
+
+Metric ids:
+- household_owning_share
+- household_renting_share
+
+Source URL:
+https://assets.publishing.service.gov.uk/media/681c893f275cb67b18d87095/ch3-tenure.xlsx
+
+Context page:
+https://www.gov.uk/government/statistics/family-resources-survey-financial-year-2023-to-2024
+
+Downloaded:
+2026-05-14
+
+Retained source artifact:
+input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx
+
+Table and columns used:
+- Workbook sheet `3_6`
+- Table title: `Households by tenure, financial year ending 2014 to financial year ending 2024, United Kingdom`
+- Row: `2023/24`
+- Columns: `Owned outright`, `Buying with a mortgage`, `Private renting sector`
+
+Source values:
+- Owned outright: 37%
+- Buying with a mortgage: 28%
+- Private renting sector: 19%
+
+Transformations:
+- household_owning_share = owned outright + buying with a mortgage = 37% + 28% = 65%
+- household_renting_share = private renting sector = 19%
+- Social renting is excluded because model `HousingStatus == 1` represents private renting and `HousingStatus == 0` represents social housing.
+
+Target-band method:
+- The FRS table publishes whole-percent household tenure shares in the retained workbook.
+- The target band is the published rounded-value interval around each whole-percent value.
+- household_owning_share target band: [64.5, 65.5]
+- household_renting_share target band: [18.5, 19.5]
+
+Model-side observable:
+- `HousingStatus-run1.csv`
+- `HousingStatus == 2` for owner-occupied households.
+- `HousingStatus == 1` for private-renting households.
+- Validation computes the share in each household-status snapshot, then averages snapshot shares over the validation window.

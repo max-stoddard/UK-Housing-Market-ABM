@@ -11,6 +11,8 @@ Contents:
 - `boe/`: housing-tools workbook and spread evidence note
 - `mlar/`: MLAR workbook and owner-occupier debt-to-income evidence note
 - `ons/`: minimal repo-local QWND snapshot used for the owner-occupier debt-to-income denominator
+- `frs/`: Family Resources Survey tenure workbook and evidence note for owner-occupied and private-rented household shares
+- `ons-rpi/`: ONS Price Index of Private Rents historical-series workbook and Rental Price Index evidence note
 
 These files are tracked because they are the authoritative source snapshots referenced by:
 - `scripts/python/validation/model/validation_catalog_2024.py`
@@ -18,3 +20,5 @@ These files are tracked because they are the authoritative source snapshots refe
 - `input-data-versions/validation/*.json`
 
 The `ons/` snapshot keeps the original ONS series URL as contextual metadata, but the validation workflow should use the repo-local snapshot path as the authoritative source for reproducibility.
+
+The `ons-rpi/` source uses RPI to mean Rental Price Index, not Retail Prices Index.

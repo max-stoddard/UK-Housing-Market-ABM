@@ -1,0 +1,42 @@
+Household tenure validation evidence, 2011
+
+Author: Max Stoddard
+
+Metric ids:
+- household_owning_share
+- household_renting_share
+
+Source URL:
+https://www.gov.uk/government/uploads/system/uploads/attachment_data/file/195310/frs_2010_11_report.pdf.pdf
+
+Downloaded:
+2026-05-14
+
+Retained source artifact:
+input-data-versions/validation-sources/2011/frs/frs-2010-11-report.pdf
+
+Table and columns used:
+- Table 3.1: `Households by tenure, United Kingdom`
+- Year: `2010/11`
+- Columns: `All owners`, `Rented privately`
+
+Source values:
+- All owners: 66%
+- Rented privately: 17%
+
+Transformations:
+- household_owning_share = all owners = 66%
+- household_renting_share = rented privately = 17%
+- Social renting is excluded because model `HousingStatus == 1` represents private renting and `HousingStatus == 0` represents social housing.
+
+Target-band method:
+- The FRS report publishes whole-percent household tenure shares.
+- The target band is the published rounded-value interval around each whole-percent value.
+- household_owning_share target band: [65.5, 66.5]
+- household_renting_share target band: [16.5, 17.5]
+
+Model-side observable:
+- `HousingStatus-run1.csv`
+- `HousingStatus == 2` for owner-occupied households.
+- `HousingStatus == 1` for private-renting households.
+- Validation computes the share in each household-status snapshot, then averages snapshot shares over the validation window.

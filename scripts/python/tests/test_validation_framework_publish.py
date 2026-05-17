@@ -325,6 +325,49 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             self.assertNotIn("config=", log_output)
             self.assertNotIn("output_dir=", log_output)
 
+    def test_run_validation_seed_supports_explicit_long_run_window_overrides(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            version_dir = repo_root / "input-data-versions" / "v-test"
+            version_dir.mkdir(parents=True)
+            (version_dir / "config.properties").write_text("SEED = 1\nN_STEPS = 2000\n", encoding="utf-8")
+            output_dir = repo_root / "tmp" / "validation" / "v-test"
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.build_snapshot_local_config_text",
+                    return_value="SEED = 10\nN_STEPS = 3500\n",
+                ) as config_mock,
+                patch(
+                    "scripts.python.validation.model.runner.subprocess.run",
+                    return_value=subprocess.CompletedProcess(args=["mvn"], returncode=0, stdout="ok"),
+                ),
+                patch(
+                    "scripts.python.validation.model.runner._extract_seed_metrics",
+                    return_value=self._synthetic_metrics(),
+                ) as extract_mock,
+            ):
+                run_validation_seed(
+                    repo_root=repo_root,
+                    version="v-test",
+                    seed=10,
+                    output_dir=output_dir,
+                    maven_bin="mvn",
+                    was_data_root=repo_root,
+                    validation_profile=resolve_validation_profile("v-test"),
+                    n_steps=3500,
+                    window_start=500,
+                    window_end=3500,
+                )
+
+            overrides = config_mock.call_args.args[1]
+            self.assertEqual(overrides["SEED"], "10")
+            self.assertEqual(overrides["N_STEPS"], "3500")
+            self.assertEqual(overrides["recordTransactions"], "false")
+            self.assertEqual(overrides["recordHousingStatus"], "true")
+            self.assertEqual(extract_mock.call_args.kwargs["window_start"], 500)
+            self.assertEqual(extract_mock.call_args.kwargs["window_end"], 3500)
+
     def test_build_validation_summary_rejects_missing_required_target_metadata(self) -> None:
         required_targets = {
             "core_mortgageApprovals": {
@@ -344,6 +387,17 @@ class TestValidationFrameworkPublish(unittest.TestCase):
                 seeds=[1, 2, 3, 4, 5, 6, 7, 8],
                 targets_by_id=required_targets,
             )
+
+    def test_build_validation_summary_publishes_explicit_window_metadata(self) -> None:
+        summary = build_validation_summary(
+            version="v-test",
+            seed_results=self._synthetic_seed_results(),
+            seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+            window_start=500,
+            window_end=3500,
+        )
+
+        self.assertEqual(summary["window"], {"startIndex": 500, "endIndex": 3500})
 
     def test_build_validation_summary_emits_source_provenance_fields(self) -> None:
         summary = build_validation_summary(
@@ -440,6 +494,32 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         expected_loss = sum(metric["metricLoss"] for metric in scored_metrics) / len(scored_metrics)
         self.assertAlmostEqual(summary["overallCompositeLoss"], expected_loss)
 
+    def test_new_required_tenure_and_rpi_metrics_are_weighted_and_scored(self) -> None:
+        summary = build_validation_summary(
+            version="v-test",
+            seed_results=self._synthetic_seed_results(),
+            seeds=[1, 2, 3, 4, 5, 6, 7, 8],
+        )
+        metrics_by_id = {metric["metricId"]: metric for metric in summary["metrics"]}
+
+        for metric_id in ("household_owning_share", "household_renting_share", "rpi_mean"):
+            metric = metrics_by_id[metric_id]
+            self.assertEqual(metric["requirement"], "required")
+            self.assertEqual(metric["metricWeight"], 1.0)
+            self.assertIsNotNone(metric["metricLoss"])
+
+        self.assertEqual(metrics_by_id["household_owning_share"]["lossFamily"], "bounded_share")
+        self.assertEqual(metrics_by_id["household_renting_share"]["lossFamily"], "bounded_share")
+
+        without_new_metrics = [
+            metric["metricLoss"]
+            for metric in summary["metrics"]
+            if metric["metricWeight"] == 1.0
+            and metric["metricId"] not in {"household_owning_share", "household_renting_share", "rpi_mean"}
+        ]
+        old_composite = sum(without_new_metrics) / len(without_new_metrics)
+        self.assertNotAlmostEqual(summary["overallCompositeLoss"], old_composite)
+
     def test_resolve_was_data_root_uses_parent_checkout_when_worktree_lacks_private_datasets(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             project_root = Path(tmp_dir) / "project"
@@ -475,6 +555,9 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             "core_hpiMean": 1.02,
             "core_hpiStd": 0.0135,
             "core_hpiCyclePeriod": 170.0,
+            "rpi_mean": 1.04,
+            "household_owning_share": 66.0,
+            "household_renting_share": 21.0,
             "core_ooDebtToIncome": 110.0,
             "core_rentalYield": 4.0,
             "core_interestRateSpread": 1.5,
