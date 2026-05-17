@@ -36,6 +36,25 @@ Required entry field format:
 - Method-selection decision logic:
   - `Objective=<...>; Why=<...>; Tradeoff=<...>`
 
+## Validation Catalog Metric Additions
+
+### 2026-05-14: tenure shares and Rental Price Index mean
+- Metric ids added to the 2024 validation catalog and the v0-family 2011 reference overlay:
+  - `household_owning_share`
+  - `household_renting_share`
+  - `rpi_mean`
+- Source/evidence artifacts:
+  - `input-data-versions/validation-sources/2024/frs/`
+  - `input-data-versions/validation-sources/2011/frs/`
+  - `input-data-versions/validation-sources/2024/ons-rpi/`
+  - `input-data-versions/validation-sources/2011/ons-rpi/`
+- Implementation notes:
+  - Tenure shares use `HousingStatus-run1.csv` stock snapshots, with owner-occupied as `HousingStatus == 2` and private renting as `HousingStatus == 1`.
+  - `rpi_mean` reads `Output-run1.csv` column `Rental HPI`, rebased to the first validation-window value = `1.0`.
+  - RPI means Rental Price Index, not Retail Prices Index.
+  - Tenure-share loss uses bounded-domain-normalized percentage-point distance over the 0..100 percentage-point share domain; the rounded FRS source bands remain the status bands, not the loss denominator.
+  - `household_btl_investing_share` remains excluded from this metric-list update because no acceptable public/source evidence artifact has been checked in for both 2011 and 2024.
+
 ## Current Reproducible Commands (Latest Baseline: `input-data-versions/v4.21`)
 
 ### `scripts/python/calibration/was/age_dist.py`

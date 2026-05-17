@@ -2,6 +2,7 @@
   "author": "Max Stoddard",
   "schema_version": 3,
   "description": "Structured dashboard-facing history for input-data versions, calibration provenance, and legacy WAS validation diffs.",
+  "validation_catalog_note": "As of 2026-05-14, the validation catalog also includes source-backed household_owning_share, household_renting_share, and rpi_mean metrics. RPI means Rental Price Index, not Retail Prices Index.",
   "fields": {
     "version_id": "Display version id in notes (for example v0a, v2.1, v4.0).",
     "snapshot_folder": "Snapshot folder under input-data-versions/ used by switch-input-data.sh.",
