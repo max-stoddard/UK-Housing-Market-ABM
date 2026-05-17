@@ -242,6 +242,7 @@ export type ValidationLossFamily =
   | 'positive_level'
   | 'signed_additive'
   | 'bounded_low_is_better'
+  | 'bounded_share'
   | 'diagnostic';
 export type ValidationLossScaleBasis =
   | 'source_value'
@@ -250,6 +251,8 @@ export type ValidationLossScaleBasis =
   | 'target_band_lower_abs'
   | 'target_band_upper_abs'
   | 'target_band_half_width'
+  | 'target_band_width'
+  | 'bounded_share_domain_width'
   | 'metric_floor'
   | 'not_applicable';
 

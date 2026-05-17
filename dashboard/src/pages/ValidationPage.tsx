@@ -91,7 +91,9 @@ function formatLossFamily(metric: ValidationMetricSummary): string | null {
         ? 'Signed additive'
         : metric.lossFamily === 'bounded_low_is_better'
           ? 'Bounded low-is-better'
-          : 'Diagnostic';
+          : metric.lossFamily === 'bounded_share'
+            ? 'Bounded share'
+            : 'Diagnostic';
   const transform = metric.lossTransform ? `, ${metric.lossTransform.replace(/_/gu, ' ')}` : '';
   return `Loss family: ${familyLabel}${transform}`;
 }
@@ -114,6 +116,12 @@ function formatLossScaleBasisLabel(basis: ValidationMetricSummary['lossScaleBasi
   }
   if (basis === 'target_band_half_width') {
     return 'target-band half-width';
+  }
+  if (basis === 'target_band_width') {
+    return 'target-band width';
+  }
+  if (basis === 'bounded_share_domain_width') {
+    return 'bounded share domain width';
   }
   if (basis === 'metric_floor') {
     return 'metric floor';
@@ -708,8 +716,9 @@ export function ValidationPage() {
           </p>
           <p className="validation-formula">
             <strong>Metric loss</strong> uses family-aware distance: log-ratio for positive levels, robust additive
-            distance for signed metrics, and bounded low-is-better scoring for JSD, plus spread and seeds outside band
-            components.
+            distance for signed metrics, bounded-domain-normalized percentage-point distance for tenure shares, and
+            bounded low-is-better scoring for JSD, plus spread and seeds outside band components. Target bands still
+            determine pass, warn, and fail status.
           </p>
         </div>
       </article>

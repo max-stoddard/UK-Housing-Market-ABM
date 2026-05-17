@@ -7559,7 +7559,11 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('family-aware distance') &&
     validationPageSource.includes('log-ratio for positive levels') &&
-    validationPageSource.includes('bounded low-is-better scoring for JSD'),
+    validationPageSource.includes('bounded-domain-normalized percentage-point distance for tenure shares') &&
+    validationPageSource.includes('bounded low-is-better scoring') &&
+    validationPageSource.includes('for JSD') &&
+    validationPageSource.includes('Target bands still') &&
+    validationPageSource.includes('determine pass, warn, and fail status'),
   'Validation page should explain the family-aware validation loss calculation'
 );
 assert.ok(
