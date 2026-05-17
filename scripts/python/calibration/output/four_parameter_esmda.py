@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run ES-MDA calibration for four output-calibrated parameters.
+"""Run ES-MDA calibration for jointly output-calibrated parameters.
 
-The workflow is deliberately separate from ``btl_probability_multiplier.py`` so
-``vX.Xo`` and ``vX.Xoo`` can remain distinct output-calibration stages.
+The historical module name is kept so existing reproduction commands continue
+to work. Current campaigns use the five-parameter output ES-MDA parameter set.
 
 @author: Max Stoddard
 """
@@ -33,7 +33,7 @@ from scripts.python.calibration.output.candidate_runs import (
 )
 from scripts.python.calibration.output.esmda import (
     DEFAULT_PARAMETER_SPECS,
-    FOUR_PARAMETER_NAMES,
+    OUTPUT_ESMDA_PARAMETER_NAMES,
     clip_transformed_ensemble_to_bounds,
     esmda_update,
     generate_initial_ensemble,
@@ -62,6 +62,7 @@ from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compil
 from scripts.python.helpers.common.cli import format_float
 from scripts.python.helpers.common.paths import repo_root as default_repo_root
 from scripts.python.validation.model.runner import resolve_was_data_root
+from scripts.python.validation.model.schema import VALIDATION_WINDOW_END, VALIDATION_WINDOW_START
 
 DEFAULT_SEEDS = (1, 2, 3, 4, 5, 6, 7, 8)
 DEFAULT_WORKERS = 20
@@ -76,6 +77,12 @@ DEFAULT_MATERIAL_LOSS_IMPROVEMENT = 2.0e-2
 DEFAULT_STRATEGIC_METRIC_DEGRADATION_TOLERANCE = 0.1
 DEFAULT_EXCESSIVE_MOVEMENT_THRESHOLD = 1.0
 DEFAULT_BOUNDARY_LOSS_IMPROVEMENT = 5.0e-2
+WORKFLOW_SLUG = "five-parameter-esmda"
+WORKFLOW_NAME = "five-parameter-esmda"
+METADATA_FILENAME = "OutputParameterEsmdaMetadata.json"
+SUMMARY_FILENAME = "OutputParameterEsmdaCalibrationSummary.json"
+LEGACY_METADATA_FILENAME = "FourParameterEsmdaMetadata.json"
+LEGACY_SUMMARY_FILENAME = "FourParameterEsmdaCalibrationSummary.json"
 LOSS_HANDLING_NOTE = (
     "Validation metricLoss and overallCompositeLoss values are family-aware and unbounded; values greater than 1.0 "
     "are expected for severe misses and must not be clipped or treated as probabilities. ES-MDA can also run the "
@@ -96,7 +103,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     """Build the CLI parser."""
 
     parser = argparse.ArgumentParser(
-        description="ES-MDA calibration for four output-calibrated housing-model parameters.",
+        description="ES-MDA calibration for jointly output-calibrated housing-model parameters.",
     )
     parser.add_argument("--version", required=True, help="Source input-data version, for example v4.14o")
     parser.add_argument("--output-version", required=True, help="Output version to create, for example v4.14oo")
@@ -146,6 +153,24 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--rng-seed", type=int, default=DEFAULT_RNG_SEED)
     parser.add_argument(
+        "--n-steps",
+        type=int,
+        default=None,
+        help="Optional N_STEPS override for candidate model runs; omitted keeps the snapshot config value.",
+    )
+    parser.add_argument(
+        "--validation-window-start",
+        type=int,
+        default=VALIDATION_WINDOW_START,
+        help=f"Metric extraction window start index (default: {VALIDATION_WINDOW_START}).",
+    )
+    parser.add_argument(
+        "--validation-window-end",
+        type=int,
+        default=VALIDATION_WINDOW_END,
+        help=f"Metric extraction window end index, exclusive for time series (default: {VALIDATION_WINDOW_END}).",
+    )
+    parser.add_argument(
         "--output-root",
         default=DEFAULT_OUTPUT_ROOT,
         help=f"Transient output root (default: {DEFAULT_OUTPUT_ROOT}).",
@@ -157,6 +182,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw).")
     parser.add_argument("--force-rerun", action="store_true", help="Ignore cached per-seed metric JSON.")
+    parser.add_argument(
+        "--delete-csv-after-metrics",
+        action="store_true",
+        help="After each seed's metrics are safely cached, delete generated run CSV outputs from that seed directory.",
+    )
     parser.add_argument("--overwrite-version", action="store_true", help="Replace an existing output version folder.")
     parser.add_argument(
         "--no-local-refinement",
@@ -190,7 +220,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) -> dict[str, object]:
-    """Run or dry-run the four-parameter ES-MDA workflow."""
+    """Run or dry-run the output-parameter ES-MDA workflow."""
 
     resolved_repo_root = repo_root or default_repo_root()
     maven_bin = resolve_maven_bin(resolved_repo_root, args.maven_bin)
@@ -213,7 +243,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         raise RuntimeError(f"Missing source version config: {source_config_path}")
     source_parameters = parse_config_parameters(source_config_path.read_text(encoding="utf-8"))
 
-    output_root = resolve_repo_path(resolved_repo_root, args.output_root) / output_version / "four-parameter-esmda"
+    output_root = resolve_repo_path(resolved_repo_root, args.output_root) / output_version / WORKFLOW_SLUG
     evidence_dir = (
         resolve_repo_path(resolved_repo_root, args.evidence_dir)
         if args.evidence_dir
@@ -251,7 +281,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         output_root=output_root,
         evidence_dir=evidence_dir,
     )
-    write_json(output_root / "FourParameterEsmdaMetadata.json", metadata)
+    _write_summary_artifacts(output_root, metadata, is_metadata=True)
     _write_parameter_sets_csv(output_root / "InitialEnsemble.csv", initial_parameters)
 
     if args.dry_run:
@@ -261,7 +291,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             "createdOutputVersion": False,
             "initialEnsembleCsv": str(output_root / "InitialEnsemble.csv"),
         }
-        write_json(output_root / "FourParameterEsmdaCalibrationSummary.json", summary)
+        _write_summary_artifacts(output_root, summary)
         return summary
 
     requested_output_dir = resolved_repo_root / "input-data-versions" / output_version
@@ -293,6 +323,10 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             validation_profile=validation_profile,
             was_data_root=was_data_root,
             workers=args.workers,
+            delete_csv_after_metrics=args.delete_csv_after_metrics,
+            n_steps=args.n_steps,
+            validation_window_start=args.validation_window_start,
+            validation_window_end=args.validation_window_end,
         )
         grouped_seed_results = group_seed_run_results_by_member(seed_run_results)
         iteration_member_results = [
@@ -306,6 +340,8 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
                 validation_profile=validation_profile,
                 observations=observations,
                 source_parameters=source_parameters,
+                validation_window_start=args.validation_window_start,
+                validation_window_end=args.validation_window_end,
             )
             for member_id in range(len(current_parameters))
         ]
@@ -322,7 +358,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         best_iteration_member = min(iteration_member_results, key=member_rank_key)
         elapsed = time.monotonic() - started_at
         print(
-            "[four-parameter-esmda] "
+            "[output-esmda] "
             f"iteration={iteration + 1}/{args.assimilation_steps + 1} "
             f"bestMember={best_iteration_member.member_id} "
             f"rankLoss={best_iteration_member.ranking_loss:.6f} "
@@ -363,7 +399,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
     )
     local_iteration = args.assimilation_steps + 1
     print(
-        "[four-parameter-esmda] "
+        "[output-esmda] "
         f"localRefinement={'disabled' if args.no_local_refinement else 'enabled'} "
         f"seedMembers={len(local_seed_members)} snappedCandidates={len(local_candidates)} "
         f"seedRuns={len(local_candidates) * len(seeds)} validationObjective={args.validation_objective}",
@@ -381,6 +417,10 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         validation_profile=validation_profile,
         was_data_root=was_data_root,
         workers=args.workers,
+        delete_csv_after_metrics=args.delete_csv_after_metrics,
+        n_steps=args.n_steps,
+        validation_window_start=args.validation_window_start,
+        validation_window_end=args.validation_window_end,
     )
     local_grouped_seed_results = group_seed_run_results_by_member(local_seed_run_results)
     local_member_results = [
@@ -394,6 +434,8 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             validation_profile=validation_profile,
             observations=observations,
             source_parameters=source_parameters,
+            validation_window_start=args.validation_window_start,
+            validation_window_end=args.validation_window_end,
         )
         for member_id in range(len(local_candidates))
     ]
@@ -431,13 +473,13 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             "warnings": warnings,
             "finalValidationNote": "No output version was promoted because every snapped candidate breached guardrails.",
         }
-        write_json(output_root / "FourParameterEsmdaCalibrationSummary.json", summary)
-        write_json(evidence_dir / "FourParameterEsmdaCalibrationSummary.json", summary)
+        _write_summary_artifacts(output_root, summary)
+        _write_summary_artifacts(evidence_dir, summary)
         _write_member_results_csv(output_root / "AllEvaluatedMembers.csv", all_member_results)
         _write_member_results_csv(output_root / "LocalRefinementMembers.csv", local_member_results)
         _write_member_results_csv(evidence_dir / "AllEvaluatedMembers.csv", all_member_results)
         _write_member_results_csv(evidence_dir / "LocalRefinementMembers.csv", local_member_results)
-        raise RuntimeError("No snapped local-refinement candidate passed guardrails; see FourParameterEsmdaCalibrationSummary.json")
+        raise RuntimeError(f"No snapped local-refinement candidate passed guardrails; see {SUMMARY_FILENAME}")
 
     output_version_dir = create_output_version(
         repo_root=resolved_repo_root,
@@ -470,8 +512,8 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             "Run input-data-versions/validate.sh before claiming release calibration validity."
         ),
     }
-    write_json(output_root / "FourParameterEsmdaCalibrationSummary.json", summary)
-    write_json(evidence_dir / "FourParameterEsmdaCalibrationSummary.json", summary)
+    _write_summary_artifacts(output_root, summary)
+    _write_summary_artifacts(evidence_dir, summary)
     _write_member_results_csv(output_root / "AllEvaluatedMembers.csv", all_member_results)
     _write_member_results_csv(evidence_dir / "AllEvaluatedMembers.csv", all_member_results)
     _write_member_results_csv(evidence_dir / "LocalRefinementMembers.csv", local_member_results)
@@ -482,7 +524,7 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
     """Build a shell command that reproduces the requested workflow."""
 
     command = [
-        "python3 -m scripts.python.calibration.output.four_parameter_esmda",
+        "python3 -m scripts.python.calibration.output.output_parameter_esmda",
         f"--version {args.version}",
         f"--output-version {args.output_version}",
         f"--validation-year {args.validation_year}",
@@ -493,14 +535,20 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
         f"--ensemble-size {args.ensemble_size}",
         f"--assimilation-steps {args.assimilation_steps}",
         f"--rng-seed {args.rng_seed}",
+        f"--validation-window-start {args.validation_window_start}",
+        f"--validation-window-end {args.validation_window_end}",
         f"--output-root {args.output_root}",
     ]
+    if args.n_steps is not None:
+        command.append(f"--n-steps {args.n_steps}")
     if args.evidence_dir:
         command.append(f"--evidence-dir {args.evidence_dir}")
     if args.maven_bin:
         command.append(f"--maven-bin {args.maven_bin}")
     if args.force_rerun:
         command.append("--force-rerun")
+    if args.delete_csv_after_metrics:
+        command.append("--delete-csv-after-metrics")
     if args.overwrite_version:
         command.append("--overwrite-version")
     if args.no_local_refinement:
@@ -515,6 +563,15 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
     if args.dry_run:
         command.append("--dry-run")
     return (" " + "\\" + "\n  ").join(command) + "\n"
+
+
+def _write_summary_artifacts(path: Path, payload: Mapping[str, object], *, is_metadata: bool = False) -> None:
+    """Write generic artifact names plus historical aliases for compatibility."""
+
+    primary = METADATA_FILENAME if is_metadata else SUMMARY_FILENAME
+    legacy = LEGACY_METADATA_FILENAME if is_metadata else LEGACY_SUMMARY_FILENAME
+    write_json(path / primary, payload)
+    write_json(path / legacy, payload)
 
 
 def _validate_execution_args(*, args: argparse.Namespace, seeds: Sequence[int]) -> None:
@@ -534,6 +591,15 @@ def _validate_execution_args(*, args: argparse.Namespace, seeds: Sequence[int]) 
         raise ValueError("local-refinement-radius must be non-negative")
     if args.local_refinement_max_candidates <= 0:
         raise ValueError("local-refinement-max-candidates must be positive")
+    if args.validation_window_start < 0:
+        raise ValueError("validation-window-start must be non-negative")
+    if args.validation_window_end <= args.validation_window_start:
+        raise ValueError("validation-window-end must be greater than validation-window-start")
+    if args.n_steps is not None:
+        if args.n_steps <= 0:
+            raise ValueError("n-steps must be positive")
+        if args.validation_window_end > args.n_steps:
+            raise ValueError("validation-window-end must be less than or equal to n-steps")
 
 
 def _build_base_metadata(
@@ -550,10 +616,10 @@ def _build_base_metadata(
     evidence_dir: Path,
 ) -> dict[str, object]:
     return {
-        "workflow": "four-parameter-esmda",
+        "workflow": WORKFLOW_NAME,
         "sourceVersion": version,
         "outputVersion": output_version,
-        "parameters": list(FOUR_PARAMETER_NAMES),
+        "parameters": list(OUTPUT_ESMDA_PARAMETER_NAMES),
         "sourceParameters": dict(source_parameters),
         "validationProfile": summarize_validation_profile(validation_profile),
         "validationLossHandling": LOSS_HANDLING_NOTE,
@@ -568,6 +634,12 @@ def _build_base_metadata(
         "ensembleSize": args.ensemble_size,
         "assimilationSteps": args.assimilation_steps,
         "rngSeed": args.rng_seed,
+        "nSteps": args.n_steps,
+        "validationWindow": {
+            "startIndex": args.validation_window_start,
+            "endIndex": args.validation_window_end,
+        },
+        "deleteCsvAfterMetrics": args.delete_csv_after_metrics,
         "alphaSchedule": [float(alpha) for alpha in alphas],
         "alphaScheduleCheckSumInverse": float(np.sum(1.0 / alphas)),
         "parameterSpecs": [asdict(spec) for spec in DEFAULT_PARAMETER_SPECS],
@@ -634,7 +706,7 @@ def _write_parameter_sets_csv(path: Path, parameter_sets: Sequence[Mapping[str, 
     rows = []
     for index, parameters in enumerate(parameter_sets):
         row: dict[str, object] = {"memberId": index}
-        row.update({key: float(parameters[key]) for key in FOUR_PARAMETER_NAMES})
+        row.update({key: float(parameters[key]) for key in OUTPUT_ESMDA_PARAMETER_NAMES})
         rows.append(row)
     _write_csv(path, rows)
 
@@ -654,7 +726,7 @@ def _write_member_results_csv(path: Path, member_results: Sequence[MemberValidat
             "failCount": counts.get("fail", 0),
             "normalizedSourceMovement": member.normalized_source_movement,
         }
-        row.update({key: member.parameters[key] for key in FOUR_PARAMETER_NAMES})
+        row.update({key: member.parameters[key] for key in OUTPUT_ESMDA_PARAMETER_NAMES})
         rows.append(row)
     _write_csv(path, rows)
 

@@ -1,4 +1,4 @@
-"""Validation bridge for four-parameter output ES-MDA calibration.
+"""Validation bridge for output ES-MDA calibration.
 
 @author: Max Stoddard
 """
@@ -259,6 +259,8 @@ def build_member_validation_result(
     observations: Sequence[ValidationObservation],
     source_parameters: Mapping[str, float],
     specs: Sequence[ParameterSpec] = DEFAULT_PARAMETER_SPECS,
+    validation_window_start: int | None = None,
+    validation_window_end: int | None = None,
 ) -> MemberValidationResult:
     """Build a member-level validation summary without publishing tracked JSON."""
 
@@ -267,6 +269,8 @@ def build_member_validation_result(
         seed_results=seed_results,
         seeds=seeds,
         validation_profile=validation_profile,
+        window_start=validation_window_start,
+        window_end=validation_window_end,
     )
     vector = member_observation_vector(summary=summary, observations=observations)
     ranking_loss, ranking_objective = ranking_loss_for_summary(summary=summary, observations=observations)

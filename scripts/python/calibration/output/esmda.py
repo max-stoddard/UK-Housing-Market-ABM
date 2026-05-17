@@ -1,4 +1,4 @@
-"""ES-MDA helpers for four-parameter output calibration.
+"""ES-MDA helpers for output-parameter calibration.
 
 @author: Max Stoddard
 """
@@ -22,15 +22,19 @@ except Exception:  # pragma: no cover
 
 PSYCHOLOGICAL_COST_OF_RENTING = "PSYCHOLOGICAL_COST_OF_RENTING"
 SENSITIVITY_RENT_OR_PURCHASE = "SENSITIVITY_RENT_OR_PURCHASE"
+BTL_PROBABILITY_MULTIPLIER = "BTL_PROBABILITY_MULTIPLIER"
 BTL_CHOICE_INTENSITY = "BTL_CHOICE_INTENSITY"
 MARKET_AVERAGE_PRICE_DECAY = "MARKET_AVERAGE_PRICE_DECAY"
 
-FOUR_PARAMETER_NAMES = (
+OUTPUT_ESMDA_PARAMETER_NAMES = (
     PSYCHOLOGICAL_COST_OF_RENTING,
     SENSITIVITY_RENT_OR_PURCHASE,
+    BTL_PROBABILITY_MULTIPLIER,
     BTL_CHOICE_INTENSITY,
     MARKET_AVERAGE_PRICE_DECAY,
 )
+FIVE_PARAMETER_NAMES = OUTPUT_ESMDA_PARAMETER_NAMES
+FOUR_PARAMETER_NAMES = OUTPUT_ESMDA_PARAMETER_NAMES
 
 TRANSFORM_BOUNDED_LOGIT = "bounded_logit"
 TRANSFORM_LOG10 = "log10"
@@ -129,7 +133,8 @@ class ParameterSpec:
         if self.final_sigfigs is not None:
             return self.clip(_round_sigfigs(clipped, self.final_sigfigs))
         if self.final_snap is not None:
-            return self.clip(round(clipped / self.final_snap) * self.final_snap)
+            snapped = round(clipped / self.final_snap) * self.final_snap
+            return self.clip(round(snapped, _decimal_places(self.final_snap)))
         return clipped
 
 
@@ -151,6 +156,15 @@ DEFAULT_PARAMETER_SPECS = (
         prior_upper=0.0015,
         transform=TRANSFORM_LOG10,
         final_sigfigs=2,
+    ),
+    ParameterSpec(
+        name=BTL_PROBABILITY_MULTIPLIER,
+        lower=0.05,
+        upper=2.5,
+        prior_lower=0.35,
+        prior_upper=1.9,
+        transform=TRANSFORM_LOG10,
+        final_snap=0.005,
     ),
     ParameterSpec(
         name=BTL_CHOICE_INTENSITY,
@@ -386,11 +400,21 @@ def _round_sigfigs(value: float, sigfigs: int) -> float:
     return round(value, sigfigs - int(math.floor(math.log10(abs(value)))) - 1)
 
 
+def _decimal_places(value: float) -> int:
+    text = f"{value:.12f}".rstrip("0").rstrip(".")
+    if "." not in text:
+        return 0
+    return len(text.split(".", 1)[1])
+
+
 __all__ = [
+    "BTL_PROBABILITY_MULTIPLIER",
     "BTL_CHOICE_INTENSITY",
     "DEFAULT_PARAMETER_SPECS",
+    "FIVE_PARAMETER_NAMES",
     "FOUR_PARAMETER_NAMES",
     "MARKET_AVERAGE_PRICE_DECAY",
+    "OUTPUT_ESMDA_PARAMETER_NAMES",
     "PSYCHOLOGICAL_COST_OF_RENTING",
     "SENSITIVITY_RENT_OR_PURCHASE",
     "ParameterSpec",
