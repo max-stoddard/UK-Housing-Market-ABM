@@ -1305,6 +1305,52 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
 - Version(s) affected:
   - `v0o2`
 
+### v0o3
+- Script path:
+  - `scripts/python/calibration/output/output_parameter_esmda.py`
+  - historical compatibility entrypoint retained: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_PROBABILITY_MULTIPLIER`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+  - Evidence artifacts were retained under `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/`.
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.output_parameter_esmda --version v0 --output-version v0o3 --validation-year 2011 --validation-objective family_aware_metric_loss --validation-loss-error-std 1.0 --seeds 1,2,3,4,5,6,7,8,9,10 --workers 20 --ensemble-size 64 --assimilation-steps 6 --rng-seed 20260515 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --output-root tmp/output-calibration --evidence-dir input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3 --local-refinement-top-n 10 --local-refinement-radius 1 --local-refinement-max-candidates 100 --delete-csv-after-metrics`
+- Expected result snippet:
+  - `createdOutputVersion = false`
+  - no output version was promoted because every snapped local-refinement candidate breached guardrails
+  - `deleteCsvAfterMetrics = true`
+  - `nSteps = 3500`
+  - `validationWindow = 500..3500`
+  - `seeds = 1..10`
+  - best rejected local candidate: `PSYCHOLOGICAL_COST_OF_RENTING = 0.2`, `SENSITIVITY_RENT_OR_PURCHASE = 0.0011`, `BTL_PROBABILITY_MULTIPLIER = 1.13`, `BTL_CHOICE_INTENSITY = 90`, `MARKET_AVERAGE_PRICE_DECAY = 0.68`
+  - best rejected 2011/W3 `overallCompositeLoss = 0.403528` versus `v0` campaign baseline `0.516610`
+  - best rejected status counts `pass=10`, `warn=0`, `fail=10` versus baseline `pass=4`, `warn=3`, `fail=13`
+  - guardrail rejection reason: `core_hpiStd` metric loss degraded from `0.356917` to `0.949698`, exceeding the `0.1` strategic-metric degradation tolerance.
+- Method chosen:
+  - Five-parameter ESMDA output calibration against `validation-reference-v0-2011` using the schema-v4 `family_aware_metric_loss` objective and `schema4_metric_loss` assimilation transform.
+  - The campaign jointly varied `PSYCHOLOGICAL_COST_OF_RENTING`, `SENSITIVITY_RENT_OR_PURCHASE`, `BTL_PROBABILITY_MULTIPLIER`, `BTL_CHOICE_INTENSITY`, and `MARKET_AVERAGE_PRICE_DECAY` from source snapshot `v0`, without running a separate BTL-probability stage.
+  - `BTL_PROBABILITY_MULTIPLIER` used positive log-space ESMDA bounds `0.05..2.5`, prior range `0.35..1.9`, and practical snapping to `0.005`.
+  - The run used `64` ensemble members, `6` assimilation steps plus the initial prior evaluation, seeds `1..10`, `20` workers, `N_STEPS = 3500`, validation/calibration window `500..3500`, rng seed `20260515`, and snapped local refinement with top-n `10`, radius `1`, and max candidates `100`.
+  - Local refinement evaluated `99` deduplicated snapped candidates (`990` local seed-runs). Every snapped candidate was rejected by the promotion guardrails.
+- Guardrail decision logic:
+  - Promotion required a loss improvement of at least `0.001`, no material strategic-metric degradation beyond `0.1`, no unearned fail-count increase, no excessive normalized source movement for marginal gains, and no hard-boundary parameter unless justified by a strong loss improvement.
+  - Strategic metrics guarded: `core_advancesToBTL`, `core_hpiMean`, `core_hpiStd`, `core_hpiCyclePeriod`, `income_distribution_jsd`, `housing_wealth_distribution_jsd`, and `financial_wealth_distribution_jsd`.
+  - The automated guardrail correctly rejected the best aggregate candidate because the aggregate 2011/W3 loss gain came with a material `core_hpiStd` regression.
+- Method-selection decision logic:
+  - `Objective=2011/W3 reference reproduction; Why=the campaign tested whether a direct five-parameter ES-MDA from v0 could jointly replace the separate BTL-probability stage and four-parameter stage under the family-aware validation objective; Tradeoff=the larger 64x6, 10-seed, long-window run improved aggregate 2011 campaign loss for the best rejected candidate but was not promoted because guarded house-price volatility materially regressed.`
+- Rationale category:
+  - output calibration failed guardrail attempt
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/AllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/LocalRefinementMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/OutputParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/README.md`
+- Version(s) affected:
+  - `v0o3`
+
 ### v4.14oo
 - Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
 - Outputs/keys produced:

@@ -1,0 +1,4662 @@
+{
+  "workflow": "five-parameter-esmda",
+  "sourceVersion": "v0",
+  "outputVersion": "v0o3",
+  "parameters": [
+    "PSYCHOLOGICAL_COST_OF_RENTING",
+    "SENSITIVITY_RENT_OR_PURCHASE",
+    "BTL_PROBABILITY_MULTIPLIER",
+    "BTL_CHOICE_INTENSITY",
+    "MARKET_AVERAGE_PRICE_DECAY"
+  ],
+  "sourceParameters": {
+    "PSYCHOLOGICAL_COST_OF_RENTING": 0.4,
+    "SENSITIVITY_RENT_OR_PURCHASE": 0.001,
+    "BTL_PROBABILITY_MULTIPLIER": 1.76,
+    "BTL_CHOICE_INTENSITY": 100.0,
+    "MARKET_AVERAGE_PRICE_DECAY": 0.5
+  },
+  "validationProfile": {
+    "profileId": "validation-reference-v0-2011",
+    "validationTargetYear": 2011,
+    "wasDataset": "W3",
+    "metricCount": 20,
+    "requiredMetricCount": 20
+  },
+  "validationLossHandling": "Validation metricLoss and overallCompositeLoss values are family-aware and unbounded; values greater than 1.0 are expected for severe misses and must not be clipped or treated as probabilities. ES-MDA can also run the old-compatible target-normalized additive objective for reproducibility.",
+  "validationObjective": "family_aware_metric_loss",
+  "assimilationTransform": "schema4_metric_loss",
+  "rankingObjective": "family_aware_metric_loss",
+  "validationLossErrorStd": 1.0,
+  "guardrailThresholds": {
+    "requiredLossImprovement": 0.001,
+    "materialLossImprovementForFailCountIncrease": 0.02,
+    "strategicMetricDegradationTolerance": 0.1,
+    "excessiveNormalizedSourceMovement": 1.0,
+    "boundaryParameterMinimumLossImprovement": 0.05,
+    "strategicMetricIds": [
+      "core_advancesToBTL",
+      "core_hpiMean",
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
+      "income_distribution_jsd",
+      "housing_wealth_distribution_jsd",
+      "financial_wealth_distribution_jsd"
+    ],
+    "rankingPrimaryObjective": "lowest 2011/W3 overallCompositeLoss when validation-year=2011 and validation-objective=family_aware_metric_loss"
+  },
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "workers": 20,
+  "candidateParallelism": 2,
+  "ensembleSize": 64,
+  "assimilationSteps": 6,
+  "rngSeed": 20260515,
+  "nSteps": 3500,
+  "validationWindow": {
+    "startIndex": 500,
+    "endIndex": 3500
+  },
+  "deleteCsvAfterMetrics": true,
+  "alphaSchedule": [
+    2.9411699999999996,
+    4.201671428571428,
+    6.002387755102041,
+    8.574839650145774,
+    12.249770928779677,
+    17.49967275539954
+  ],
+  "alphaScheduleCheckSumInverse": 1.0,
+  "parameterSpecs": [
+    {
+      "name": "PSYCHOLOGICAL_COST_OF_RENTING",
+      "lower": 0.0,
+      "upper": 0.8,
+      "prior_lower": 0.2,
+      "prior_upper": 0.6,
+      "transform": "bounded_logit",
+      "final_snap": 0.05,
+      "final_sigfigs": null
+    },
+    {
+      "name": "SENSITIVITY_RENT_OR_PURCHASE",
+      "lower": 0.0001,
+      "upper": 0.002,
+      "prior_lower": 0.0005,
+      "prior_upper": 0.0015,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": 2
+    },
+    {
+      "name": "BTL_PROBABILITY_MULTIPLIER",
+      "lower": 0.05,
+      "upper": 2.5,
+      "prior_lower": 0.35,
+      "prior_upper": 1.9,
+      "transform": "log10",
+      "final_snap": 0.005,
+      "final_sigfigs": null
+    },
+    {
+      "name": "BTL_CHOICE_INTENSITY",
+      "lower": 25.0,
+      "upper": 250.0,
+      "prior_lower": 50.0,
+      "prior_upper": 150.0,
+      "transform": "log10",
+      "final_snap": 10.0,
+      "final_sigfigs": null
+    },
+    {
+      "name": "MARKET_AVERAGE_PRICE_DECAY",
+      "lower": 0.25,
+      "upper": 0.85,
+      "prior_lower": 0.4,
+      "prior_upper": 0.7,
+      "transform": "bounded_logit",
+      "final_snap": 0.02,
+      "final_sigfigs": null
+    }
+  ],
+  "observations": [
+    {
+      "metric_id": "core_mortgageApprovals",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 42.883,
+      "target_upper": 52.93
+    },
+    {
+      "metric_id": "core_housingTransactions",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 68.68,
+      "target_upper": 77.16
+    },
+    {
+      "metric_id": "core_advancesToFTB",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 13.671,
+      "target_upper": 18.496
+    },
+    {
+      "metric_id": "core_advancesToHM",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 22.419,
+      "target_upper": 30.331
+    },
+    {
+      "metric_id": "core_advancesToBTL",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 5.95,
+      "target_upper": 8.05
+    },
+    {
+      "metric_id": "core_debtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 161.8704279215477,
+      "target_upper": 164.2259943729304
+    },
+    {
+      "metric_id": "core_priceToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 4.225101341813285,
+      "target_upper": 4.268301630303742
+    },
+    {
+      "metric_id": "core_housePriceGrowth",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": -0.9449694274597076,
+      "target_upper": 0.1702610669693572
+    },
+    {
+      "metric_id": "core_hpiMean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.8434413580246913,
+      "target_upper": 1.1411265432098765
+    },
+    {
+      "metric_id": "core_hpiStd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.23516966531682607,
+      "target_upper": 0.3181707236639411
+    },
+    {
+      "metric_id": "core_hpiCyclePeriod",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 145.63333333333333,
+      "target_upper": 197.03333333333333
+    },
+    {
+      "metric_id": "rpi_mean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 1.0,
+      "target_upper": 1.024436208035
+    },
+    {
+      "metric_id": "household_owning_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 65.5,
+      "target_upper": 66.5
+    },
+    {
+      "metric_id": "household_renting_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 16.5,
+      "target_upper": 17.5
+    },
+    {
+      "metric_id": "core_ooDebtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 98.61909294397614,
+      "target_upper": 99.75341253849653
+    },
+    {
+      "metric_id": "core_rentalYield",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 5.185,
+      "target_upper": 7.014999999999999
+    },
+    {
+      "metric_id": "core_interestRateSpread",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 2.3975732465696207,
+      "target_upper": 2.626824733041048
+    },
+    {
+      "metric_id": "income_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "housing_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "financial_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    }
+  ],
+  "outputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v0o3/five-parameter-esmda",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3",
+  "dryRun": false,
+  "createdOutputVersion": false,
+  "globalBest": {
+    "iteration": 1,
+    "memberId": 1,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.25",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.00079",
+      "BTL_PROBABILITY_MULTIPLIER": "1.18",
+      "BTL_CHOICE_INTENSITY": "110",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.6"
+    },
+    "overallCompositeLoss": 0.4223347118678501,
+    "rankingLoss": 0.4223347118678501,
+    "rankingObjective": "family_aware_metric_loss",
+    "statusCounts": {
+      "pass": 7,
+      "warn": 3,
+      "fail": 10,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.25218608064076053,
+    "rankKey": [
+      0.4223347118678501,
+      10,
+      3,
+      0.25218608064076053
+    ]
+  },
+  "baseline": {
+    "iteration": 0,
+    "memberId": 0,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.4",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.001",
+      "BTL_PROBABILITY_MULTIPLIER": "1.76",
+      "BTL_CHOICE_INTENSITY": "100",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+    },
+    "overallCompositeLoss": 0.5166098865546315,
+    "rankingLoss": 0.5166098865546315,
+    "rankingObjective": "family_aware_metric_loss",
+    "statusCounts": {
+      "pass": 4,
+      "warn": 3,
+      "fail": 13,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.0,
+    "rankKey": [
+      0.5166098865546315,
+      13,
+      3,
+      0.0
+    ]
+  },
+  "localRefinement": {
+    "enabled": true,
+    "seedTopN": 10,
+    "oneParameterNeighbourRadius": 1,
+    "maxCandidates": 100,
+    "deduplicatedSnappedCandidateCount": 99,
+    "evaluatedCandidateCount": 99,
+    "seedRuns": 990,
+    "guardrailThresholds": {
+      "requiredLossImprovement": 0.001,
+      "materialLossImprovementForFailCountIncrease": 0.02,
+      "strategicMetricDegradationTolerance": 0.1,
+      "excessiveNormalizedSourceMovement": 1.0,
+      "boundaryParameterMinimumLossImprovement": 0.05,
+      "strategicMetricIds": [
+        "core_advancesToBTL",
+        "core_hpiMean",
+        "core_hpiStd",
+        "core_hpiCyclePeriod",
+        "income_distribution_jsd",
+        "housing_wealth_distribution_jsd",
+        "financial_wealth_distribution_jsd"
+      ],
+      "rankingPrimaryObjective": "lowest 2011/W3 overallCompositeLoss when validation-year=2011 and validation-objective=family_aware_metric_loss"
+    },
+    "promotionAccepted": false,
+    "lowestLossRejected": true,
+    "promoted": {
+      "iteration": 7,
+      "memberId": 20,
+      "parameters": {
+        "PSYCHOLOGICAL_COST_OF_RENTING": "0.2",
+        "SENSITIVITY_RENT_OR_PURCHASE": "0.0011",
+        "BTL_PROBABILITY_MULTIPLIER": "1.13",
+        "BTL_CHOICE_INTENSITY": "90",
+        "MARKET_AVERAGE_PRICE_DECAY": "0.68"
+      },
+      "overallCompositeLoss": 0.40352788427184727,
+      "rankingLoss": 0.40352788427184727,
+      "rankingObjective": "family_aware_metric_loss",
+      "statusCounts": {
+        "pass": 10,
+        "warn": 0,
+        "fail": 10,
+        "unsupported": 0
+      },
+      "normalizedSourceMovement": 0.3040131521895311,
+      "rankKey": [
+        0.40352788427184727,
+        10,
+        0,
+        0.3040131521895311
+      ]
+    },
+    "lowestLoss": {
+      "iteration": 7,
+      "memberId": 20,
+      "parameters": {
+        "PSYCHOLOGICAL_COST_OF_RENTING": "0.2",
+        "SENSITIVITY_RENT_OR_PURCHASE": "0.0011",
+        "BTL_PROBABILITY_MULTIPLIER": "1.13",
+        "BTL_CHOICE_INTENSITY": "90",
+        "MARKET_AVERAGE_PRICE_DECAY": "0.68"
+      },
+      "overallCompositeLoss": 0.40352788427184727,
+      "rankingLoss": 0.40352788427184727,
+      "rankingObjective": "family_aware_metric_loss",
+      "statusCounts": {
+        "pass": 10,
+        "warn": 0,
+        "fail": 10,
+        "unsupported": 0
+      },
+      "normalizedSourceMovement": 0.3040131521895311,
+      "rankKey": [
+        0.40352788427184727,
+        10,
+        0,
+        0.3040131521895311
+      ]
+    },
+    "promotedDecision": {
+      "iteration": 7,
+      "memberId": 20,
+      "accepted": false,
+      "rejectionReasons": [
+        "strategic metric loss degraded beyond tolerance: core_hpiStd"
+      ],
+      "lossImprovementVersusBaseline": 0.1130820022827842,
+      "baselineRankingLoss": 0.5166098865546315,
+      "candidateRankingLoss": 0.40352788427184727,
+      "rankingObjective": "family_aware_metric_loss",
+      "failCountIncrease": -3,
+      "baselineStatusCounts": {
+        "pass": 4,
+        "warn": 3,
+        "fail": 13,
+        "unsupported": 0
+      },
+      "candidateStatusCounts": {
+        "pass": 10,
+        "warn": 0,
+        "fail": 10,
+        "unsupported": 0
+      },
+      "strategicMetricDegradations": [
+        {
+          "metricId": "core_hpiStd",
+          "baselineMetricLoss": 0.3569167501789907,
+          "candidateMetricLoss": 0.9496982946237966,
+          "delta": 0.5927815444448059
+        }
+      ],
+      "hardBoundaryParameters": [],
+      "normalizedSourceMovement": 0.3040131521895311,
+      "rankKey": [
+        0.40352788427184727,
+        10,
+        0,
+        0.3040131521895311
+      ]
+    },
+    "lowestLossDecision": {
+      "iteration": 7,
+      "memberId": 20,
+      "accepted": false,
+      "rejectionReasons": [
+        "strategic metric loss degraded beyond tolerance: core_hpiStd"
+      ],
+      "lossImprovementVersusBaseline": 0.1130820022827842,
+      "baselineRankingLoss": 0.5166098865546315,
+      "candidateRankingLoss": 0.40352788427184727,
+      "rankingObjective": "family_aware_metric_loss",
+      "failCountIncrease": -3,
+      "baselineStatusCounts": {
+        "pass": 4,
+        "warn": 3,
+        "fail": 13,
+        "unsupported": 0
+      },
+      "candidateStatusCounts": {
+        "pass": 10,
+        "warn": 0,
+        "fail": 10,
+        "unsupported": 0
+      },
+      "strategicMetricDegradations": [
+        {
+          "metricId": "core_hpiStd",
+          "baselineMetricLoss": 0.3569167501789907,
+          "candidateMetricLoss": 0.9496982946237966,
+          "delta": 0.5927815444448059
+        }
+      ],
+      "hardBoundaryParameters": [],
+      "normalizedSourceMovement": 0.3040131521895311,
+      "rankKey": [
+        0.40352788427184727,
+        10,
+        0,
+        0.3040131521895311
+      ]
+    },
+    "candidateDecisions": [
+      {
+        "iteration": 7,
+        "memberId": 0,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08338262202260793,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43322726453202354,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8956567323245745,
+            "delta": 0.5387399821455838
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.24055294284393608,
+        "rankKey": [
+          0.43322726453202354,
+          11,
+          2,
+          0.24055294284393608
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 1,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0649734144061358,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.45163647214849567,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 6,
+          "warn": 3,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.7935704266715173,
+            "delta": 0.4366536764925266
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.26878446105131504,
+        "rankKey": [
+          0.45163647214849567,
+          11,
+          3,
+          0.26878446105131504
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 2,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08555070143601107,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4310591851186204,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0499837832404209,
+            "delta": 0.6930670330614301
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.21528181312310773,
+        "rankKey": [
+          0.4310591851186204,
+          10,
+          2,
+          0.21528181312310773
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 3,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09869869258802694,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41791119396660453,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9073454766317339,
+            "delta": 0.5504287264527432
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.24287205503826154,
+        "rankKey": [
+          0.41791119396660453,
+          10,
+          1,
+          0.24287205503826154
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 4,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09078383917931448,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.425826047375317,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0240859645443914,
+            "delta": 0.6671692143654007
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.23826300264636005,
+        "rankKey": [
+          0.425826047375317,
+          10,
+          2,
+          0.23826300264636005
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 5,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07578039363654537,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4408294929180861,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9526207897083768,
+            "delta": 0.5957040395293861
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.24105496460870257,
+        "rankKey": [
+          0.4408294929180861,
+          10,
+          3,
+          0.24105496460870257
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 6,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09173856332983299,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4248713232247985,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.852349196881456,
+            "delta": 0.49543244670246533
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2400530437991014,
+        "rankKey": [
+          0.4248713232247985,
+          10,
+          3,
+          0.2400530437991014
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 7,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08622878085382885,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4303811057008026,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9337245273829624,
+            "delta": 0.5768077772039717
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.22320192997298544,
+        "rankKey": [
+          0.4303811057008026,
+          11,
+          1,
+          0.22320192997298544
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 8,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0979798468611301,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4186300396935014,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.847531150048191,
+            "delta": 0.4906143998692003
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2563931765436914,
+        "rankKey": [
+          0.4186300396935014,
+          10,
+          2,
+          0.2563931765436914
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 9,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08929978695801993,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42731009959661154,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8681363552891264,
+            "delta": 0.5112196051101356
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.22819175386400037,
+        "rankKey": [
+          0.42731009959661154,
+          10,
+          2,
+          0.22819175386400037
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 10,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0789506017785126,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4376592847761189,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8321736549929515,
+            "delta": 0.47525690481396077
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2532008498013868,
+        "rankKey": [
+          0.4376592847761189,
+          10,
+          3,
+          0.2532008498013868
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 11,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09279899851595791,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42381088803867356,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8930845387228632,
+            "delta": 0.5361677885438725
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3195441560560197,
+        "rankKey": [
+          0.42381088803867356,
+          11,
+          1,
+          0.3195441560560197
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 12,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09316041008357301,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42344947647105846,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8365476319291518,
+            "delta": 0.4796308817501611
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.35301590800329896,
+        "rankKey": [
+          0.42344947647105846,
+          11,
+          1,
+          0.35301590800329896
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 13,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0890466366171726,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42756324993745887,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 0,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9850675018095311,
+            "delta": 0.6281507516305403
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29131263784864075,
+        "rankKey": [
+          0.42756324993745887,
+          11,
+          0,
+          0.29131263784864075
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 14,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08879799323428755,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4278118933203439,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.943239182932168,
+            "delta": 0.5863224327531773
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.30219314318506907,
+        "rankKey": [
+          0.4278118933203439,
+          10,
+          2,
+          0.30219314318506907
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 15,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10932378405956733,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.40728610249506414,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 0,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9712016358906697,
+            "delta": 0.6142848857116789
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.335384389755775,
+        "rankKey": [
+          0.40728610249506414,
+          10,
+          0,
+          0.335384389755775
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 16,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09773585315466804,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41887403339996343,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 0,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9562740788024189,
+            "delta": 0.5993573286234282
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3200684404981815,
+        "rankKey": [
+          0.41887403339996343,
+          11,
+          0,
+          0.3200684404981815
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 17,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09097142881958836,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4256384577350431,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8694524144834195,
+            "delta": 0.5125356643044288
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.31902218634299345,
+        "rankKey": [
+          0.4256384577350431,
+          11,
+          2,
+          0.31902218634299345
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 18,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08661562322925909,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4299942633253724,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.952962862572614,
+            "delta": 0.5960461123936233
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.34098630391314516,
+        "rankKey": [
+          0.4299942633253724,
+          10,
+          2,
+          0.34098630391314516
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 19,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08767821750918303,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42893166904544844,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9178923272668909,
+            "delta": 0.5609755770879001
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.30036350119814276,
+        "rankKey": [
+          0.42893166904544844,
+          10,
+          1,
+          0.30036350119814276
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 20,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.1130820022827842,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.40352788427184727,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 0,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9496982946237966,
+            "delta": 0.5927815444448059
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3040131521895311,
+        "rankKey": [
+          0.40352788427184727,
+          10,
+          0,
+          0.3040131521895311
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 21,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09692527997847855,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4196846065761529,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9813833290405694,
+            "delta": 0.6244665788615786
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.33652794164671407,
+        "rankKey": [
+          0.4196846065761529,
+          10,
+          1,
+          0.33652794164671407
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 22,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0980307533990149,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41857913315561657,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 0,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.093147981466858,
+            "delta": 0.7362312312878674
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.20924209157399973,
+        "rankKey": [
+          0.41857913315561657,
+          10,
+          0,
+          0.20924209157399973
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 23,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07190270852761549,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.444707178027016,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0816629807162508,
+            "delta": 0.7247462305372601
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.23286381856193472,
+        "rankKey": [
+          0.444707178027016,
+          10,
+          2,
+          0.23286381856193472
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 24,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.04746809803365687,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4691417885209746,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1525952203501029,
+            "delta": 0.7956784701711122
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.18636646649014196,
+        "rankKey": [
+          0.4691417885209746,
+          11,
+          2,
+          0.18636646649014196
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 25,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08835123553827695,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4282586510163545,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1300590752827206,
+            "delta": 0.7731423251037299
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.19575089492198233,
+        "rankKey": [
+          0.4282586510163545,
+          10,
+          1,
+          0.19575089492198233
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 26,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10318144512812122,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41342844142651025,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -4,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 1,
+          "fail": 9,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.191941358527332,
+            "delta": 0.8350246083483412
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2218020951710092,
+        "rankKey": [
+          0.41342844142651025,
+          9,
+          1,
+          0.2218020951710092
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 27,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08211678015483859,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4344931063997929,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0860068668491984,
+            "delta": 0.7290901166702077
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.20969247668233457,
+        "rankKey": [
+          0.4344931063997929,
+          10,
+          2,
+          0.20969247668233457
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 28,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07703971858659886,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4395701679680326,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2069755714557393,
+            "delta": 0.8500588212767486
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2087934157111735,
+        "rankKey": [
+          0.4395701679680326,
+          10,
+          2,
+          0.2087934157111735
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 29,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07777438603340603,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43883550052122544,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 0,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2474891923616416,
+            "delta": 0.8905724421826509
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.23730489069199273,
+        "rankKey": [
+          0.43883550052122544,
+          11,
+          0,
+          0.23730489069199273
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 30,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08286548734219618,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4337443992124353,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0298902428690302,
+            "delta": 0.6729734926900395
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.1849329892634098,
+        "rankKey": [
+          0.4337443992124353,
+          10,
+          2,
+          0.1849329892634098
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 31,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08911944463560578,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4274904419190257,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1801207985158808,
+            "delta": 0.8232040483368901
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.22290422522022074,
+        "rankKey": [
+          0.4274904419190257,
+          10,
+          1,
+          0.22290422522022074
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 32,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09039844956195281,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42621143699267866,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1089598235115896,
+            "delta": 0.7520430733325989
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.1961696443446629,
+        "rankKey": [
+          0.42621143699267866,
+          10,
+          1,
+          0.1961696443446629
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 33,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07271005688372434,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.44389982967090713,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.087768680837848,
+            "delta": 0.7308519306588572
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2515708654615156,
+        "rankKey": [
+          0.44389982967090713,
+          11,
+          2,
+          0.2515708654615156
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 34,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08874118398406722,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42786870257056425,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0211782354778896,
+            "delta": 0.6642614852988988
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.27980238366889454,
+        "rankKey": [
+          0.42786870257056425,
+          11,
+          1,
+          0.27980238366889454
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 35,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07066861616884063,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.44594127038579084,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1417219818998001,
+            "delta": 0.7848052317208094
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.22629973574068724,
+        "rankKey": [
+          0.44594127038579084,
+          11,
+          2,
+          0.22629973574068724
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 36,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07079089002723987,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4458189965273916,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1159872224024747,
+            "delta": 0.759070472223484
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.253889977655841,
+        "rankKey": [
+          0.4458189965273916,
+          11,
+          2,
+          0.253889977655841
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 37,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08293860090214883,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43367128565248264,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 0,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0705677462101204,
+            "delta": 0.7136509960311297
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.24928092526393955,
+        "rankKey": [
+          0.43367128565248264,
+          11,
+          0,
+          0.24928092526393955
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 38,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0684932808068478,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.44811660574778367,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0264048417922698,
+            "delta": 0.669488091613279
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.25212203638034436,
+        "rankKey": [
+          0.44811660574778367,
+          11,
+          2,
+          0.25212203638034436
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 39,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08215046515270397,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4344594214019275,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0392141296653719,
+            "delta": 0.6822973794863811
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.25102225218956153,
+        "rankKey": [
+          0.4344594214019275,
+          11,
+          1,
+          0.25102225218956153
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 40,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06292305665920966,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4536868298954218,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 6,
+          "warn": 3,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0471806280864326,
+            "delta": 0.6902638779074419
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.23421985259056494,
+        "rankKey": [
+          0.4536868298954218,
+          11,
+          3,
+          0.23421985259056494
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 41,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07431941690022437,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4422904696544071,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9602644927587569,
+            "delta": 0.6033477425797662
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2674110991612709,
+        "rankKey": [
+          0.4422904696544071,
+          12,
+          1,
+          0.2674110991612709
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 42,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06298946296262864,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.45362042359200283,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0203353751945758,
+            "delta": 0.6634186250155851
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.23920967648157987,
+        "rankKey": [
+          0.45362042359200283,
+          11,
+          2,
+          0.23920967648157987
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 43,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.049127215481923614,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.46748267107270786,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 6,
+          "warn": 3,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0915171919754623,
+            "delta": 0.7346004417964715
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2642187724189663,
+        "rankKey": [
+          0.46748267107270786,
+          11,
+          3,
+          0.2642187724189663
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 44,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08895175062810073,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42765813592653074,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.999068549024104,
+            "delta": 0.6421517988451133
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2928751289004955,
+        "rankKey": [
+          0.42765813592653074,
+          10,
+          3,
+          0.2928751289004955
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 45,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08035624087705817,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4362536456775733,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9569012505763652,
+            "delta": 0.5999845003973745
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3263468808477748,
+        "rankKey": [
+          0.4362536456775733,
+          10,
+          3,
+          0.3263468808477748
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 46,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06443394917189932,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.45217593738273215,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0164981804928903,
+            "delta": 0.6595814303138996
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2646436106931166,
+        "rankKey": [
+          0.45217593738273215,
+          11,
+          2,
+          0.2646436106931166
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 47,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10219830563216031,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41441158092247116,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9017983929191907,
+            "delta": 0.5448816427402
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2950817964678208,
+        "rankKey": [
+          0.41441158092247116,
+          10,
+          1,
+          0.2950817964678208
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 48,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09539513235206754,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42121475420256393,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.977962837775175,
+            "delta": 0.6210460875961843
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29069488912523594,
+        "rankKey": [
+          0.42121475420256393,
+          10,
+          1,
+          0.29069488912523594
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 49,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09866224016243469,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4179476463921968,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 0,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9439941317715743,
+            "delta": 0.5870773815925836
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2933528101481479,
+        "rankKey": [
+          0.4179476463921968,
+          10,
+          0,
+          0.2933528101481479
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 50,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07099649870084757,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4456133878537839,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.923054857475653,
+            "delta": 0.5661381072966623
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29239936991658355,
+        "rankKey": [
+          0.4456133878537839,
+          11,
+          1,
+          0.29239936991658355
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 51,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06973063703863885,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4468792495159926,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0826091243085907,
+            "delta": 0.7256923741296
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.32606637547120154,
+        "rankKey": [
+          0.4468792495159926,
+          11,
+          1,
+          0.32606637547120154
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 52,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09998634381291177,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4166235427417197,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.856604744859954,
+            "delta": 0.49968799468096325
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2648123297825025,
+        "rankKey": [
+          0.4166235427417197,
+          10,
+          2,
+          0.2648123297825025
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 53,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10144401416783144,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41516587238680003,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 0,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9618502245089648,
+            "delta": 0.6049334743299741
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.280679805550717,
+        "rankKey": [
+          0.41516587238680003,
+          10,
+          0,
+          0.280679805550717
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 54,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09732256683092655,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4192873197237049,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 10,
+          "warn": 0,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9780290140612987,
+            "delta": 0.621112263882308
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.305016149929766,
+        "rankKey": [
+          0.4192873197237049,
+          10,
+          0,
+          0.305016149929766
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 55,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.100002820842371,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41660706571226047,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9210136654097891,
+            "delta": 0.5640969152307984
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.316924304663631,
+        "rankKey": [
+          0.41660706571226047,
+          10,
+          1,
+          0.316924304663631
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 56,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06332324144579549,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.453286645108836,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 6,
+          "warn": 3,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8746239234836741,
+            "delta": 0.5177071733046834
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3451558228710098,
+        "rankKey": [
+          0.453286645108836,
+          11,
+          3,
+          0.3451558228710098
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 57,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08833823187689505,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4282716546777364,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1152061605657224,
+            "delta": 0.7582894103867317
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29165317494280263,
+        "rankKey": [
+          0.4282716546777364,
+          10,
+          1,
+          0.29165317494280263
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 58,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09091675940639221,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42569312714823926,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8518153176066775,
+            "delta": 0.4948985674276868
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.32026472582175236,
+        "rankKey": [
+          0.42569312714823926,
+          10,
+          2,
+          0.32026472582175236
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 59,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09394985860101857,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4226600279536129,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8730057600560359,
+            "delta": 0.5160890098770452
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.31364407456088506,
+        "rankKey": [
+          0.4226600279536129,
+          10,
+          1,
+          0.31364407456088506
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 60,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09025607025744337,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4263538162971881,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9319314314017701,
+            "delta": 0.5750146812227794
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3174350006973003,
+        "rankKey": [
+          0.4263538162971881,
+          10,
+          1,
+          0.3174350006973003
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 61,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10016389288161265,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4164459936730188,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9118224347743957,
+            "delta": 0.554905684595405
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.31641580517882895,
+        "rankKey": [
+          0.4164459936730188,
+          10,
+          1,
+          0.31641580517882895
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 62,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.11194302127594213,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.40466686527868934,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.983261922174434,
+            "delta": 0.6263451719954433
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3010840709638757,
+        "rankKey": [
+          0.40466686527868934,
+          10,
+          1,
+          0.3010840709638757
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 63,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0769487869418124,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4396610996128191,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9089898712552278,
+            "delta": 0.5520731210762371
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3314959071296067,
+        "rankKey": [
+          0.4396610996128191,
+          11,
+          2,
+          0.3314959071296067
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 64,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10564481491740269,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4109650716372288,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8708620601547541,
+            "delta": 0.5139453099757634
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3324553085301195,
+        "rankKey": [
+          0.4109650716372288,
+          10,
+          1,
+          0.3324553085301195
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 65,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08433659415583572,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43227329239879575,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9863113298339822,
+            "delta": 0.6293945796549915
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3024648192074776,
+        "rankKey": [
+          0.43227329239879575,
+          10,
+          3,
+          0.3024648192074776
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 66,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09930342746438775,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4173064590902437,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9077617177069608,
+            "delta": 0.5508449675279701
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.27156229861343395,
+        "rankKey": [
+          0.4173064590902437,
+          10,
+          2,
+          0.27156229861343395
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 67,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.04863722000740228,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4679726665472292,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 5,
+          "warn": 3,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8033491205278773,
+            "delta": 0.4464323703488866
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3050340505607132,
+        "rankKey": [
+          0.4679726665472292,
+          12,
+          3,
+          0.3050340505607132
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 68,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08211716662417079,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4344927199304607,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0397308090588773,
+            "delta": 0.6828140588798866
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.24333078040605502,
+        "rankKey": [
+          0.4344927199304607,
+          10,
+          2,
+          0.24333078040605502
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 69,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09345336547649075,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4231565210781407,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.862491119284335,
+            "delta": 0.5055743691053443
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.27350935295226975,
+        "rankKey": [
+          0.4231565210781407,
+          10,
+          2,
+          0.27350935295226975
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 70,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08204844789884613,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43456143865578534,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 3,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8525938412312601,
+            "delta": 0.4956770910522694
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.26963584841081234,
+        "rankKey": [
+          0.43456143865578534,
+          10,
+          3,
+          0.26963584841081234
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 71,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08909847917556929,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4275114073790622,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8473193025044515,
+            "delta": 0.4904025523254608
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.27205800562040067,
+        "rankKey": [
+          0.4275114073790622,
+          10,
+          2,
+          0.27205800562040067
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 72,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10351845348058125,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4130914330740502,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8955758178855233,
+            "delta": 0.5386590677065326
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2710686613703516,
+        "rankKey": [
+          0.4130914330740502,
+          10,
+          2,
+          0.2710686613703516
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 73,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09106793740594044,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42554194914869103,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9417822916323212,
+            "delta": 0.5848655414533305
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29587140092402386,
+        "rankKey": [
+          0.42554194914869103,
+          10,
+          1,
+          0.29587140092402386
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 74,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09315838828818629,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4234514982664452,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.817935182320731,
+            "delta": 0.4610184321417403
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.25012015075630845,
+        "rankKey": [
+          0.4234514982664452,
+          10,
+          2,
+          0.25012015075630845
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 75,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06852450205231897,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4480853845023125,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 6,
+          "warn": 4,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8867911386385072,
+            "delta": 0.5298743884595165
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.25891439165598323,
+        "rankKey": [
+          0.4480853845023125,
+          10,
+          4,
+          0.25891439165598323
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 76,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.10028681720977367,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4163230693448578,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9506035529615153,
+            "delta": 0.5936868027825246
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2846347458427708,
+        "rankKey": [
+          0.4163230693448578,
+          10,
+          1,
+          0.2846347458427708
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 77,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0859897479619875,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.430620138592644,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0205015815025344,
+            "delta": 0.6635848313235437
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3002110144430513,
+        "rankKey": [
+          0.430620138592644,
+          10,
+          1,
+          0.3002110144430513
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 78,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08916416522487314,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.42744572132975833,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.8955302867481425,
+            "delta": 0.5386135365691518
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3336827663903306,
+        "rankKey": [
+          0.42744572132975833,
+          10,
+          2,
+          0.3336827663903306
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 79,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.0520092265421605,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.46460066001247097,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1257987442763544,
+            "delta": 0.7688819940973637
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.2719794962356724,
+        "rankKey": [
+          0.46460066001247097,
+          12,
+          1,
+          0.2719794962356724
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 80,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08093495349082236,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4356749330638091,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 0,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9578252027845894,
+            "delta": 0.6009084526055987
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.30247250744229975,
+        "rankKey": [
+          0.4356749330638091,
+          12,
+          0,
+          0.30247250744229975
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 81,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06102249053125236,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4555873960233791,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0380278285458517,
+            "delta": 0.681111078366861
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29797727052476863,
+        "rankKey": [
+          0.4555873960233791,
+          11,
+          2,
+          0.29797727052476863
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 82,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07975910804893982,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43685077850569165,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 0,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0193631629909217,
+            "delta": 0.662446412811931
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3007005635812919,
+        "rankKey": [
+          0.43685077850569165,
+          11,
+          0,
+          0.3007005635812919
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 83,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09720225836435592,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41940762819027555,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9191787890019023,
+            "delta": 0.5622620388229116
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.29972348406987703,
+        "rankKey": [
+          0.41940762819027555,
+          10,
+          1,
+          0.29972348406987703
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 84,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.05482373400489088,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4617861525497406,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.084588433519631,
+            "delta": 0.7276716833406403
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.33340226101375736,
+        "rankKey": [
+          0.4617861525497406,
+          11,
+          2,
+          0.33340226101375736
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 85,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.09730792749504147,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.41930195905959,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 0.9425660580110332,
+            "delta": 0.5856493078320425
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.27214821532505834,
+        "rankKey": [
+          0.41930195905959,
+          10,
+          2,
+          0.27214821532505834
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 86,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06217866129417182,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.45443122526045965,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0711830188141538,
+            "delta": 0.7142662686351631
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.28801569109327274,
+        "rankKey": [
+          0.45443122526045965,
+          11,
+          2,
+          0.28801569109327274
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 87,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06946315238165568,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4471467341729758,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0381179515793844,
+            "delta": 0.6812012014003936
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3123520354723218,
+        "rankKey": [
+          0.4471467341729758,
+          11,
+          1,
+          0.3123520354723218
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 88,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.05640392203054062,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.46020596452409085,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2291343273627835,
+            "delta": 0.8722175771837928
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.36668714864559354,
+        "rankKey": [
+          0.46020596452409085,
+          11,
+          2,
+          0.36668714864559354
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 89,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07532412384417059,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4412857627104609,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.1920232998185232,
+            "delta": 0.8351065496395325
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3919582783664219,
+        "rankKey": [
+          0.4412857627104609,
+          10,
+          1,
+          0.3919582783664219
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 90,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.04858740763117775,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4680224789234537,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.3947131489668827,
+            "delta": 1.037796398787892
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.34306542165765863,
+        "rankKey": [
+          0.4680224789234537,
+          11,
+          2,
+          0.34306542165765863
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 91,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06805004281598692,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.44855984373864455,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2035547675115539,
+            "delta": 0.8466380173325632
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.37015483149734607,
+        "rankKey": [
+          0.44855984373864455,
+          11,
+          1,
+          0.37015483149734607
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 92,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06409241075034616,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4525174758042853,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.19850946776215,
+            "delta": 0.8415927175831592
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.363284286106196,
+        "rankKey": [
+          0.4525174758042853,
+          11,
+          1,
+          0.363284286106196
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 93,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06532571196624049,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.451284174588391,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 0,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2075354545324113,
+            "delta": 0.8506187043534206
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.367155370833662,
+        "rankKey": [
+          0.451284174588391,
+          11,
+          0,
+          0.367155370833662
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 94,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08533346629699612,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43127642025763535,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2028423501276904,
+            "delta": 0.8459255999486996
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3662207734926526,
+        "rankKey": [
+          0.43127642025763535,
+          10,
+          1,
+          0.3662207734926526
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 95,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.040945120272926516,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.47566476628170495,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.3526311182938788,
+            "delta": 0.9957143681148881
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.3947499477635866,
+        "rankKey": [
+          0.47566476628170495,
+          11,
+          2,
+          0.3947499477635866
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 96,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.08461797019758799,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4319919163570435,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 2,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.0856710567568448,
+            "delta": 0.7287543065778541
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.34237804633500357,
+        "rankKey": [
+          0.4319919163570435,
+          10,
+          2,
+          0.34237804633500357
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 97,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.06064236014041058,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.4559675264142209,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 8,
+          "warn": 1,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2152539574827723,
+            "delta": 0.8583372073037816
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.35302501499937256,
+        "rankKey": [
+          0.4559675264142209,
+          11,
+          1,
+          0.35302501499937256
+        ]
+      },
+      {
+        "iteration": 7,
+        "memberId": 98,
+        "accepted": false,
+        "rejectionReasons": [
+          "strategic metric loss degraded beyond tolerance: core_hpiStd"
+        ],
+        "lossImprovementVersusBaseline": 0.07893014704500323,
+        "baselineRankingLoss": 0.5166098865546315,
+        "candidateRankingLoss": 0.43767973950962824,
+        "rankingObjective": "family_aware_metric_loss",
+        "failCountIncrease": -3,
+        "baselineStatusCounts": {
+          "pass": 4,
+          "warn": 3,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 9,
+          "warn": 1,
+          "fail": 10,
+          "unsupported": 0
+        },
+        "strategicMetricDegradations": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.3569167501789907,
+            "candidateMetricLoss": 1.2640291891620588,
+            "delta": 0.907112438983068
+          }
+        ],
+        "hardBoundaryParameters": [],
+        "normalizedSourceMovement": 0.38114663410174693,
+        "rankKey": [
+          0.43767973950962824,
+          10,
+          1,
+          0.38114663410174693
+        ]
+      }
+    ]
+  },
+  "warnings": [
+    "Composite validation loss improved, but strategic metrics degraded materially: core_hpiStd",
+    "No snapped local-refinement candidate passed the configured guardrails; output version was not created."
+  ],
+  "finalValidationNote": "No output version was promoted because every snapped candidate breached guardrails."
+}
