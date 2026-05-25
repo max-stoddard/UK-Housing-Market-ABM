@@ -1370,6 +1370,45 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
 - Version(s) affected:
   - `v0o3`
 
+### v0o6
+- Script path:
+  - `scripts/python/calibration/output/output_parameter_esmda.py`
+  - historical compatibility entrypoint retained: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_PROBABILITY_MULTIPLIER`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - Source campaign member: `tmp/output-calibration/v0o3/five-parameter-esmda/runs/iter-01/member-059`
+  - `python3 -m scripts.python.validation.model.validate_input_data_version --version v0o6 --seeds 1,2,3,4,5,6,7,8,9,10 --workers 20 --output-dir tmp/validation/v0o6-10seed-3500 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --allow-noncanonical-seeds`
+- Expected result snippet:
+  - Manual override promoted exact raw cached v0o3 campaign iteration `1`, member `59`.
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.44043118640535517`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0007341104261340001`
+  - `BTL_PROBABILITY_MULTIPLIER = 2.106407975979989`
+  - `BTL_CHOICE_INTENSITY = 106.05000372010099`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.5958665034502091`
+  - 10-seed 2011 reference overallCompositeLoss improved from rescored `v0=0.5652252115924438` to `v0o6=0.5350597930294947` (delta `-0.030165418562949047`, `-5.336885%`).
+  - HPI metric-loss deltas versus `v0`: `core_hpiMean=+0.0730957919906657`, `core_hpiStd=-0.18023522321656262`, `core_hpiCyclePeriod=-0.3714501134599785`.
+- Method chosen:
+  - Manual promotion of a cached five-parameter ES-MDA candidate from the `v0o3` campaign, using exact raw member parameters rather than snapped local-refinement values.
+  - Fresh validation used seeds `1..10`, `20` workers, `N_STEPS = 3500`, and validation window `500..3500`.
+- Method-selection decision logic:
+  - `Objective=2011/W3 reference validation loss reduction; Why=the selected member improves aggregate 2011 loss, core_hpiStd loss, and core_hpiCyclePeriod loss versus v0; Tradeoff=core_hpiMean loss worsens, so this is validation-loss evidence rather than a broad model-output improvement.`
+- Rationale category:
+  - output calibration manual override
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/SourceAllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/SourceOutputParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ManualPromotionOverride.md`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ValidationComparison-v0o6-vs-v0-2011-10seed-500-3500.csv`
+  - `input-data-versions/validation-overlays/v0o6-2011.json`
+  - `input-data-versions/validation/v0o6.json`
+- Version(s) affected:
+  - `v0o6`
+
 ### v4.14oo
 - Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
 - Outputs/keys produced:
@@ -1811,3 +1850,88 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.26.json`
 - Version(s) affected:
   - `v4.26`
+
+### v5.0o1
+- Script path:
+  - `scripts/python/calibration/output/output_parameter_esmda.py`
+  - historical compatibility entrypoint retained: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_PROBABILITY_MULTIPLIER`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.output_parameter_esmda --version v4.26 --output-version v5.0o1 --validation-year 2024 --validation-objective family_aware_metric_loss --validation-loss-error-std 1.0 --seeds 1,2,3,4,5,6,7,8,9,10 --workers 20 --ensemble-size 32 --assimilation-steps 4 --rng-seed 20260518 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --output-root tmp/output-calibration --evidence-dir input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1 --delete-csv-after-metrics --local-refinement-top-n 10 --local-refinement-radius 1 --local-refinement-max-candidates 100`
+  - `bash input-data-versions/validate.sh v5.0o1 --output-dir tmp/validation/v5.0o1 --workers 20`
+- Expected result snippet:
+  - Automated `createdOutputVersion = false`; no snapped local-refinement candidate was promoted because every snapped candidate with better aggregate loss regressed HPI constraints.
+  - Manual override promoted global ES-MDA iteration `3`, member `7`, which passed HPI-constrained eligibility.
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.25`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0014`
+  - `BTL_PROBABILITY_MULTIPLIER = 1.825`
+  - `BTL_CHOICE_INTENSITY = 100`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.5`
+  - Campaign loss improved from baseline `v4.26` `0.5743372296753784` to `0.5073951690442934` (delta `-0.06694206063108499`, `-11.655532%`).
+  - Campaign status counts changed from `pass=6`, `warn=0`, `fail=14` to `pass=7`, `warn=2`, `fail=11`.
+  - Promoted HPI constrained metric deltas improved: `core_hpiMean=-0.08827660090626732`, `core_hpiStd=-0.046577414707801135`, `core_hpiCyclePeriod=-0.0818447984939259`.
+  - Tracked 2024 validation summary generated on `2026-05-19T09:21:05Z` with `overallCompositeLoss=0.5501176226064236` versus current `v4.26=0.5743372296753784` (delta `-0.024219607068954763`, `-4.216966%`).
+  - Tracked 2024 validation status counts changed from `pass=6`, `warn=0`, `fail=14` to `pass=7`, `warn=0`, `fail=13`.
+- Method chosen:
+  - Five-parameter ES-MDA output calibration against the 2024 validation profile using the schema-v4 `family_aware_metric_loss` objective and `schema4_metric_loss` assimilation transform.
+  - The campaign jointly varied `PSYCHOLOGICAL_COST_OF_RENTING`, `SENSITIVITY_RENT_OR_PURCHASE`, `BTL_PROBABILITY_MULTIPLIER`, `BTL_CHOICE_INTENSITY`, and `MARKET_AVERAGE_PRICE_DECAY` from source snapshot `v4.26`.
+  - The global pass used seeds `1..10`, `20` workers, ensemble size `32`, `4` assimilation steps, `N_STEPS = 3500`, validation/calibration window `500..3500`, rng seed `20260518`, and snapped local refinement with top-n `10`, radius `1`, and max candidates `100`.
+  - Manual override promoted the HPI-constrained global candidate iteration `3`, member `7` after the snapped local-refinement promotion path rejected all candidates.
+- Guardrail decision logic:
+  - The automated promotion guardrail rejected the snapped local-refinement path and did not create `v5.0o1`.
+  - The manual promotion is limited to the global candidate that both improved aggregate campaign loss and improved all HPI constrained metrics relative to `v4.26`.
+- Method-selection decision logic:
+  - `Objective=2024 family-aware validation fit; Why=the promoted global ES-MDA member materially reduces aggregate loss and improves HPI mean, standard deviation, and cycle-period losses versus v4.26; Tradeoff=this is a manual override because the snapped local-refinement stage found no promotable candidate, so the retained evidence must distinguish the promoted global member from the rejected local-refinement candidates.`
+- Rationale category:
+  - output calibration manual override
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/AllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/LocalRefinementMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/OutputParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/ManualPromotionOverride.md`
+  - `input-data-versions/validation/v5.0o1.json`
+- Version(s) affected:
+  - `v5.0o1`
+
+### v5o2
+- Script path:
+  - `scripts/python/calibration/output/output_parameter_esmda.py`
+  - historical compatibility entrypoint retained: `scripts/python/calibration/output/four_parameter_esmda.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_PROBABILITY_MULTIPLIER`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - Source campaign member: `tmp/output-calibration/v5.0o1/five-parameter-esmda/runs/iter-03/member-007`
+  - `python3 -m scripts.python.validation.model.validate_input_data_version --version v5o2 --seeds 1,2,3,4,5,6,7,8,9,10 --workers 20 --output-dir tmp/validation/v5o2-10seed-3500 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --allow-noncanonical-seeds`
+- Expected result snippet:
+  - Manual override promoted exact raw cached v5.0o1 campaign iteration `3`, member `7`.
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.25061702205009445`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0014183438663974938`
+  - `BTL_PROBABILITY_MULTIPLIER = 1.8268011822613688`
+  - `BTL_CHOICE_INTENSITY = 100.67982683612807`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.5064990858425684`
+  - 10-seed 2024 overallCompositeLoss improved from rescored `v4.26=0.6137234580996009` to `v5o2=0.591986974767631` (delta `-0.02173648333196989`, `-3.541739%`).
+  - HPI metric-loss deltas versus `v4.26`: `core_hpiMean=-0.008146536511386848`, `core_hpiStd=+0.11241424289324455`, `core_hpiCyclePeriod=-0.10180994493677498`.
+- Method chosen:
+  - Manual promotion of a cached five-parameter ES-MDA candidate from the `v5.0o1` campaign, using exact raw member parameters rather than rounded `v5.0o1` snapshot values.
+  - Fresh validation used seeds `1..10`, `20` workers, `N_STEPS = 3500`, and validation window `500..3500`.
+- Method-selection decision logic:
+  - `Objective=2024 validation loss reduction; Why=the selected member improves aggregate 2024 loss and core_hpiCyclePeriod loss versus v4.26; Tradeoff=core_hpiStd loss worsens in fresh validation, so this is validation-loss evidence rather than a broad model-output improvement.`
+- Rationale category:
+  - output calibration manual override
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/SourceAllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/SourceOutputParameterEsmdaCalibrationSummary.json`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ManualPromotionOverride.md`
+  - `input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ValidationComparison-v5o2-vs-v4.26-2024-10seed-500-3500.csv`
+  - `input-data-versions/validation/v5o2.json`
+- Version(s) affected:
+  - `v5o2`

@@ -1547,6 +1547,134 @@
       ]
     },
     {
+      "version_id": "v0o3",
+      "snapshot_folder": "v0o3",
+      "validation_dataset": "w3",
+      "description": "Promoted the direct W3/2011 five-parameter ESMDA candidate as the optimised 2011 branch by explicit guardrail override.",
+      "updated_data_sources": [
+        "config-only"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/output_parameter_esmda.py",
+        "scripts/python/calibration/output/four_parameter_esmda.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_PROBABILITY_MULTIPLIER",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o3/OutputParameterEsmdaCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-16 after a user-directed guardrail override promoted the best rejected direct five-parameter v0o3 candidate from v0. Calibration used validation-reference-v0-2011, validationObjective=family_aware_metric_loss, source snapshot v0, seeds 1..10, 20 workers, ensemble size 64, 6 assimilation steps plus the initial prior evaluation, rng seed 20260515, N_STEPS=3500, validation window 500..3500, CSV deletion after metric extraction, and snapped local refinement over 99 deduplicated candidates. The promoted candidate is iteration 7 member 20: PSYCHOLOGICAL_COST_OF_RENTING=0.2, SENSITIVITY_RENT_OR_PURCHASE=0.0011, BTL_PROBABILITY_MULTIPLIER=1.13, BTL_CHOICE_INTENSITY=90, MARKET_AVERAGE_PRICE_DECAY=0.68. The automated ESMDA guardrail did not accept any snapped candidate; this candidate was rejected because core_hpiStd metric loss degraded from 0.356917 to 0.949698 in the campaign summary, exceeding the 0.1 strategic-metric degradation tolerance. Canonical 8-seed 2011 overlay overallCompositeLoss is 0.438100 versus v0=0.507967, v0o1=0.528631, and v0o2=0.470721, with 2011 status counts pass=8/warn=2/fail=10. The tracked 2024 summary is secondary comparability only and has overallCompositeLoss=0.655125 versus v0o2=0.622572, with status counts pass=7/warn=1/fail=12."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_PROBABILITY_MULTIPLIER",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Selected the lowest-loss snapped five-parameter candidate for the retained 2011/W3 overlay, reducing canonical 2011 overallCompositeLoss to 0.438100 while explicitly accepting a core_hpiStd guardrail regression.",
+          "why_changed": "To replace v0o2 as the dashboard optimised 2011 branch using the direct five-parameter ESMDA campaign requested for v0o3.",
+          "method_chosen": "Five-parameter ESMDA over PSYCHOLOGICAL_COST_OF_RENTING, SENSITIVITY_RENT_OR_PURCHASE, BTL_PROBABILITY_MULTIPLIER, BTL_CHOICE_INTENSITY, and MARKET_AVERAGE_PRICE_DECAY with seeds 1..10, 20 workers, ensemble size 64, 6 assimilation steps, rng seed 20260515, schema-v4 family-aware metric loss, N_STEPS=3500, validation window 500..3500, and a snapped local-refinement pass.",
+          "decision_logic": "Objective=2011/W3 reference reproduction; Why=the campaign target is the v0-only 2011 reference profile and the user requested replacing v0o2 with the direct five-parameter candidate; Tradeoff=the candidate improves aggregate 2011 overlay loss versus v0o2 but is a manual guardrail override because core_hpiStd materially regressed."
+        }
+      ]
+    },
+    {
+      "version_id": "v0o6",
+      "snapshot_folder": "v0o6",
+      "validation_dataset": "w3",
+      "description": "Manually promoted the exact raw v0o3 five-parameter ES-MDA iteration 1 member 59 from v0.",
+      "updated_data_sources": [
+        "output-calibration"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/output_parameter_esmda.py",
+        "scripts/python/calibration/output/four_parameter_esmda.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_PROBABILITY_MULTIPLIER",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v0o6/ManualPromotionOverride.md"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Generated with seeds 1..10, N_STEPS=3500, validation window 500..3500, and validation-reference-v0-2011 overlay. The promoted candidate is v0o3 campaign iteration 1 member 59 with exact raw cached parameters: PSYCHOLOGICAL_COST_OF_RENTING=0.44043118640535517, SENSITIVITY_RENT_OR_PURCHASE=0.0007341104261340001, BTL_PROBABILITY_MULTIPLIER=2.106407975979989, BTL_CHOICE_INTENSITY=106.05000372010099, and MARKET_AVERAGE_PRICE_DECAY=0.5958665034502091. Rescored 2011 reference overallCompositeLoss is 0.535060 versus v0=0.565225 (delta -0.030165, -5.34%). HPI metric-loss deltas versus v0 are core_hpiMean=+0.073096, core_hpiStd=-0.180235, and core_hpiCyclePeriod=-0.371450. The tracked 2024 summary is secondary comparability only and has overallCompositeLoss=0.724584."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_PROBABILITY_MULTIPLIER",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Reduced the 10-seed 2011 reference overallCompositeLoss versus v0 while improving HPI standard-deviation and cycle-period losses.",
+          "why_changed": "To promote the best cached candidate found by the direct v0-family scan that lowered aggregate 2011 reference loss and the requested HPI std/cycle-period losses.",
+          "method_chosen": "Manual promotion of v0o3 campaign iteration 1 member 59 using exact raw member parameters, followed by a fresh 10-seed N_STEPS=3500 validation over window 500..3500.",
+          "decision_logic": "Objective=2011/W3 reference validation loss reduction; Why=the selected member improves aggregate 2011 loss, core_hpiStd loss, and core_hpiCyclePeriod loss versus v0; Tradeoff=core_hpiMean loss worsens, so this should be described as validation-loss evidence rather than a broad model-output improvement."
+        }
+      ]
+    },
+    {
       "version_id": "v4.14oo",
       "snapshot_folder": "v4.14oo",
       "validation_dataset": "r8",
@@ -2140,6 +2268,132 @@
           "why_changed": "To make the final sequential government/tax correction self-contained and to avoid silently carrying the stale live runtime value based on four-week-month reasoning.",
           "method_chosen": "Direct source confirmation from GOV.UK Benefit and pension rates 2024 to 2025: Income Support, Both 18 or over, Rates 2024/25 = 142.25 weekly; selected monthly scalar = 142.25 * 52 / 12 = 616.4166666667.",
           "decision_logic": "Objective=source-year fidelity and unit consistency; Why=the model annualizes the monthly value by multiplying by 12, so the weekly rate should be converted with 52/12; Tradeoff=this improves self-contained provenance but does not change simulation output relative to v4.25."
+        }
+      ]
+    },
+    {
+      "version_id": "v5.0o1",
+      "snapshot_folder": "v5.0o1",
+      "validation_dataset": "r8",
+      "description": "Manually promoted the best HPI-constrained five-parameter ES-MDA output-calibration member from v4.26.",
+      "updated_data_sources": [
+        "output-calibration"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/output_parameter_esmda.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_PROBABILITY_MULTIPLIER",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/OutputParameterEsmdaCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1/OutputParameterEsmdaCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-19T09:21:05Z after manually promoting global ES-MDA iteration 3 member 7 from the five-parameter output calibration of v4.26. The automated snapped local-refinement promotion failed guardrails and had createdOutputVersion=false, so this version is a user-directed override of the HPI-constrained global candidate rather than an automated local-refinement acceptance. Selected parameters are PSYCHOLOGICAL_COST_OF_RENTING=0.25, SENSITIVITY_RENT_OR_PURCHASE=0.0014, BTL_PROBABILITY_MULTIPLIER=1.825, BTL_CHOICE_INTENSITY=100, and MARKET_AVERAGE_PRICE_DECAY=0.5. Campaign loss improved from v4.26=0.574337 to 0.507395 (delta -0.066942, -11.66%) and HPI constrained metric deltas all improved. Tracked 2024 overallCompositeLoss=0.550118 versus current v4.26=0.574337 (delta -0.024220, -4.22%). Required metric status counts changed from pass=6, warn=0, fail=14 to pass=7, warn=0, fail=13."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_PROBABILITY_MULTIPLIER",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Promoted the best HPI-constrained global ES-MDA member after snapped local refinement failed the promotion guardrails.",
+          "why_changed": "To reduce 2024 family-aware validation loss from the v4.26 baseline while improving HPI mean, standard deviation, and cycle-period losses.",
+          "method_chosen": "Five-parameter output ES-MDA with seeds 1..10, 20 workers, ensemble size 32, 4 assimilation steps, N_STEPS=3500, validation window 500..3500, rng seed 20260518, and retained local-refinement diagnostics; manual override selected global iteration 3 member 7.",
+          "decision_logic": "Objective=2024 family-aware validation fit; Why=the selected global candidate materially reduces aggregate campaign loss and improves all HPI constrained metric losses versus v4.26; Tradeoff=the retained evidence must clearly state this is a manual promotion, because the automated snapped local-refinement stage found no promotable candidate."
+        }
+      ]
+    },
+    {
+      "version_id": "v5o2",
+      "snapshot_folder": "v5o2",
+      "validation_dataset": "r8",
+      "description": "Manually promoted the exact raw v5.0o1 five-parameter ES-MDA iteration 3 member 7 from v4.26.",
+      "updated_data_sources": [
+        "output-calibration"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/output_parameter_esmda.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_PROBABILITY_MULTIPLIER",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ManualPromotionOverride.md"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-esmda-v5o2/ManualPromotionOverride.md"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Generated with seeds 1..10, N_STEPS=3500, and validation window 500..3500. The promoted candidate is v5.0o1 campaign iteration 3 member 7 with exact raw cached parameters: PSYCHOLOGICAL_COST_OF_RENTING=0.25061702205009445, SENSITIVITY_RENT_OR_PURCHASE=0.0014183438663974938, BTL_PROBABILITY_MULTIPLIER=1.8268011822613688, BTL_CHOICE_INTENSITY=100.67982683612807, and MARKET_AVERAGE_PRICE_DECAY=0.5064990858425684. Rescored 2024 overallCompositeLoss is 0.591987 versus v4.26=0.613723 (delta -0.021736, -3.54%). HPI metric-loss deltas versus v4.26 are core_hpiMean=-0.008147, core_hpiStd=+0.112414, and core_hpiCyclePeriod=-0.101810, so the fresh promoted-snapshot validation worsens HPI standard-deviation loss despite improving aggregate loss."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_PROBABILITY_MULTIPLIER",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Reduced the 10-seed 2024 overallCompositeLoss versus v4.26 while improving HPI mean and cycle-period losses.",
+          "why_changed": "To promote the exact raw cached member requested from the v5.0o1 ES-MDA campaign.",
+          "method_chosen": "Manual promotion of v5.0o1 campaign iteration 3 member 7 using exact raw member parameters, followed by a fresh 10-seed N_STEPS=3500 validation over window 500..3500.",
+          "decision_logic": "Objective=2024 validation loss reduction; Why=the selected member improves aggregate 2024 loss and core_hpiCyclePeriod loss versus v4.26; Tradeoff=core_hpiStd loss worsens in the fresh validation, so this should be described as validation-loss evidence rather than a broad model-output improvement."
         }
       ]
     }
