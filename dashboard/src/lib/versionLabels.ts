@@ -10,7 +10,7 @@ export interface VersionLabelState {
 }
 
 const RESULTS_RUN_VERSION_PATTERN = /^(v\d+(?:\.\d+)*(?:o+|o\d+)?)-output$/i;
-const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2']);
+const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2', 'v0o3', 'v0o6']);
 const BEST_2024_VERSION = 'v4.4';
 const FIRST_2024_VERSION = 'v1.0';
 const LAST_PREFIXED_2024_VERSION = 'v4.18';
@@ -122,7 +122,7 @@ export function formatModelVersionBaseLabel(version: string, state?: Pick<Versio
     return 'Optimised 2011 model';
   }
 
-  if (version === 'v0o2') {
+  if (version === 'v0o2' || version === 'v0o3' || version === 'v0o6') {
     return 'Optimised 2011 model';
   }
 
@@ -154,7 +154,7 @@ export function formatCalibrationVersionTitleLabel(version: string, state?: Pick
     return 'Optimised 2011 model';
   }
 
-  if (version === 'v0o2') {
+  if (version === 'v0o2' || version === 'v0o3' || version === 'v0o6') {
     return 'Optimised 2011 model';
   }
 

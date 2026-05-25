@@ -164,7 +164,7 @@ export const SENSITIVITY_POLICY_PACKAGES: SensitivityPolicyPackageDefinition[] =
 
 export const DEFAULT_SENSITIVITY_POLICY_PACKAGE_ID = 'owner_occupier_lti_soft_max';
 
-const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2']);
+const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2', 'v0o3', 'v0o6']);
 const CENTRAL_BANK_POLICY_KEY_SET = new Set<string>(CENTRAL_BANK_POLICY_KEYS);
 
 export function getDefaultBasePolicyId(baseline: string): BasePolicyId {

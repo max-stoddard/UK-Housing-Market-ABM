@@ -560,9 +560,13 @@ function buildSnapshotOptions(pathsInput: RuntimePathInput): {
     } satisfies ModelRunSnapshotOption))
     .reverse();
 
-  const defaultBaseline = versions.includes('v0o2')
-    ? 'v0o2'
-    : versions.includes('v0oo')
+  const defaultBaseline = versions.includes('v0o6')
+    ? 'v0o6'
+    : versions.includes('v0o3')
+      ? 'v0o3'
+      : versions.includes('v0o2')
+      ? 'v0o2'
+      : versions.includes('v0oo')
       ? 'v0oo'
       : [...versions].reverse().find((version) => !inProgressSet.has(version)) ?? versions[versions.length - 1];
 

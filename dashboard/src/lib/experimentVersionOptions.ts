@@ -2,7 +2,7 @@
 import type { ModelRunSnapshotOption } from '../../shared/types';
 import { formatModelVersionBaseLabel } from './versionLabels';
 
-const OPTIMISED_2011_VERSIONS = ['v0o2', 'v0oo'] as const;
+const OPTIMISED_2011_VERSIONS = ['v0o6', 'v0o3', 'v0o2', 'v0oo'] as const;
 const ORIGINAL_2011_VERSION = 'v0';
 const LEGACY_2011_VERSIONS = new Set([...OPTIMISED_2011_VERSIONS, ORIGINAL_2011_VERSION, 'v0o', 'v0o1']);
 
