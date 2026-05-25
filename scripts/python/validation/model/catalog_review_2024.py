@@ -26,6 +26,7 @@ from scripts.python.validation.model.hpi import (
 )
 from scripts.python.validation.model.validation_catalog_2024 import (
     ADVANCES_TARGET_TOLERANCE,
+    BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID,
     FPC_SOURCE_2024_BY_METRIC_ID,
     HPI_2024_CYCLE_PERIOD_MONTHS,
     HPI_2024_REBASED_MEAN,
@@ -189,23 +190,48 @@ def extract_rental_yield_from_evidence(text_path: Path) -> list[float]:
     ]
 
 
-def extract_spread_monthly_values_2024(workbook_path: Path) -> list[float]:
+def _coerce_workbook_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        for date_format in ("%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(value, date_format)
+            except ValueError:
+                continue
+    return None
+
+
+def extract_boe_housing_tools_values_2024(
+    workbook_path: Path,
+    *,
+    sheet_name: str,
+    expected_count: int,
+) -> list[float]:
     workbook = load_workbook(workbook_path, data_only=True, read_only=True)
     try:
-        worksheet = workbook["8. Spreads new mortgage lending"]
+        worksheet = workbook[sheet_name]
         values: list[float] = []
         for row in worksheet.iter_rows(min_row=5, values_only=True):
             if not row:
                 continue
-            timestamp = row[0]
+            timestamp = _coerce_workbook_datetime(row[0])
             value = row[1]
-            if isinstance(timestamp, datetime) and timestamp.year == 2024 and value is not None:
+            if timestamp is not None and timestamp.year == 2024 and value is not None:
                 values.append(float(value))
-        if len(values) != 12:
-            raise RuntimeError(f"Expected 12 monthly spread values for 2024, found {len(values)}")
+        if len(values) != expected_count:
+            raise RuntimeError(f"Expected {expected_count} 2024 values from {sheet_name}, found {len(values)}")
         return values
     finally:
         workbook.close()
+
+
+def extract_spread_monthly_values_2024(workbook_path: Path) -> list[float]:
+    return extract_boe_housing_tools_values_2024(
+        workbook_path,
+        sheet_name="8. Spreads new mortgage lending",
+        expected_count=12,
+    )
 
 
 def extract_frs_tenure_values_2024(workbook_path: Path) -> dict[str, float]:
@@ -256,6 +282,13 @@ def _quarter_means(values: list[float]) -> list[float]:
     if len(values) % 3 != 0:
         raise ValueError("Quarter mean helper expects a multiple of three monthly values")
     return [float(fmean(values[index : index + 3])) for index in range(0, len(values), 3)]
+
+
+def _scaled_boe_housing_tools_value(metric_id: str, raw_value: float) -> float:
+    scale = BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID[metric_id]
+    if scale == 0.001:
+        return raw_value / 1_000.0
+    return raw_value * scale
 
 
 def _find_quarter_column(worksheet, *, year_row: int, quarter_row: int, year: int, quarter: str) -> int:
@@ -336,7 +369,35 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
     rental_yield_values = extract_rental_yield_from_evidence(
         repo_root / "input-data-versions/validation-sources/2024/ukf/btl-rental-yield-2024-validation-evidence.txt"
     )
-    spread_monthly_values = extract_spread_monthly_values_2024(repo_root / "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx")
+    boe_housing_tools_workbook = repo_root / "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx"
+    boe_housing_tools_core_values = {
+        "core_mortgageApprovals": extract_boe_housing_tools_values_2024(
+            boe_housing_tools_workbook,
+            sheet_name="4.Mortgage approvals",
+            expected_count=12,
+        ),
+        "core_housingTransactions": extract_boe_housing_tools_values_2024(
+            boe_housing_tools_workbook,
+            sheet_name="5.Housing transactions",
+            expected_count=12,
+        ),
+        "core_debtToIncome": extract_boe_housing_tools_values_2024(
+            boe_housing_tools_workbook,
+            sheet_name="3. Household debt to income",
+            expected_count=4,
+        ),
+        "core_housePriceGrowth": extract_boe_housing_tools_values_2024(
+            boe_housing_tools_workbook,
+            sheet_name="6.House price growth",
+            expected_count=12,
+        ),
+        "core_priceToIncome": extract_boe_housing_tools_values_2024(
+            boe_housing_tools_workbook,
+            sheet_name="7.House prices disp. income",
+            expected_count=4,
+        ),
+    }
+    spread_monthly_values = extract_spread_monthly_values_2024(boe_housing_tools_workbook)
     spread_quarterly_values = _quarter_means(spread_monthly_values)
     tenure_values = extract_frs_tenure_values_2024(repo_root / FRS_TENURE_2024_SOURCE_PATH)
     rpi_rebased_values = extract_rpi_rebased_values(repo_root / ONS_RPI_2024_SOURCE_PATH, year=2024)
@@ -404,6 +465,17 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
         },
     }
 
+    source_boe_housing_tools_core_metrics = {}
+    for metric_id, raw_values in boe_housing_tools_core_values.items():
+        comparison_values = [_scaled_boe_housing_tools_value(metric_id, value) for value in raw_values]
+        source_boe_housing_tools_core_metrics[metric_id] = {
+            "raw_values": raw_values,
+            "value_count": len(raw_values),
+            "raw_source_value": float(fmean(raw_values)),
+            "normalized_source_value": _scaled_boe_housing_tools_value(metric_id, float(fmean(raw_values))),
+            "target_band": _band(min(comparison_values), max(comparison_values)),
+        }
+
     return {
         "supported_fpc_metric_ids": list(SUPPORTED_FPC_METRIC_IDS),
         "unsupported_fpc_metric_ids": list(UNSUPPORTED_FPC_METRIC_IDS),
@@ -416,6 +488,7 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
         },
         "source_fpc_core_metrics": source_fpc_core_metrics,
         "source_ukf_advances_metrics": source_ukf_advances_metrics,
+        "source_boe_housing_tools_core_metrics": source_boe_housing_tools_core_metrics,
         "source_market_interest_rate_spread": {
             "quarterly_values": spread_quarterly_values,
             "annual_mean": float(fmean(spread_quarterly_values)),
@@ -489,16 +562,6 @@ def build_live_review_data(repo_root: Path | None = None) -> dict[str, object]:
             metric_id: _serialize_household_metric(metric_id)
             for metric_id, metric in TARGETS_BY_ID.items()
             if metric.kind == "household_jsd"
-        },
-        "methodology_fpc_target_bands": {
-            metric_id: _band(TARGETS_BY_ID[metric_id].target_band.lower, TARGETS_BY_ID[metric_id].target_band.upper)
-            for metric_id in (
-                "core_mortgageApprovals",
-                "core_housingTransactions",
-                "core_debtToIncome",
-                "core_priceToIncome",
-                "core_housePriceGrowth",
-            )
         },
         "methodology_household_jsd_acceptance_band": {
             "metric_ids": [

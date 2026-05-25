@@ -66,14 +66,14 @@ class TestValidationFrameworkScoring(unittest.TestCase):
             seed_mean=17.45106215277778,
             p25=17.17581777777778,
             p75=17.730475555555557,
-            lower_bound=4.396,
-            upper_bound=5.947,
+            lower_bound=4.913,
+            upper_bound=5.43,
             inside_rate=0.0,
             source_value=5.17125,
         )
-        expected = math.log(17.45106215277778 / 5.947) + 0.25 * math.log(17.730475555555557 / 17.17581777777778) + 0.50
+        expected = math.log(17.45106215277778 / 5.43) + 0.25 * math.log(17.730475555555557 / 17.17581777777778) + 0.50
         self.assertAlmostEqual(loss, expected)
-        self.assertAlmostEqual(loss, 1.5844592470279106)
+        self.assertAlmostEqual(loss, 1.6754070038065232)
 
     def test_positive_level_uses_zero_floor_penalty_for_nonpositive_means(self) -> None:
         audit = compute_metric_loss_audit(
@@ -183,7 +183,7 @@ class TestValidationFrameworkScoring(unittest.TestCase):
         self.assertEqual(status, "fail")
 
     def test_loss_scale_prefers_positive_source_value(self) -> None:
-        scale, basis = resolve_loss_scale(source_value=27.833, lower_bound=23.658, upper_bound=32.008)
+        scale, basis = resolve_loss_scale(source_value=27.833, lower_bound=26.442, upper_bound=29.225)
         self.assertAlmostEqual(scale, 27.833)
         self.assertEqual(basis, "source_value")
 

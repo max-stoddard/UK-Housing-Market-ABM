@@ -10,6 +10,8 @@ from scripts.python.validation.model.schema import (
     VALIDATION_WINDOW_START,
 )
 from scripts.python.validation.model.validation_catalog_2024 import (
+    BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID,
+    BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID,
     FPC_SOURCE_2024_BY_METRIC_ID,
     HPI_2024_CYCLE_PERIOD_MONTHS,
     HPI_2024_REBASED_MEAN,
@@ -29,6 +31,8 @@ from scripts.python.validation.model.validation_catalog_2024 import (
 from scripts.python.validation.model.runner import build_validation_summary, run_validation_for_version
 
 __all__ = [
+    "BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID",
+    "BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID",
     "CANONICAL_VALIDATION_SEEDS",
     "FPC_SOURCE_2024_BY_METRIC_ID",
     "HPI_2024_CYCLE_PERIOD_MONTHS",

@@ -27,8 +27,8 @@ from scripts.python.validation.model.validation_catalog_2024 import (
 
 WAS_WAVE_3_SOURCE_LABEL = "WAS Wave 3"
 
-ADVANCES_TARGET_TOLERANCE = 0.15
-HPI_TARGET_TOLERANCE = 0.15
+ADVANCES_TARGET_TOLERANCE = 0.05
+HPI_TARGET_TOLERANCE = 0.05
 
 BOE_2011_SNAPSHOT_PATH = "input-data-versions/validation-sources/2011/boe/housing-tools-2011-series.csv"
 BOE_2011_TEXT_PATH = "input-data-versions/validation-sources/2011/boe/housing-tools-2011-validation-evidence.txt"
@@ -191,11 +191,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2011 annual total reported Feb 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
+        band_method="fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
         band_notes=(
             "Best-available tracked 2011 proxy from public reports quoting CML statistics. "
             "The annual total is converted to thousand count/month using the same normalization logic as the 2024 "
-            "metric, then scored with a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked."
+            "metric, then scored with a fixed +/-5% band because no cleaner repo-local primary 2011 file is tracked."
         ),
         source_references=(
             MetricSourceReference(
@@ -236,11 +236,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2011 annual total reported Feb 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
+        band_method="fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
         band_notes=(
             "Best-available tracked 2011 proxy from public reports quoting CML statistics. "
             "The annual total is converted to thousand count/month using the same normalization logic as the 2024 "
-            "metric, then scored with a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked."
+            "metric, then scored with a fixed +/-5% band because no cleaner repo-local primary 2011 file is tracked."
         ),
         source_references=(
             MetricSourceReference(
@@ -281,11 +281,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2011 annual total reported Feb 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
+        band_method="fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
         band_notes=(
             "Best-available tracked 2011 proxy from public reports quoting CML statistics. "
             "The tracked figure is the 2011 buy-to-let house-purchase total, not total BTL lending, matching the "
-            "2024 metric definition. It is converted to thousand count/month before applying a fixed +/-15% band "
+            "2024 metric definition. It is converted to thousand count/month before applying a fixed +/-5% band "
             "because no cleaner repo-local primary 2011 file is tracked."
         ),
         source_references=(
@@ -369,7 +369,7 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="rebased index",
         source_as_of="2011 annual mean",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_method="fixed_plus_minus_5pct_around_official_value",
         band_notes=(
             "Derived from the tracked official-source UK HPI history through 2011-12. "
             "The UK IndexSA series is rebased to January 2011 = 1.0 before computing the annual mean, matching the "
@@ -414,7 +414,7 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="months",
         source_as_of="1968-04 to 2011-12 history",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_method="fixed_plus_minus_5pct_around_official_value",
         band_notes=(
             "Derived from the tracked official-source UK HPI history through 2011-12 using the locked 12-month "
             "moving-average, log-detrend, FFT peak-search method over 60..240 months. This matches the 2024 "
@@ -623,11 +623,11 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="%",
         source_as_of="2011 annual average reported Mar 2012",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_best_available_annual_proxy",
+        band_method="fixed_plus_minus_5pct_around_best_available_annual_proxy",
         band_notes=(
             "Best-available tracked 2011 proxy based on public reports of BM Solutions rental-yield releases. "
             "The tracked public archive does not provide a clean UK quarterly series comparable with the 2024 UK Finance data, "
-            "so this 2011 overlay uses the annual UK average with a fixed +/-15% band."
+            "so this 2011 overlay uses the annual UK average with a fixed +/-5% band."
         ),
         source_references=(
             MetricSourceReference(
@@ -743,9 +743,9 @@ SOURCE_METADATA_2011_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
 TARGET_BANDS_2011_BY_METRIC_ID: dict[str, TargetBand] = {
     "core_mortgageApprovals": TargetBand(lower=42.883, upper=52.93),
     "core_housingTransactions": TargetBand(lower=68.68, upper=77.16),
-    "core_advancesToFTB": TargetBand(lower=13.671, upper=18.496),
-    "core_advancesToHM": TargetBand(lower=22.419, upper=30.331),
-    "core_advancesToBTL": TargetBand(lower=5.95, upper=8.05),
+    "core_advancesToFTB": TargetBand(lower=15.279, upper=16.888),
+    "core_advancesToHM": TargetBand(lower=25.056, upper=27.694),
+    "core_advancesToBTL": TargetBand(lower=6.65, upper=7.35),
     "core_debtToIncome": TargetBand(
         lower=min(DEBT_TO_INCOME_2011_QUARTERLY_VALUES),
         upper=max(DEBT_TO_INCOME_2011_QUARTERLY_VALUES),

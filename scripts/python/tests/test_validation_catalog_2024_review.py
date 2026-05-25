@@ -10,6 +10,7 @@ from pathlib import Path
 
 from scripts.python.validation.model.catalog_review_2024 import (
     build_live_review_data,
+    extract_boe_housing_tools_values_2024,
     extract_frs_tenure_values_2024,
     extract_rpi_rebased_values,
     extract_spread_monthly_values_2024,
@@ -39,9 +40,10 @@ class TestValidationCatalog2024Review(unittest.TestCase):
 
     def test_ukf_advances_target_bands_recompute_with_locked_rounding_rule(self) -> None:
         payload = build_live_review_data()["source_ukf_advances_metrics"]
-        self.assertEqual(payload["core_advancesToFTB"]["target_band"], {"lower": 23.658, "upper": 32.008})
-        self.assertEqual(payload["core_advancesToHM"]["target_band"], {"lower": 20.4, "upper": 27.6})
-        self.assertEqual(payload["core_advancesToBTL"]["target_band"], {"lower": 4.396, "upper": 5.947})
+        self.assertEqual(build_live_review_data()["advances_target_tolerance"], 0.05)
+        self.assertEqual(payload["core_advancesToFTB"]["target_band"], {"lower": 26.442, "upper": 29.225})
+        self.assertEqual(payload["core_advancesToHM"]["target_band"], {"lower": 22.8, "upper": 25.2})
+        self.assertEqual(payload["core_advancesToBTL"]["target_band"], {"lower": 4.913, "upper": 5.43})
 
     def test_hpi_review_payload_recomputes_rebased_and_cycle_metrics_from_local_source(self) -> None:
         payload = build_live_review_data()["source_market_hpi"]
@@ -55,9 +57,10 @@ class TestValidationCatalog2024Review(unittest.TestCase):
         )
         self.assertAlmostEqual(payload["full_history_std"], 0.2766701944903836)
         self.assertAlmostEqual(payload["cycle_period_months"], 167.5)
-        self.assertEqual(payload["mean_target_band"], {"lower": 0.86673455532926, "upper": 1.172640868974881})
-        self.assertEqual(payload["std_target_band"], {"lower": 0.23516966531682607, "upper": 0.3181707236639411})
-        self.assertEqual(payload["cycle_target_band"], {"lower": 142.375, "upper": 192.62499999999997})
+        self.assertEqual(payload["hpi_target_tolerance"], 0.05)
+        self.assertEqual(payload["mean_target_band"], {"lower": 0.9687033265444671, "upper": 1.0706720977596742})
+        self.assertEqual(payload["std_target_band"], {"lower": 0.2628366847658644, "upper": 0.2905037042149028})
+        self.assertEqual(payload["cycle_target_band"], {"lower": 159.125, "upper": 175.875})
 
     def test_spread_monthly_series_reads_twelve_2024_values_from_workbook(self) -> None:
         values = extract_spread_monthly_values_2024(
@@ -66,6 +69,47 @@ class TestValidationCatalog2024Review(unittest.TestCase):
         self.assertEqual(len(values), 12)
         self.assertAlmostEqual(values[0], 0.5278707362670447)
         self.assertAlmostEqual(values[-1], 0.4538682238309004)
+
+    def test_boe_housing_tools_core_series_read_expected_2024_windows_from_workbook(self) -> None:
+        workbook_path = Path("input-data-versions/validation-sources/2024/boe/housing-tools.xlsx")
+        cases = {
+            "core_mortgageApprovals": ("4.Mortgage approvals", 12, 62.86358333333334, {"lower": 55.575, "upper": 68.073}),
+            "core_housingTransactions": ("5.Housing transactions", 12, 91.23416666666667, {"lower": 82.43, "upper": 100.83}),
+            "core_debtToIncome": (
+                "3. Household debt to income",
+                4,
+                136.84725453089672,
+                {"lower": 133.7791854721206, "upper": 139.0765196216166},
+            ),
+            "core_housePriceGrowth": (
+                "6.House price growth",
+                12,
+                0.5421916778233726,
+                {"lower": -0.675904021628948, "upper": 1.069161376545269},
+            ),
+            "core_priceToIncome": (
+                "7.House prices disp. income",
+                4,
+                4.916288221210461,
+                {"lower": 4.847149441436771, "upper": 4.956292571351748},
+            ),
+        }
+        payload = build_live_review_data()["source_boe_housing_tools_core_metrics"]
+
+        for metric_id, (sheet_name, expected_count, expected_mean, expected_band) in cases.items():
+            values = extract_boe_housing_tools_values_2024(
+                workbook_path,
+                sheet_name=sheet_name,
+                expected_count=expected_count,
+            )
+            self.assertEqual(len(values), expected_count, msg=metric_id)
+            self.assertEqual(payload[metric_id]["value_count"], expected_count)
+            self.assertAlmostEqual(payload[metric_id]["normalized_source_value"], expected_mean)
+            self.assertEqual(payload[metric_id]["target_band"], expected_band)
+            self.assertAlmostEqual(TARGETS_BY_ID[metric_id].source_metadata.normalized_source_value or 0.0, expected_mean)
+            self.assertEqual(TARGETS_BY_ID[metric_id].target_band.lower, expected_band["lower"])
+            self.assertEqual(TARGETS_BY_ID[metric_id].target_band.upper, expected_band["upper"])
+            self.assertNotEqual(TARGETS_BY_ID[metric_id].source_metadata, FPC_SOURCE_2024_BY_METRIC_ID[metric_id])
 
     def test_oo_dti_review_uses_repo_local_ons_snapshot_and_local_source_reference(self) -> None:
         snapshot = load_ons_qwnd_snapshot(

@@ -406,10 +406,12 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             seeds=[1, 2, 3, 4, 5, 6, 7, 8],
         )
         metric = next(item for item in summary["metrics"] if item["metricId"] == "core_mortgageApprovals")
-        self.assertEqual(metric["sourceIndicatorLabel"], "Mortgage approvals")
-        self.assertEqual(metric["rawSourceValue"], 61325.0)
-        self.assertEqual(metric["sourceValue"], 61.325)
-        self.assertEqual(metric["mappingStatus"], "exact_match")
+        self.assertEqual(metric["sourceIndicatorLabel"], "Mortgage approvals, 2024 annual mean")
+        self.assertAlmostEqual(metric["rawSourceValue"], 62863.583333333336)
+        self.assertAlmostEqual(metric["sourceValue"], 62.86358333333334)
+        self.assertEqual(metric["sourceDocumentPath"], "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx")
+        self.assertEqual(metric["mappingStatus"], "derived_match")
+        self.assertEqual(metric["targetBand"], {"lower": 55.575, "upper": 68.073})
         self.assertEqual(metric["metricWeight"], 1.0)
 
     def test_build_validation_summary_scores_ukf_backed_advances_metrics(self) -> None:
@@ -421,7 +423,7 @@ class TestValidationFrameworkPublish(unittest.TestCase):
         metric = next(item for item in summary["metrics"] if item["metricId"] == "core_advancesToBTL")
         self.assertEqual(metric["sourceLabel"], "UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)")
         self.assertEqual(metric["status"], "fail")
-        self.assertEqual(metric["targetBand"], {"lower": 4.396, "upper": 5.947})
+        self.assertEqual(metric["targetBand"], {"lower": 4.913, "upper": 5.43})
         self.assertEqual(len(metric["sourceReferences"]), 4)
         self.assertIsNotNone(metric["metricLoss"])
         self.assertEqual(metric["lossFamily"], "positive_level")
