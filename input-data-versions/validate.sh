@@ -24,6 +24,53 @@ Options:
   --reference-only       Publish only the optional 2011 reference overlay from existing per-seed outputs.
   --allow-noncanonical-seeds
                           Allow tracked publication with an explicitly supplied non-canonical seed block.
+
+Definitions:
+  Symbols                 For one metric, let seed values be x_i, targetBand.lower=L,
+                          targetBand.upper=U, seedMean=mu=mean(x_i), p25=q25,
+                          p75=q75, IQR=max(0, q75 - q25), and
+                          insideRate=r=count(L <= x_i <= U) / count(x_i).
+                          Let outside(mu,L,U)=0 when L <= mu <= U, otherwise
+                          min(abs(mu - L), abs(mu - U)). For additive formulas,
+                          A=max(abs(sourceValue) when present, abs(L), abs(U),
+                          (U - L) / 2, 1e-9).
+
+  Target range           The inclusive lower/upper target interval for one validation metric. Published
+                          summaries expose it as targetBand.lower and targetBand.upper, with bandMethod
+                          and bandNotes explaining how that interval was derived. It is not a CLI
+                          argument; it comes from the locked validation catalog for the target year.
+                          A metric passes when outside(mu,L,U)/(U-L)=0 and r>=0.75, warns when
+                          outside(mu,L,U)/(U-L)<=0.50 and r>=0.50, and fails otherwise.
+                          HH owning share and HH private renting share use a +/-0.5 percentage-point
+                          target range because the DWP Family Resources Survey tenure tables publish
+                          those household shares as whole percentages. The band is therefore the
+                          rounded-value interval around the published value (for example, 65% maps to
+                          [64.5,65.5]), not an additional modelling tolerance. HH private renting
+                          share uses the private-rented-sector value only; social renting is excluded.
+
+  positive_level         Requires L>0 and U>0. Distance D=0 when L<=mu<=U;
+                          D=log(mu/U) when mu>U; D=log(L/mu) when 0<mu<L;
+                          D=log(100) when mu<=0. Spread Q=max(0,log(q75/q25))
+                          when q25>0 and q75>0, otherwise Q=IQR/A.
+                          Loss = D + 0.25*Q + 0.50*(1-r).
+
+  signed_additive        Uses additive units around the target band. D=outside(mu,L,U)/A;
+                          Q=IQR/A. Loss = D + 0.25*Q + 0.50*(1-r).
+
+  bounded_low_is_better  Requires U>0. D=max(mu-U,0)/U; level=0.25*max(mu,0)/U;
+                          Q=IQR/U. Loss = D + level + 0.25*Q + 0.50*(1-r).
+
+  bounded_share          Requires 0<=L<U<=100 and treats values as percentages on a 0..100
+                          domain. D=outside(mu,L,U)/100; Q=IQR/100.
+                          Loss = D + 0.25*Q + 0.50*(1-r).
+
+  diagnostic             Diagnostic metrics are not scored. They publish metricWeight=0.0,
+                          do not contribute a metricLoss, and are excluded from the composite.
+
+  Composite loss         overallCompositeLoss=sum(metricLoss * metricWeight)/sum(metricWeight)
+                          over required scored metrics only. Required scored metrics currently
+                          carry metricWeight=1.0, so the published composite is their arithmetic
+                          mean; diagnostic, unsupported, and non-required metrics are excluded.
 EOF
 }
 
