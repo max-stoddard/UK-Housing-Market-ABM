@@ -6,7 +6,7 @@ set -euo pipefail
 
 print_usage() {
   cat <<EOF
-Usage: $(basename "$0") <version> [--output-dir <path>] [--workers <n>] [--seeds <list>] [--n-steps <n>] [--validation-window-start <n>] [--validation-window-end <n>] [--reuse-existing-output] [--reference-only] [--allow-noncanonical-seeds]
+Usage: $(basename "$0") <version> [--output-dir <path>] [--workers <n>] [--seeds <list>] [--validation-year <year>] [--n-steps <n>] [--validation-window-start <n>] [--validation-window-end <n>] [--reuse-existing-output] [--reference-only] [--allow-noncanonical-seeds]
 
 Arguments:
   <version>               Input-data version folder name (for example: v0, v1.0, v4.1).
@@ -15,6 +15,9 @@ Options:
   --output-dir <path>     Transient output directory. Defaults to tmp/validation/<version>.
   --workers <n>          Maximum parallel workers for per-seed validation runs. Defaults to 20.
   --seeds <list>          Comma-separated seeds. Defaults to canonical 1,2,3,4,5,6,7,8.
+  --validation-year <year>
+                          Validation target year. Use 2011 for v0-family reference-only campaign validation.
+                          Defaults to 2024.
   --n-steps <n>           Optional N_STEPS override for validation runs.
   --validation-window-start <n>
                           Optional metric extraction window start index.
@@ -85,6 +88,7 @@ shift
 output_dir=""
 workers=20
 seeds="1,2,3,4,5,6,7,8"
+validation_year="2024"
 n_steps=""
 validation_window_start=""
 validation_window_end=""
@@ -119,6 +123,18 @@ while [[ $# -gt 0 ]]; do
         exit 1
       fi
       seeds="$2"
+      shift 2
+      ;;
+    --validation-year)
+      if [[ $# -lt 2 ]]; then
+        echo "--validation-year requires 2011 or 2024." >&2
+        exit 1
+      fi
+      if [[ "$2" != "2011" && "$2" != "2024" ]]; then
+        echo "--validation-year must be 2011 or 2024." >&2
+        exit 1
+      fi
+      validation_year="$2"
       shift 2
       ;;
     --n-steps)
@@ -189,6 +205,7 @@ validation_args=(
   -m scripts.python.validation.model.validate_input_data_version
   --version "${input_version}"
   --seeds "${seeds}"
+  --validation-year "${validation_year}"
   --output-dir "${output_dir}"
   --workers "${workers}"
 )

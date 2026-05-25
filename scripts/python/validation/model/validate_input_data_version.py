@@ -8,7 +8,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from scripts.python.validation.model.runner import publish_reference_validation_only, run_validation_for_version
+from scripts.python.validation.model.runner import (
+    publish_reference_validation_only,
+    run_reference_validation_for_version,
+    run_validation_for_version,
+)
 from scripts.python.validation.model.validation_profiles import resolve_validation_profile
 
 
@@ -17,6 +21,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", required=True, help="Input-data version folder name, for example v4.1")
     parser.add_argument("--seeds", default="1,2,3,4,5,6,7,8", help="Comma-separated seed list")
     parser.add_argument("--output-dir", required=True, help="Transient validation output directory")
+    parser.add_argument(
+        "--validation-year",
+        type=int,
+        choices=(2011, 2024),
+        default=2024,
+        help="Validation target year. Use 2011 for v0-family reference validation only.",
+    )
     parser.add_argument("--workers", type=int, default=20, help="Maximum parallel workers for per-seed validation runs")
     parser.add_argument("--maven-bin", default=None, help="Maven executable override (default: repo-local ./mvnw)")
     parser.add_argument("--was-data-root", default=None, help="Optional WAS data root override")
@@ -77,6 +88,28 @@ def main() -> None:
         )
         print(
             f"Published reference validation overlay for {summary['version']} "
+            f"(targetYear={summary['validationTargetYear']}) "
+            f"with overallCompositeLoss={summary['overallCompositeLoss']:.6f}"
+        )
+        return
+
+    if args.validation_year == 2011:
+        summary = run_reference_validation_for_version(
+            repo_root=repo_root,
+            version=args.version,
+            seeds=seeds,
+            output_dir=Path(args.output_dir),
+            maven_bin=args.maven_bin,
+            workers=args.workers,
+            was_data_root=was_data_root,
+            reuse_existing_output=args.reuse_existing_output,
+            allow_noncanonical_seeds=args.allow_noncanonical_seeds,
+            n_steps=args.n_steps,
+            window_start=args.validation_window_start,
+            window_end=args.validation_window_end,
+        )
+        print(
+            f"Published reference validation summary for {summary['version']} "
             f"(targetYear={summary['validationTargetYear']}) "
             f"with overallCompositeLoss={summary['overallCompositeLoss']:.6f}"
         )

@@ -18,6 +18,7 @@ from scripts.python.validation.model.runner import (
     build_validation_summary,
     publish_reference_validation_only,
     resolve_was_data_root,
+    run_reference_validation_for_version,
     run_validation_for_version,
     run_validation_seed,
 )
@@ -184,6 +185,45 @@ class TestValidationFrameworkPublish(unittest.TestCase):
             self.assertEqual(extract_mock.call_count, 8)
             self.assertFalse((repo_root / "input-data-versions" / "validation" / "v0o.json").exists())
             self.assertFalse((repo_root / "input-data-versions" / "validation-overlays" / "v0-2011.json").exists())
+
+    def test_reference_validation_runner_publishes_v0o7_overlay_without_tracked_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            version_dir = repo_root / "input-data-versions" / "v0o7"
+            version_dir.mkdir(parents=True)
+            (version_dir / "config.properties").write_text("SEED = 1\n", encoding="utf-8")
+            output_dir = repo_root / "tmp" / "validation" / "v0o7"
+            seed_results = [
+                {
+                    "seed": seed,
+                    "outputDir": str(output_dir / f"seed-{seed}"),
+                    "metrics": self._synthetic_metrics(),
+                }
+                for seed in (1, 2)
+            ]
+
+            with (
+                patch(
+                    "scripts.python.validation.model.runner.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                patch(
+                    "scripts.python.validation.model.runner.run_snapshot_local_validation",
+                    return_value=seed_results,
+                ),
+            ):
+                summary = run_reference_validation_for_version(
+                    repo_root=repo_root,
+                    version="v0o7",
+                    seeds=[1, 2],
+                    output_dir=output_dir,
+                    workers=2,
+                    allow_noncanonical_seeds=True,
+                )
+
+            self.assertTrue((repo_root / "input-data-versions" / "validation-overlays" / "v0o7-2011.json").exists())
+            self.assertFalse((repo_root / "input-data-versions" / "validation" / "v0o7.json").exists())
+            self.assertEqual(summary["validationTargetYear"], 2011)
 
     def test_run_validation_for_version_can_reuse_existing_output_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

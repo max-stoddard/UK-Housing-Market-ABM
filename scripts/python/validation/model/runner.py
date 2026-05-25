@@ -154,6 +154,73 @@ def run_validation_for_version(
     )
 
 
+def run_reference_validation_for_version(
+    *,
+    repo_root: Path,
+    version: str,
+    seeds: Sequence[int],
+    output_dir: Path,
+    maven_bin: str | None = None,
+    workers: int = 1,
+    was_data_root: Path | None = None,
+    reuse_existing_output: bool = False,
+    allow_noncanonical_seeds: bool = False,
+    n_steps: int | None = None,
+    window_start: int | None = None,
+    window_end: int | None = None,
+) -> dict:
+    """Run and publish only a 2011 reference validation overlay for a v0-family version."""
+
+    canonical_seeds = list(CANONICAL_VALIDATION_SEEDS)
+    if list(seeds) != canonical_seeds and not allow_noncanonical_seeds:
+        raise ValueError("2011 reference validation requires canonical seeds unless --allow-noncanonical-seeds is set")
+    if workers <= 0:
+        raise ValueError("workers must be positive")
+    reference_profile = resolve_reference_validation_profile(version)
+    if reference_profile is None:
+        raise RuntimeError(f"No 2011 reference validation profile is available for {version}")
+    resolved_window_start, resolved_window_end = _resolve_validation_window(
+        window_start=window_start,
+        window_end=window_end,
+    )
+    if n_steps is not None and n_steps < resolved_window_end:
+        raise ValueError("n_steps must be at least the validation window end")
+    resolved_was_data_root = resolve_was_data_root(repo_root=repo_root, explicit_root=was_data_root)
+    if reuse_existing_output:
+        run_results = load_reused_validation_results(
+            output_dir=output_dir,
+            seeds=seeds,
+            was_data_root=resolved_was_data_root,
+            validation_profile=reference_profile,
+            window_start=resolved_window_start,
+            window_end=resolved_window_end,
+        )
+    else:
+        resolved_maven_bin = resolve_maven_bin(repo_root, maven_bin)
+        run_results = run_snapshot_local_validation(
+            repo_root=repo_root,
+            version=version,
+            seeds=seeds,
+            output_dir=output_dir,
+            maven_bin=resolved_maven_bin,
+            was_data_root=resolved_was_data_root,
+            validation_profile=reference_profile,
+            workers=workers,
+            n_steps=n_steps,
+            window_start=resolved_window_start,
+            window_end=resolved_window_end,
+        )
+    return _write_reference_validation_artifacts(
+        repo_root=repo_root,
+        version=version,
+        output_dir=output_dir,
+        reference_seed_results=run_results,
+        reference_profile=reference_profile,
+        window_start=resolved_window_start,
+        window_end=resolved_window_end,
+    )
+
+
 def publish_reference_validation_only(
     *,
     repo_root: Path,
