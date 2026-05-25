@@ -2,7 +2,7 @@
   "schemaVersion": 4,
   "version": "v0oo",
   "validationTargetYear": 2011,
-  "generatedAt": "2026-05-15T15:47:27Z",
+  "generatedAt": "2026-05-19T19:05:15Z",
   "seeds": [
     1,
     2,
@@ -17,7 +17,7 @@
     "startIndex": 200,
     "endIndex": 2000
   },
-  "overallCompositeLoss": 0.49788886441872726,
+  "overallCompositeLoss": 0.5601778583960388,
   "metrics": [
     {
       "metricId": "core_mortgageApprovals",
@@ -124,8 +124,8 @@
       "sourceUnits": "count/year",
       "comparisonUnits": "thousand count/month",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
-      "bandNotes": "Best-available tracked 2011 proxy from public reports quoting CML statistics. The annual total is converted to thousand count/month using the same normalization logic as the 2024 metric, then scored with a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked.",
+      "bandMethod": "fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
+      "bandNotes": "Best-available tracked 2011 proxy from public reports quoting CML statistics. The annual total is converted to thousand count/month using the same normalization logic as the 2024 metric, then scored with a fixed +/-5% band because no cleaner repo-local primary 2011 file is tracked.",
       "sourceReferences": [
         {
           "label": "PropertyWire report quoting 2011 CML first-time-buyer total",
@@ -153,8 +153,8 @@
         }
       ],
       "targetBand": {
-        "lower": 13.671,
-        "upper": 18.496
+        "lower": 15.279,
+        "upper": 16.888
       },
       "seedMean": 22.54977701388889,
       "p25": 22.40364513888889,
@@ -166,13 +166,13 @@
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.198170684890489,
+      "normalizedDistance": 0.28912186683443636,
       "normalizedIqr": 0.013274714601563844,
-      "distanceComponent": 0.198170684890489,
+      "distanceComponent": 0.28912186683443636,
       "spreadComponent": 0.003318678650390961,
       "levelComponent": 0.0,
       "insideRateComponent": 0.5,
-      "metricLoss": 0.70148936354088,
+      "metricLoss": 0.7924405454848273,
       "metricWeight": 1.0,
       "status": "fail"
     },
@@ -193,8 +193,8 @@
       "sourceUnits": "count/year",
       "comparisonUnits": "thousand count/month",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
-      "bandNotes": "Best-available tracked 2011 proxy from public reports quoting CML statistics. The annual total is converted to thousand count/month using the same normalization logic as the 2024 metric, then scored with a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked.",
+      "bandMethod": "fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
+      "bandNotes": "Best-available tracked 2011 proxy from public reports quoting CML statistics. The annual total is converted to thousand count/month using the same normalization logic as the 2024 metric, then scored with a fixed +/-5% band because no cleaner repo-local primary 2011 file is tracked.",
       "sourceReferences": [
         {
           "label": "PropertyWire report quoting 2011 CML home-mover total",
@@ -222,8 +222,8 @@
         }
       ],
       "targetBand": {
-        "lower": 22.419,
-        "upper": 30.331
+        "lower": 25.056,
+        "upper": 27.694
       },
       "seedMean": 18.216867916666665,
       "p25": 17.86331763888889,
@@ -235,13 +235,13 @@
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.20756084014736867,
+      "normalizedDistance": 0.31876534633949855,
       "normalizedIqr": 0.037224213115188885,
-      "distanceComponent": 0.20756084014736867,
+      "distanceComponent": 0.31876534633949855,
       "spreadComponent": 0.009306053278797221,
       "levelComponent": 0.0,
       "insideRateComponent": 0.5,
-      "metricLoss": 0.7168668934261659,
+      "metricLoss": 0.8280713996182958,
       "metricWeight": 1.0,
       "status": "fail"
     },
@@ -262,8 +262,8 @@
       "sourceUnits": "count/year",
       "comparisonUnits": "thousand count/month",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
-      "bandNotes": "Best-available tracked 2011 proxy from public reports quoting CML statistics. The tracked figure is the 2011 buy-to-let house-purchase total, not total BTL lending, matching the 2024 metric definition. It is converted to thousand count/month before applying a fixed +/-15% band because no cleaner repo-local primary 2011 file is tracked.",
+      "bandMethod": "fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
+      "bandNotes": "Best-available tracked 2011 proxy from public reports quoting CML statistics. The tracked figure is the 2011 buy-to-let house-purchase total, not total BTL lending, matching the 2024 metric definition. It is converted to thousand count/month before applying a fixed +/-5% band because no cleaner repo-local primary 2011 file is tracked.",
       "sourceReferences": [
         {
           "label": "Mortgage Strategy report quoting 2011 CML buy-to-let house-purchase total",
@@ -279,8 +279,8 @@
         }
       ],
       "targetBand": {
-        "lower": 5.95,
-        "upper": 8.05
+        "lower": 6.65,
+        "upper": 7.35
       },
       "seedMean": 11.186993888888889,
       "p25": 11.041157777777778,
@@ -292,13 +292,13 @@
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.3290797521651893,
+      "normalizedDistance": 0.42005153037091614,
       "normalizedIqr": 0.025663556911184934,
-      "distanceComponent": 0.3290797521651893,
+      "distanceComponent": 0.42005153037091614,
       "spreadComponent": 0.006415889227796233,
       "levelComponent": 0.0,
       "insideRateComponent": 0.5,
-      "metricLoss": 0.8354956413929855,
+      "metricLoss": 0.9264674195987124,
       "metricWeight": 1.0,
       "status": "fail"
     },
@@ -451,7 +451,7 @@
       "sourceUnits": "rebased index",
       "comparisonUnits": "rebased index",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_official_value",
+      "bandMethod": "fixed_plus_minus_5pct_around_official_value",
       "bandNotes": "Derived from the tracked official-source UK HPI history through 2011-12. The UK IndexSA series is rebased to January 2011 = 1.0 before computing the annual mean, matching the 2024 HPI-mean definition with the target year anchored to 2011.",
       "sourceReferences": [
         {
@@ -468,28 +468,28 @@
         }
       ],
       "targetBand": {
-        "lower": 0.8434413580246913,
-        "upper": 1.1411265432098765
+        "lower": 0.9426697530864196,
+        "upper": 1.0418981481481482
       },
       "seedMean": 1.0738892736858405,
       "p25": 1.0671900279223059,
       "p75": 1.1143726377115617,
-      "insideRate": 0.625,
+      "insideRate": 0.0,
       "lossFamily": "positive_level",
       "lossTransform": "log_ratio_to_target_band",
       "lossScale": null,
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.0,
+      "normalizedDistance": 0.030242701590244198,
       "normalizedIqr": 0.043262537815632204,
-      "distanceComponent": 0.0,
+      "distanceComponent": 0.030242701590244198,
       "spreadComponent": 0.010815634453908051,
       "levelComponent": 0.0,
-      "insideRateComponent": 0.1875,
-      "metricLoss": 0.19831563445390804,
+      "insideRateComponent": 0.5,
+      "metricLoss": 0.5410583360441522,
       "metricWeight": 1.0,
-      "status": "warn"
+      "status": "fail"
     },
     {
       "metricId": "core_hpiStd",
@@ -508,7 +508,7 @@
       "sourceUnits": "rebased index",
       "comparisonUnits": "rebased index",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_official_value",
+      "bandMethod": "fixed_plus_minus_5pct_around_official_value",
       "bandNotes": "Deliberate cross-year normalization exception for the 2011 overlay. This metric reuses the exact 2024 official-source std definition and scalar over 2005-01 through 2024-12 so the 2011 baseline is benchmarked against the same official volatility standard as the 2024 framework.",
       "sourceReferences": [
         {
@@ -525,28 +525,28 @@
         }
       ],
       "targetBand": {
-        "lower": 0.23516966531682607,
-        "upper": 0.3181707236639411
+        "lower": 0.2628366847658644,
+        "upper": 0.2905037042149028
       },
       "seedMean": 0.23688786614872398,
       "p25": 0.22529303038531723,
       "p75": 0.2510163221214521,
-      "insideRate": 0.625,
+      "insideRate": 0.0,
       "lossFamily": "positive_level",
       "lossTransform": "log_ratio_to_target_band",
       "lossScale": null,
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.0,
+      "normalizedDistance": 0.1039459782669885,
       "normalizedIqr": 0.10811605324897437,
-      "distanceComponent": 0.0,
+      "distanceComponent": 0.1039459782669885,
       "spreadComponent": 0.027029013312243593,
       "levelComponent": 0.0,
-      "insideRateComponent": 0.1875,
-      "metricLoss": 0.21452901331224358,
+      "insideRateComponent": 0.5,
+      "metricLoss": 0.6309749915792321,
       "metricWeight": 1.0,
-      "status": "warn"
+      "status": "fail"
     },
     {
       "metricId": "core_hpiCyclePeriod",
@@ -565,7 +565,7 @@
       "sourceUnits": "months",
       "comparisonUnits": "months",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_official_value",
+      "bandMethod": "fixed_plus_minus_5pct_around_official_value",
       "bandNotes": "Derived from the tracked official-source UK HPI history through 2011-12 using the locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months. This matches the 2024 cycle-period definition with the available history anchored to December 2011.",
       "sourceReferences": [
         {
@@ -582,8 +582,8 @@
         }
       ],
       "targetBand": {
-        "lower": 145.63333333333333,
-        "upper": 197.03333333333333
+        "lower": 162.76666666666668,
+        "upper": 179.9
       },
       "seedMean": 149.91666666666669,
       "p25": 128.5,
@@ -595,15 +595,15 @@
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.0,
+      "normalizedDistance": 0.08223809823697201,
       "normalizedIqr": 0.287682072451781,
-      "distanceComponent": 0.0,
+      "distanceComponent": 0.08223809823697201,
       "spreadComponent": 0.07192051811294525,
       "levelComponent": 0.0,
       "insideRateComponent": 0.25,
-      "metricLoss": 0.32192051811294525,
+      "metricLoss": 0.40415861634991723,
       "metricWeight": 1.0,
-      "status": "warn"
+      "status": "fail"
     },
     {
       "metricId": "rpi_mean",
@@ -898,8 +898,8 @@
       "sourceUnits": "%",
       "comparisonUnits": "%",
       "mappingStatus": "derived_match",
-      "bandMethod": "fixed_plus_minus_15pct_around_best_available_annual_proxy",
-      "bandNotes": "Best-available tracked 2011 proxy based on public reports of BM Solutions rental-yield releases. The tracked public archive does not provide a clean UK quarterly series comparable with the 2024 UK Finance data, so this 2011 overlay uses the annual UK average with a fixed +/-15% band.",
+      "bandMethod": "fixed_plus_minus_5pct_around_best_available_annual_proxy",
+      "bandNotes": "Best-available tracked 2011 proxy based on public reports of BM Solutions rental-yield releases. The tracked public archive does not provide a clean UK quarterly series comparable with the 2024 UK Finance data, so this 2011 overlay uses the annual UK average with a fixed +/-5% band.",
       "sourceReferences": [
         {
           "label": "PropertyWire report quoting the 2011 BM Solutions UK annual rental yield",
@@ -939,8 +939,8 @@
         }
       ],
       "targetBand": {
-        "lower": 5.185,
-        "upper": 7.014999999999999
+        "lower": 5.794999999999999,
+        "upper": 6.405
       },
       "seedMean": 4.566412652777778,
       "p25": 4.501979208333333,
@@ -952,13 +952,13 @@
       "lossScaleBasis": "not_applicable",
       "additiveScale": null,
       "additiveScaleBasis": "not_applicable",
-      "normalizedDistance": 0.12704192254188268,
+      "normalizedDistance": 0.23826755765210708,
       "normalizedIqr": 0.02676290020623738,
-      "distanceComponent": 0.12704192254188268,
+      "distanceComponent": 0.23826755765210708,
       "spreadComponent": 0.006690725051559345,
       "levelComponent": 0.0,
       "insideRateComponent": 0.5,
-      "metricLoss": 0.6337326475934421,
+      "metricLoss": 0.7449582827036665,
       "metricWeight": 1.0,
       "status": "fail"
     },

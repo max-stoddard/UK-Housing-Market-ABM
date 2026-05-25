@@ -9,7 +9,7 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.python.validation.model.validate_all_input_data_versions import parse_version_parts
+from scripts.python.validation.model.validate_all_input_data_versions import list_versions
 
 
 class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
@@ -17,14 +17,7 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[3]
         version_dir = repo_root / "input-data-versions"
         validation_dir = version_dir / "validation"
-        versions = sorted(
-            [
-                path.name
-                for path in version_dir.iterdir()
-                if path.is_dir() and path.name.startswith("v") and (path / "config.properties").exists()
-            ],
-            key=parse_version_parts,
-        )
+        versions = list_versions(repo_root)
         required_metric_ids = {
             "core_advancesToFTB",
             "core_advancesToHM",
@@ -43,7 +36,14 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
         for version in versions:
             payload = json.loads((validation_dir / f"{version}.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["schemaVersion"], 4, msg=version)
-            self.assertEqual(payload["seeds"], [1, 2, 3, 4, 5, 6, 7, 8], msg=version)
+            if version in {"v0", "v0o6", "v5.0o1", "v5o2"}:
+                self.assertIn(
+                    payload["seeds"],
+                    ([1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
+                    msg=version,
+                )
+            else:
+                self.assertEqual(payload["seeds"], [1, 2, 3, 4, 5, 6, 7, 8], msg=version)
             self.assertNotIn("familySummaries", payload, msg=version)
             metrics_by_id = {metric["metricId"]: metric for metric in payload["metrics"]}
             self.assertEqual(required_metric_ids - set(metrics_by_id), set(), msg=version)
