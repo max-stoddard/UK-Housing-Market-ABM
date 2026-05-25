@@ -23,14 +23,13 @@ type ValidationSortMode =
   | 'lowest_loss'
   | 'metric_name'
   | 'most_inside_band'
-  | 'least_inside_band'
-  | 'status_severity';
+  | 'least_inside_band';
 
 const DEFAULT_SORT_MODE: ValidationSortMode = 'highest_loss';
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const REFERENCE_VALIDATION_TARGET_YEAR = 2011;
 const TRACKED_VALIDATION_SERIES_NAME = '2024 validation';
-const V0_FAMILY_REFERENCE_SERIES_NAME = '2011 validation (v0 family)';
+const V0_REFERENCE_SERIES_NAME = '2011 validation (v0 and v0o2)';
 
 function formatNumber(value: number | null, digits = 3): string {
   if (value === null) {
@@ -49,15 +48,23 @@ function formatTargetBand(metric: ValidationMetricSummary): string {
   return `${formatNumber(metric.targetBand.lower, 2)} to ${formatNumber(metric.targetBand.upper, 2)}`;
 }
 
+function formatTargetValue(metric: ValidationMetricSummary): string {
+  return formatNumber(metric.sourceValue, 2);
+}
+
+function formatAcceptanceRange(metric: ValidationMetricSummary): string {
+  if (metric.sourceValue === null) {
+    return 'Unsupported';
+  }
+  const halfWidth = Math.abs(metric.sourceValue) * 0.25;
+  return `${formatNumber(metric.sourceValue - halfWidth, 2)} to ${formatNumber(metric.sourceValue + halfWidth, 2)}`;
+}
+
 function formatInsideRate(value: number | null): string {
   if (value === null) {
     return 'Unsupported';
   }
   return `${(value * 100).toLocaleString('en-GB', { maximumFractionDigits: 1 })}%`;
-}
-
-function formatStatusLabel(status: ValidationMetricSummary['status']): string {
-  return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
 function formatLoss(value: number | null): string {
@@ -72,6 +79,27 @@ function formatLossDelta(value: number | null): string {
     return formatLoss(0);
   }
   return `${value > 0 ? '+' : '-'}${formatLoss(Math.abs(value))}`;
+}
+
+function formatLossDeltaPercent(value: number | null): string {
+  if (value === null) {
+    return 'Unsupported';
+  }
+  if (Math.abs(value) < 1e-12) {
+    return '0%';
+  }
+  return `${value > 0 ? '+' : '-'}${Math.abs(value).toLocaleString('en-GB', { maximumFractionDigits: 1 })}%`;
+}
+
+function lossDeltaClassName(value: number | null): string {
+  return [
+    'validation-loss-cell',
+    value === null ? 'validation-loss-unsupported' : '',
+    value !== null && value > 0 ? 'validation-loss-delta-positive' : '',
+    value !== null && value < 0 ? 'validation-loss-delta-negative' : ''
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function formatMetricWeight(value: number): string {
@@ -365,7 +393,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
   if (referenceSeriesData.some((point) => point !== null)) {
     series.push({
       type: 'line',
-      name: V0_FAMILY_REFERENCE_SERIES_NAME,
+      name: V0_REFERENCE_SERIES_NAME,
       smooth: false,
       showSymbol: true,
       symbol: 'diamond',
@@ -439,7 +467,7 @@ function buildChartOption(overview: ValidationOverviewPayload): EChartsOption {
           }
           const seriesName = row.seriesName ?? TRACKED_VALIDATION_SERIES_NAME;
           const evidenceLabel =
-            seriesName === V0_FAMILY_REFERENCE_SERIES_NAME && referencePoint
+            seriesName === V0_REFERENCE_SERIES_NAME && referencePoint
               ? formatValidationTargetYearLabel(referencePoint.validationTargetYear)
               : seriesName === referenceLineLabel && referenceLine
                 ? formatValidationTargetYearLabel(referenceLine.validationTargetYear)
@@ -480,23 +508,8 @@ function compareNullableNumbers(left: number | null, right: number | null, desce
   return descending ? right - left : left - right;
 }
 
-function metricStatusSeverity(status: ValidationMetricSummary['status']): number {
-  switch (status) {
-    case 'fail':
-      return 0;
-    case 'warn':
-      return 1;
-    case 'pass':
-      return 2;
-    case 'unsupported':
-      return 3;
-    default:
-      return 4;
-  }
-}
-
 function buildMetricSearchText(metric: ValidationMetricSummary): string {
-  return [metric.label, metric.metricId, metric.status, metric.sourceLabel, metric.sourceIndicatorLabel ?? '']
+  return [metric.label, metric.metricId, metric.sourceLabel, metric.sourceIndicatorLabel ?? '']
     .join(' ')
     .toLowerCase();
 }
@@ -527,11 +540,6 @@ function sortMetrics(metrics: ValidationMetricSummary[], sortMode: ValidationSor
       const insideBandComparison = compareNullableNumbers(left.insideRate, right.insideRate);
       if (insideBandComparison !== 0) {
         return insideBandComparison;
-      }
-    } else if (sortMode === 'status_severity') {
-      const severityComparison = metricStatusSeverity(left.status) - metricStatusSeverity(right.status);
-      if (severityComparison !== 0) {
-        return severityComparison;
       }
     }
 
@@ -686,7 +694,7 @@ export function ValidationPage() {
 
     if (params.seriesName === TRACKED_VALIDATION_SERIES_NAME) {
       selectVersionAndValidationYear(params.name, DEFAULT_VALIDATION_TARGET_YEAR);
-    } else if (params.seriesName === V0_FAMILY_REFERENCE_SERIES_NAME) {
+    } else if (params.seriesName === V0_REFERENCE_SERIES_NAME) {
       selectVersionAndValidationYear(params.name, REFERENCE_VALIDATION_TARGET_YEAR);
     }
   };
@@ -697,10 +705,10 @@ export function ValidationPage() {
         <h2>Validation</h2>
         <div className="validation-intro-copy">
           <p>
-            This page keeps the trend chart on the tracked 2024 timeline, overlays the v0-family 2011 validation
-            comparison, and lets you switch the metric table between the 2024 summary and any available 2011 v0-family
-            summary for the selected version. The tracked timeline still includes <code>v0</code> across eight-seed
-            validation summaries.
+            This page keeps the trend chart on the tracked 2024 timeline, overlays the original <code>v0</code> and
+            optimised <code>v0o2</code> 2011 validation comparisons, and lets you switch the metric table between the
+            2024 summary and the available 2011 comparator for the selected version. Other pre-<code>v1.0</code>
+            optimised/candidate versions are hidden from validation.
           </p>
           {displayedValidationTargetYear === REFERENCE_VALIDATION_TARGET_YEAR && (
             <p>
@@ -734,8 +742,8 @@ export function ValidationPage() {
             <h3>Validation Loss Across Versions</h3>
             <p className="validation-card-subtitle">
               Lower validation loss means the model is closer to the external targets and more stable across seeds.
-              Click a 2024 validation point or a sparse v0-family 2011 validation point to load that version and year in
-              the metric results below.
+              Click a 2024 validation point or a sparse <code>v0</code>/<code>v0o2</code> 2011 validation point to load
+              that version and year in the metric results below.
             </p>
           </div>
         </div>
@@ -753,7 +761,7 @@ export function ValidationPage() {
         <p className="validation-card-subtitle">
           Each row shows one validation metric for {summary?.version ?? selectedVersion} against{' '}
           {displayedValidationTargetYear} targets, the model summary across seeds, the signed loss delta versus{' '}
-          <code>v0-2011</code> where negative is better and positive is worse, the status, and the raw metric weight
+          <code>v0 2011</code> where negative is better and positive is worse, and the raw metric weight
           supplied in the validation payload.
         </p>
         <div className="results-controls validation-mode-row">
@@ -788,7 +796,7 @@ export function ValidationPage() {
               type="search"
               value={metricSearch}
               onChange={(event) => setMetricSearch(event.target.value)}
-              placeholder="Search by metric, status, or source"
+              placeholder="Search by metric or source"
             />
           </label>
           <label>
@@ -799,7 +807,6 @@ export function ValidationPage() {
               <option value="metric_name">Metric name A-Z</option>
               <option value="most_inside_band">Most inside-band seeds</option>
               <option value="least_inside_band">Least inside-band seeds</option>
-              <option value="status_severity">Status severity</option>
             </select>
           </label>
           <div className="validation-control-summary">Showing {filteredMetrics.length} metrics</div>
@@ -812,14 +819,16 @@ export function ValidationPage() {
               <thead>
                 <tr>
                   <th>Metric</th>
+                  <th>Target value</th>
                   <th>Target band</th>
-                  <th>Mean</th>
-                  <th>p25-p75</th>
-                  <th>Seeds inside band</th>
-                  <th>Loss delta vs v0-2011</th>
+                  <th>Acceptance range</th>
+                  <th>Sim. mean</th>
+                  <th>Sim. IQR</th>
+                  <th>Seeds in band</th>
+                  <th>Loss delta vs v0 2011</th>
+                  <th>Loss delta % vs v0 2011</th>
                   <th>Weight</th>
                   <th>Loss</th>
-                  <th>Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -857,37 +866,25 @@ export function ValidationPage() {
                           )}
                         </div>
                       </td>
+                      <td>{formatTargetValue(metric)}</td>
                       <td>{formatTargetBand(metric)}</td>
+                      <td>{formatAcceptanceRange(metric)}</td>
                       <td>{formatNumber(metric.seedMean, 3)}</td>
                       <td>
                         {formatNumber(metric.p25, 3)} to {formatNumber(metric.p75, 3)}
                       </td>
                       <td>{formatInsideRate(metric.insideRate)}</td>
-                      <td
-                        className={`validation-loss-cell ${
-                          metric.lossDeltaVsReference2011 === null ? 'validation-loss-unsupported' : ''
-                        } ${
-                          metric.lossDeltaVsReference2011 !== null && metric.lossDeltaVsReference2011 > 0
-                            ? 'validation-loss-delta-positive'
-                            : ''
-                        } ${
-                          metric.lossDeltaVsReference2011 !== null && metric.lossDeltaVsReference2011 < 0
-                            ? 'validation-loss-delta-negative'
-                            : ''
-                        }`}
-                      >
+                      <td className={lossDeltaClassName(metric.lossDeltaVsReference2011)}>
                         {formatLossDelta(metric.lossDeltaVsReference2011)}
+                      </td>
+                      <td className={lossDeltaClassName(metric.lossDeltaPercentVsReference2011)}>
+                        {formatLossDeltaPercent(metric.lossDeltaPercentVsReference2011)}
                       </td>
                       <td>{formatMetricWeight(metric.metricWeight)}</td>
                       <td
                         className={`validation-loss-cell ${metric.metricLoss === null ? 'validation-loss-unsupported' : ''}`}
                       >
                         {formatLoss(metric.metricLoss)}
-                      </td>
-                      <td>
-                        <span className={`validation-status-pill validation-status-${metric.status}`}>
-                          {formatStatusLabel(metric.status)}
-                        </span>
                       </td>
                     </tr>
                   );

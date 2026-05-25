@@ -322,6 +322,7 @@ export interface ValidationMetricSummary {
   insideRateComponent: number | null;
   metricLoss: number | null;
   lossDeltaVsReference2011: number | null;
+  lossDeltaPercentVsReference2011: number | null;
   metricWeight: number;
 }
 
