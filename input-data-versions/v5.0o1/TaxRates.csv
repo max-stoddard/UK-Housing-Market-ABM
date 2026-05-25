@@ -1,0 +1,7 @@
+# Income tax bands and rates for the tax year 2024-2025
+# Document available at https://www.gov.uk/government/publications/rates-and-allowances-income-tax/income-tax-rates-and-allowances-current-and-past
+# England, Wales, and Northern Ireland main rates for non-savings, non-dividend income.
+# Tax bands after personal allowance, Tax rates
+0, 0.20
+37700, 0.40
+125140, 0.45
