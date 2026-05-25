@@ -25,11 +25,13 @@ from scripts.python.validation.model.validation_profiles import (
 
 VALIDATION_YEAR_2011 = 2011
 VALIDATION_YEAR_2024 = 2024
-V0_2011_ALLOWED_SOURCE_VERSIONS = {"v0", "v0o", "v0oo", "v0o1", "v0o2"}
+V0_2011_ALLOWED_SOURCE_VERSIONS = {"v0", "v0o", "v0oo", "v0o1", "v0o2", "v0o3", "v0o6"}
 FAMILY_AWARE_METRIC_LOSS_OBJECTIVE = "family_aware_metric_loss"
 TARGET_NORMALIZED_ADDITIVE_OBJECTIVE = "target_normalized_additive"
 DEFAULT_VALIDATION_OBJECTIVE = FAMILY_AWARE_METRIC_LOSS_OBJECTIVE
 DEFAULT_VALIDATION_LOSS_ERROR_STD = 1.0
+HPI_CONSTRAINED_METRIC_IDS = ("core_hpiStd", "core_hpiCyclePeriod", "core_hpiMean")
+HPI_CONSTRAINED_RANK_EPSILON = 1.0e-12
 ValidationObjective = Literal["family_aware_metric_loss", "target_normalized_additive"]
 
 
@@ -329,8 +331,121 @@ def required_metric_status_counts(summary: Mapping[str, object]) -> dict[str, in
     return counts
 
 
+def summary_metrics_by_id(summary: Mapping[str, object]) -> dict[str, Mapping[str, object]]:
+    """Return validation metrics keyed by metric id."""
+
+    metrics = summary.get("metrics")
+    if not isinstance(metrics, Sequence):
+        raise RuntimeError("Validation summary is missing metrics")
+    return {
+        str(metric["metricId"]): metric
+        for metric in metrics
+        if isinstance(metric, Mapping) and "metricId" in metric
+    }
+
+
+def overall_composite_loss(member: MemberValidationResult) -> float:
+    """Return the schema overall composite loss for constrained selection."""
+
+    return float(member.summary["overallCompositeLoss"])
+
+
+def total_loss_improvement(
+    member: MemberValidationResult,
+    *,
+    baseline_member: MemberValidationResult,
+) -> float:
+    """Return positive loss improvement versus the source baseline."""
+
+    return overall_composite_loss(baseline_member) - overall_composite_loss(member)
+
+
+def hpi_metric_loss_deltas(
+    member: MemberValidationResult,
+    *,
+    baseline_member: MemberValidationResult,
+) -> dict[str, float]:
+    """Return constrained HPI metric-loss deltas versus the source baseline."""
+
+    candidate_metrics = summary_metrics_by_id(member.summary)
+    baseline_metrics = summary_metrics_by_id(baseline_member.summary)
+    deltas: dict[str, float] = {}
+    for metric_id in HPI_CONSTRAINED_METRIC_IDS:
+        candidate_metric = candidate_metrics.get(metric_id)
+        baseline_metric = baseline_metrics.get(metric_id)
+        if candidate_metric is None:
+            raise RuntimeError(f"Missing validation metric {metric_id} for candidate member {member.member_id}")
+        if baseline_metric is None:
+            raise RuntimeError(f"Missing validation metric {metric_id} for baseline member {baseline_member.member_id}")
+        candidate_loss = candidate_metric.get("metricLoss")
+        baseline_loss = baseline_metric.get("metricLoss")
+        if candidate_loss is None:
+            raise RuntimeError(f"Missing metricLoss for validation metric {metric_id} on candidate member {member.member_id}")
+        if baseline_loss is None:
+            raise RuntimeError(f"Missing metricLoss for validation metric {metric_id} on baseline member {baseline_member.member_id}")
+        deltas[metric_id] = float(candidate_loss) - float(baseline_loss)
+    return deltas
+
+
+def hpi_metric_loss_regressions(
+    member: MemberValidationResult,
+    *,
+    baseline_member: MemberValidationResult,
+) -> list[dict[str, float | str]]:
+    """Return constrained HPI metric regressions beyond floating-point tolerance."""
+
+    candidate_metrics = summary_metrics_by_id(member.summary)
+    baseline_metrics = summary_metrics_by_id(baseline_member.summary)
+    regressions: list[dict[str, float | str]] = []
+    for metric_id, delta in hpi_metric_loss_deltas(member, baseline_member=baseline_member).items():
+        if delta <= HPI_CONSTRAINED_RANK_EPSILON:
+            continue
+        regressions.append(
+            {
+                "metricId": metric_id,
+                "baselineMetricLoss": float(baseline_metrics[metric_id]["metricLoss"]),
+                "candidateMetricLoss": float(candidate_metrics[metric_id]["metricLoss"]),
+                "delta": delta,
+            }
+        )
+    return regressions
+
+
+def constrained_member_is_eligible(
+    member: MemberValidationResult,
+    *,
+    baseline_member: MemberValidationResult,
+) -> bool:
+    """Return whether a member improves total loss without HPI regression."""
+
+    if total_loss_improvement(member, baseline_member=baseline_member) <= HPI_CONSTRAINED_RANK_EPSILON:
+        return False
+    return not hpi_metric_loss_regressions(member, baseline_member=baseline_member)
+
+
+def constrained_member_rank_key(
+    member: MemberValidationResult,
+    *,
+    baseline_member: MemberValidationResult,
+) -> tuple[bool, float, float, float, float, int, int, float]:
+    """Rank members by total-loss improvement and HPI non-regression first."""
+
+    counts = required_metric_status_counts(member.summary)
+    hpi_deltas = hpi_metric_loss_deltas(member, baseline_member=baseline_member)
+    return (
+        not (total_loss_improvement(member, baseline_member=baseline_member) > HPI_CONSTRAINED_RANK_EPSILON),
+        max(0.0, hpi_deltas["core_hpiStd"]),
+        max(0.0, hpi_deltas["core_hpiCyclePeriod"]),
+        max(0.0, hpi_deltas["core_hpiMean"]),
+        overall_composite_loss(member),
+        int(counts.get("fail", 0)),
+        int(counts.get("warn", 0)),
+        member.normalized_source_movement,
+    )
+
+
 def member_rank_key(member: MemberValidationResult) -> tuple[float, int, int, float]:
-    """Rank final evaluated members by validation loss, status, and movement."""
+    """Rank members by validation loss, status, and movement."""
 
     counts = required_metric_status_counts(member.summary)
     return (
@@ -359,17 +474,26 @@ __all__ = [
     "DEFAULT_VALIDATION_LOSS_ERROR_STD",
     "DEFAULT_VALIDATION_OBJECTIVE",
     "FAMILY_AWARE_METRIC_LOSS_OBJECTIVE",
+    "HPI_CONSTRAINED_METRIC_IDS",
+    "HPI_CONSTRAINED_RANK_EPSILON",
     "TARGET_NORMALIZED_ADDITIVE_OBJECTIVE",
     "build_member_validation_result",
     "build_validation_observations",
+    "constrained_member_is_eligible",
+    "constrained_member_rank_key",
     "group_seed_run_results_by_member",
+    "hpi_metric_loss_deltas",
+    "hpi_metric_loss_regressions",
     "member_observation_vector",
     "member_rank_key",
     "observation_error_covariance",
     "observation_vector",
+    "overall_composite_loss",
     "ranking_loss_for_summary",
     "required_metric_status_counts",
     "resolve_calibration_validation_profile",
+    "summary_metrics_by_id",
     "summarize_validation_profile",
     "target_normalized_additive_composite_loss",
+    "total_loss_improvement",
 ]

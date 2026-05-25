@@ -52,6 +52,7 @@ from scripts.python.calibration.output.four_parameter_esmda import (
     build_local_refinement_candidates,
     run_calibration,
     select_guardrailed_member,
+    select_local_refinement_seed_members,
 )
 from scripts.python.calibration.output.validation_bridge import (
     FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
@@ -59,6 +60,7 @@ from scripts.python.calibration.output.validation_bridge import (
     TARGET_NORMALIZED_ADDITIVE_OBJECTIVE,
     build_member_validation_result,
     build_validation_observations,
+    constrained_member_rank_key,
     observation_error_covariance,
     observation_vector,
     resolve_calibration_validation_profile,
@@ -99,6 +101,8 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         self.assertEqual(validate_version_name("v0o1"), "v0o1")
         self.assertEqual(validate_version_name("v0o2"), "v0o2")
         self.assertEqual(validate_version_name("v0o3"), "v0o3")
+        self.assertEqual(validate_version_name("v0o6"), "v0o6")
+        self.assertEqual(validate_version_name("v5o2"), "v5o2")
 
     def test_default_parameter_specs_cover_joint_five_parameter_campaign(self) -> None:
         self.assertEqual(
@@ -203,11 +207,15 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         profile_2011 = resolve_calibration_validation_profile(version="v0o", validation_year=2011)
         profile_2011_v0o1 = resolve_calibration_validation_profile(version="v0o1", validation_year=2011)
         profile_2011_v0o2 = resolve_calibration_validation_profile(version="v0o2", validation_year=2011)
+        profile_2011_v0o3 = resolve_calibration_validation_profile(version="v0o3", validation_year=2011)
+        profile_2011_v0o6 = resolve_calibration_validation_profile(version="v0o6", validation_year=2011)
 
         self.assertEqual(summarize_validation_profile(profile_2024)["wasDataset"], "R8")
         self.assertEqual(summarize_validation_profile(profile_2011)["wasDataset"], "W3")
         self.assertIs(profile_2011_v0o1, profile_2011)
         self.assertIs(profile_2011_v0o2, profile_2011)
+        self.assertIs(profile_2011_v0o3, profile_2011)
+        self.assertIs(profile_2011_v0o6, profile_2011)
         with self.assertRaises(ValueError):
             resolve_calibration_validation_profile(version="v4.14o", validation_year=2011)
 
@@ -356,16 +364,54 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         )
         self.assertEqual(len(candidates), len({tuple(sorted(candidate.items())) for candidate in candidates}))
 
-    def test_guardrails_reject_non_improving_lowest_loss_and_promote_accepted_candidate(self) -> None:
-        baseline = self._member_result(member_id=0, loss=1.0, fail_count=3, movement=0.0, strategic_metric_loss=0.1)
+    def test_constrained_rank_prefers_hpi_safe_member_over_lower_loss_regression(self) -> None:
+        baseline = self._member_result(member_id=0, loss=1.0, fail_count=3, movement=0.0)
+        hpi_regression = self._member_result(
+            member_id=1,
+            loss=0.5,
+            fail_count=2,
+            movement=0.1,
+            hpi_std_loss=0.2,
+        )
+        hpi_safe = self._member_result(member_id=2, loss=0.7, fail_count=3, movement=0.2)
+
+        selected = min(
+            [hpi_regression, hpi_safe],
+            key=lambda member: constrained_member_rank_key(member, baseline_member=baseline),
+        )
+
+        self.assertEqual(selected.member_id, 2)
+
+    def test_local_refinement_seed_selection_excludes_hpi_regressions(self) -> None:
+        baseline = self._member_result(member_id=0, loss=1.0, fail_count=3, movement=0.0)
+        hpi_regression = self._member_result(
+            member_id=1,
+            loss=0.5,
+            fail_count=2,
+            movement=0.1,
+            hpi_std_loss=0.2,
+        )
+        hpi_safe = self._member_result(member_id=2, loss=0.7, fail_count=3, movement=0.2)
+        non_improving = self._member_result(member_id=3, loss=1.0, fail_count=1, movement=0.0)
+
+        selected = select_local_refinement_seed_members(
+            [baseline, hpi_regression, hpi_safe, non_improving],
+            baseline_member=baseline,
+            top_n=3,
+        )
+
+        self.assertEqual([member.member_id for member in selected], [2])
+
+    def test_guardrails_reject_lowest_loss_hpi_regression_and_promote_eligible_candidate(self) -> None:
+        baseline = self._member_result(member_id=0, loss=1.0, fail_count=3, movement=0.0)
         rejected_boundary = self._member_result(
             member_id=1,
             loss=0.7,
             fail_count=3,
             movement=0.2,
-            strategic_metric_loss=0.4,
+            hpi_std_loss=0.4,
         )
-        accepted = self._member_result(member_id=2, loss=0.8, fail_count=3, movement=0.2, strategic_metric_loss=0.1)
+        accepted = self._member_result(member_id=2, loss=0.8, fail_count=3, movement=0.2)
 
         promotion = select_guardrailed_member(
             candidates=[rejected_boundary, accepted],
@@ -375,6 +421,8 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         self.assertTrue(promotion["accepted"])
         self.assertTrue(promotion["lowestLossRejected"])
         self.assertEqual(promotion["promotedMember"].member_id, 2)
+        self.assertFalse(promotion["lowestLossDecision"]["accepted"])
+        self.assertIn("core_hpiStd", promotion["lowestLossDecision"]["hpiMetricLossDeltas"])
 
     def test_cli_dry_run_writes_metadata_without_creating_version(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -724,17 +772,7 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
                     iteration=iteration,
                     member_id=member_id,
                     parameters=dict(kwargs["parameters"]),
-                    summary={
-                        "overallCompositeLoss": loss,
-                        "metrics": [
-                            {
-                                "metricId": "core_advancesToBTL",
-                                "requirement": "required",
-                                "status": "pass",
-                                "metricLoss": loss,
-                            }
-                        ],
-                    },
+                    summary=self._summary(loss=loss, fail_count=0),
                     observation_vector=tuple(0.0 for _ in kwargs["observations"]),
                     ranking_loss=loss,
                     ranking_objective=str(kwargs["observations"][0].validation_objective),
@@ -775,6 +813,106 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
             self.assertEqual(summary["selected"]["iteration"], 2)
             self.assertEqual(summary["validationObjective"], FAMILY_AWARE_METRIC_LOSS_OBJECTIVE)
             self.assertEqual(summary["assimilationTransform"], "schema4_metric_loss")
+
+    def test_no_hpi_eligible_esmda_member_stops_before_local_refinement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            source_dir = repo_root / "input-data-versions" / "v4.14o"
+            source_dir.mkdir(parents=True)
+            (source_dir / "config.properties").write_text(self._minimal_config_text(), encoding="utf-8")
+            args = build_arg_parser().parse_args(
+                [
+                    "--version",
+                    "v4.14o",
+                    "--output-version",
+                    "v4.14oo",
+                    "--ensemble-size",
+                    "2",
+                    "--assimilation-steps",
+                    "1",
+                    "--seeds",
+                    "1",
+                    "--workers",
+                    "1",
+                    "--output-root",
+                    "tmp/output-calibration",
+                ]
+            )
+
+            execute_iterations: list[int] = []
+
+            def fake_execute_seed_requests_for_members(**kwargs: object) -> list[SimpleNamespace]:
+                iteration = int(kwargs["iteration"])
+                execute_iterations.append(iteration)
+                member_count = len(kwargs["member_parameters"])
+                return [
+                    SimpleNamespace(
+                        member_id=member_id,
+                        seed=1,
+                        output_dir=f"iteration-{iteration}-member-{member_id}",
+                        metrics={},
+                    )
+                    for member_id in range(member_count)
+                ]
+
+            def fake_build_member_validation_result(**kwargs: object) -> MemberValidationResult:
+                iteration = int(kwargs["iteration"])
+                member_id = int(kwargs["member_id"])
+                if iteration == 0:
+                    loss = 1.0
+                    hpi_std_loss = 0.1
+                elif member_id == 0:
+                    loss = 0.8
+                    hpi_std_loss = 0.2
+                else:
+                    loss = 1.1
+                    hpi_std_loss = 0.1
+                return MemberValidationResult(
+                    iteration=iteration,
+                    member_id=member_id,
+                    parameters=dict(kwargs["parameters"]),
+                    summary=self._summary(loss=loss, fail_count=0, hpi_std_loss=hpi_std_loss),
+                    observation_vector=tuple(0.0 for _ in kwargs["observations"]),
+                    ranking_loss=loss,
+                    ranking_objective=str(kwargs["observations"][0].validation_objective),
+                    normalized_source_movement=float(iteration) + member_id / 10.0,
+                    seed_results=tuple(kwargs["seed_results"]),
+                )
+
+            with (
+                mock.patch(
+                    "scripts.python.calibration.output.four_parameter_esmda.ensure_project_compiled"
+                ),
+                mock.patch(
+                    "scripts.python.calibration.output.four_parameter_esmda.resolve_was_data_root",
+                    return_value=repo_root,
+                ),
+                mock.patch(
+                    "scripts.python.calibration.output.four_parameter_esmda.execute_seed_requests_for_members",
+                    side_effect=fake_execute_seed_requests_for_members,
+                ),
+                mock.patch(
+                    "scripts.python.calibration.output.four_parameter_esmda.build_member_validation_result",
+                    side_effect=fake_build_member_validation_result,
+                ),
+                mock.patch(
+                    "scripts.python.calibration.output.four_parameter_esmda.esmda_update",
+                    side_effect=lambda **kwargs: kwargs["transformed_parameters"],
+                ),
+                mock.patch("scripts.python.calibration.output.four_parameter_esmda.create_output_version") as create_mock,
+            ):
+                with (
+                    contextlib.redirect_stdout(io.StringIO()),
+                    self.assertRaisesRegex(RuntimeError, "No ES-MDA member satisfied HPI-constrained ranking"),
+                ):
+                    run_calibration(args, repo_root=repo_root)
+
+            self.assertEqual(execute_iterations, [0, 1])
+            create_mock.assert_not_called()
+            output_root = repo_root / "tmp" / "output-calibration" / "v4.14oo" / "five-parameter-esmda"
+            summary = json.loads((output_root / "OutputParameterEsmdaCalibrationSummary.json").read_text())
+            self.assertEqual(summary["localRefinement"]["eligibleSeedMemberCount"], 0)
+            self.assertEqual(summary["localRefinement"]["evaluatedCandidateCount"], 0)
 
     def test_parameter_spec_rejects_invalid_log_bounds(self) -> None:
         with self.assertRaises(ValueError):
@@ -839,28 +977,56 @@ class TestFourParameterEsmdaWorkflow(unittest.TestCase):
         fail_count: int,
         movement: float,
         parameters: dict[str, float] | None = None,
-        strategic_metric_loss: float | None = None,
+        hpi_std_loss: float = 0.1,
+        hpi_cycle_loss: float = 0.1,
+        hpi_mean_loss: float = 0.1,
     ) -> MemberValidationResult:
-        metrics = [
-            {
-                "metricId": "core_advancesToBTL" if index == 0 else f"metric_{index}",
-                "requirement": "required",
-                "status": "pass" if index >= fail_count else "fail",
-                "metricLoss": strategic_metric_loss if index == 0 and strategic_metric_loss is not None else loss,
-            }
-            for index in range(4)
-        ]
+        summary = self._summary(
+            loss=loss,
+            fail_count=fail_count,
+            hpi_std_loss=hpi_std_loss,
+            hpi_cycle_loss=hpi_cycle_loss,
+            hpi_mean_loss=hpi_mean_loss,
+        )
         return MemberValidationResult(
             iteration=99,
             member_id=member_id,
             parameters=parameters or self._default_parameter_values(),
-            summary={"overallCompositeLoss": loss, "metrics": metrics},
+            summary=summary,
             observation_vector=(loss,),
             ranking_loss=loss,
             ranking_objective=FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
             normalized_source_movement=movement,
             seed_results=(),
         )
+
+    def _summary(
+        self,
+        *,
+        loss: float,
+        fail_count: int,
+        hpi_std_loss: float = 0.1,
+        hpi_cycle_loss: float = 0.1,
+        hpi_mean_loss: float = 0.1,
+    ) -> dict[str, object]:
+        metric_losses = [
+            ("core_hpiStd", hpi_std_loss),
+            ("core_hpiCyclePeriod", hpi_cycle_loss),
+            ("core_hpiMean", hpi_mean_loss),
+            ("core_advancesToBTL", loss),
+            ("metric_4", loss),
+            ("metric_5", loss),
+        ]
+        metrics = [
+            {
+                "metricId": metric_id,
+                "requirement": "required",
+                "status": "pass" if index >= fail_count else "fail",
+                "metricLoss": metric_loss,
+            }
+            for index, (metric_id, metric_loss) in enumerate(metric_losses)
+        ]
+        return {"overallCompositeLoss": loss, "metrics": metrics}
 
     def _minimal_config_text(self) -> str:
         return (

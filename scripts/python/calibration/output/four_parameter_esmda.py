@@ -46,17 +46,25 @@ from scripts.python.calibration.output.validation_bridge import (
     DEFAULT_VALIDATION_LOSS_ERROR_STD,
     DEFAULT_VALIDATION_OBJECTIVE,
     FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
+    HPI_CONSTRAINED_METRIC_IDS,
+    HPI_CONSTRAINED_RANK_EPSILON,
     MemberValidationResult,
     TARGET_NORMALIZED_ADDITIVE_OBJECTIVE,
     build_member_validation_result,
     build_validation_observations,
+    constrained_member_is_eligible,
+    constrained_member_rank_key,
     group_seed_run_results_by_member,
+    hpi_metric_loss_deltas,
+    hpi_metric_loss_regressions,
     member_rank_key,
     observation_error_covariance,
     observation_vector,
+    overall_composite_loss,
     required_metric_status_counts,
     resolve_calibration_validation_profile,
     summarize_validation_profile,
+    total_loss_improvement,
 )
 from scripts.python.helpers.common.abm_policy_sweep import ensure_project_compiled, resolve_maven_bin
 from scripts.python.helpers.common.cli import format_float
@@ -72,11 +80,7 @@ DEFAULT_RNG_SEED = 20260502
 DEFAULT_LOCAL_REFINEMENT_TOP_N = 12
 DEFAULT_LOCAL_REFINEMENT_RADIUS = 1
 DEFAULT_LOCAL_REFINEMENT_MAX_CANDIDATES = 120
-DEFAULT_REQUIRED_LOSS_IMPROVEMENT = 1.0e-3
-DEFAULT_MATERIAL_LOSS_IMPROVEMENT = 2.0e-2
 DEFAULT_STRATEGIC_METRIC_DEGRADATION_TOLERANCE = 0.1
-DEFAULT_EXCESSIVE_MOVEMENT_THRESHOLD = 1.0
-DEFAULT_BOUNDARY_LOSS_IMPROVEMENT = 5.0e-2
 WORKFLOW_SLUG = "five-parameter-esmda"
 WORKFLOW_NAME = "five-parameter-esmda"
 METADATA_FILENAME = "OutputParameterEsmdaMetadata.json"
@@ -305,6 +309,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
 
     all_member_results: list[MemberValidationResult] = []
     current_transformed_ensemble = transformed_ensemble
+    baseline_member_for_ranking: MemberValidationResult | None = None
     started_at = time.monotonic()
     for iteration in range(args.assimilation_steps + 1):
         current_parameters = transformed_matrix_to_parameter_dicts(
@@ -355,7 +360,18 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             current_parameters,
         )
 
-        best_iteration_member = min(iteration_member_results, key=member_rank_key)
+        if iteration == 0:
+            baseline_member_for_ranking = _find_baseline_member(iteration_member_results)
+        if baseline_member_for_ranking is None:
+            best_iteration_member = min(iteration_member_results, key=member_rank_key)
+        else:
+            best_iteration_member = min(
+                iteration_member_results,
+                key=lambda member: constrained_member_rank_key(
+                    member,
+                    baseline_member=baseline_member_for_ranking,
+                ),
+            )
         elapsed = time.monotonic() - started_at
         print(
             "[output-esmda] "
@@ -386,12 +402,59 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
                 specs=DEFAULT_PARAMETER_SPECS,
             )
 
-    baseline_member = _find_baseline_member(all_member_results)
+    baseline_member = baseline_member_for_ranking or _find_baseline_member(all_member_results)
     if baseline_member is None:
         raise RuntimeError("Missing source baseline member from ES-MDA iteration 0 member 0")
 
-    global_best_member = min(all_member_results, key=member_rank_key)
-    local_seed_members = sorted(all_member_results, key=member_rank_key)[: args.local_refinement_top_n]
+    global_best_member = min(
+        all_member_results,
+        key=lambda member: constrained_member_rank_key(member, baseline_member=baseline_member),
+    )
+    unconstrained_lowest_loss_member = min(all_member_results, key=overall_composite_loss)
+    local_seed_members = select_local_refinement_seed_members(
+        all_member_results,
+        baseline_member=baseline_member,
+        top_n=args.local_refinement_top_n,
+    )
+    if not local_seed_members:
+        warning = (
+            "No ES-MDA member improved overallCompositeLoss without regressing core_hpiStd, "
+            "core_hpiCyclePeriod, or core_hpiMean; local refinement was not run."
+        )
+        summary = {
+            **metadata,
+            "dryRun": False,
+            "createdOutputVersion": False,
+            "globalBest": _member_summary_payload(
+                global_best_member,
+                snap_parameter_set(global_best_member.parameters, specs=DEFAULT_PARAMETER_SPECS),
+                baseline_member=baseline_member,
+            ),
+            "unconstrainedLowestLoss": _member_summary_payload(
+                unconstrained_lowest_loss_member,
+                snap_parameter_set(unconstrained_lowest_loss_member.parameters, specs=DEFAULT_PARAMETER_SPECS),
+                baseline_member=baseline_member,
+            ),
+            "baseline": _member_summary_payload(
+                baseline_member,
+                baseline_member.parameters,
+                baseline_member=baseline_member,
+            ),
+            "localRefinement": _local_refinement_skipped_summary_payload(
+                args=args,
+                all_member_results=all_member_results,
+                baseline_member=baseline_member,
+                skipped_reason=warning,
+            ),
+            "warnings": [warning],
+            "finalValidationNote": "No output version was promoted because no ES-MDA member satisfied HPI constraints.",
+        }
+        _write_summary_artifacts(output_root, summary)
+        _write_summary_artifacts(evidence_dir, summary)
+        _write_member_results_csv(output_root / "AllEvaluatedMembers.csv", all_member_results)
+        _write_member_results_csv(evidence_dir / "AllEvaluatedMembers.csv", all_member_results)
+        raise RuntimeError(f"No ES-MDA member satisfied HPI-constrained ranking; see {SUMMARY_FILENAME}")
+
     local_candidates = build_local_refinement_candidates(
         [member.parameters for member in local_seed_members],
         radius=0 if args.no_local_refinement else args.local_refinement_radius,
@@ -454,7 +517,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         baseline_member=baseline_member,
     )
     if not promotion["accepted"]:
-        warnings.append("No snapped local-refinement candidate passed the configured guardrails; output version was not created.")
+        warnings.append("No snapped local-refinement candidate improved total loss without HPI regression; output version was not created.")
         summary = {
             **metadata,
             "dryRun": False,
@@ -462,16 +525,30 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
             "globalBest": _member_summary_payload(
                 global_best_member,
                 snap_parameter_set(global_best_member.parameters, specs=DEFAULT_PARAMETER_SPECS),
+                baseline_member=baseline_member,
             ),
-            "baseline": _member_summary_payload(baseline_member, baseline_member.parameters),
+            "unconstrainedLowestLoss": _member_summary_payload(
+                unconstrained_lowest_loss_member,
+                snap_parameter_set(unconstrained_lowest_loss_member.parameters, specs=DEFAULT_PARAMETER_SPECS),
+                baseline_member=baseline_member,
+            ),
+            "baseline": _member_summary_payload(
+                baseline_member,
+                baseline_member.parameters,
+                baseline_member=baseline_member,
+            ),
             "localRefinement": _local_refinement_summary_payload(
                 args=args,
+                baseline_member=baseline_member,
+                local_seed_members=local_seed_members,
                 local_candidates=local_candidates,
                 local_member_results=local_member_results,
                 promotion=promotion,
             ),
             "warnings": warnings,
-            "finalValidationNote": "No output version was promoted because every snapped candidate breached guardrails.",
+            "finalValidationNote": (
+                "No output version was promoted because every snapped candidate failed total-loss or HPI constraints."
+            ),
         }
         _write_summary_artifacts(output_root, summary)
         _write_summary_artifacts(evidence_dir, summary)
@@ -479,7 +556,7 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         _write_member_results_csv(output_root / "LocalRefinementMembers.csv", local_member_results)
         _write_member_results_csv(evidence_dir / "AllEvaluatedMembers.csv", all_member_results)
         _write_member_results_csv(evidence_dir / "LocalRefinementMembers.csv", local_member_results)
-        raise RuntimeError(f"No snapped local-refinement candidate passed guardrails; see {SUMMARY_FILENAME}")
+        raise RuntimeError(f"No snapped local-refinement candidate satisfied HPI-constrained ranking; see {SUMMARY_FILENAME}")
 
     output_version_dir = create_output_version(
         repo_root=resolved_repo_root,
@@ -497,18 +574,34 @@ def run_calibration(args: argparse.Namespace, *, repo_root: Path | None = None) 
         "globalBest": _member_summary_payload(
             global_best_member,
             snap_parameter_set(global_best_member.parameters, specs=DEFAULT_PARAMETER_SPECS),
+            baseline_member=baseline_member,
         ),
-        "selected": _member_summary_payload(selected_member, selected_parameters),
-        "baseline": _member_summary_payload(baseline_member, baseline_member.parameters),
+        "unconstrainedLowestLoss": _member_summary_payload(
+            unconstrained_lowest_loss_member,
+            snap_parameter_set(unconstrained_lowest_loss_member.parameters, specs=DEFAULT_PARAMETER_SPECS),
+            baseline_member=baseline_member,
+        ),
+        "selected": _member_summary_payload(
+            selected_member,
+            selected_parameters,
+            baseline_member=baseline_member,
+        ),
+        "baseline": _member_summary_payload(
+            baseline_member,
+            baseline_member.parameters,
+            baseline_member=baseline_member,
+        ),
         "localRefinement": _local_refinement_summary_payload(
             args=args,
+            baseline_member=baseline_member,
+            local_seed_members=local_seed_members,
             local_candidates=local_candidates,
             local_member_results=local_member_results,
             promotion=promotion,
         ),
         "warnings": warnings,
         "finalValidationNote": (
-            "Selected guardrail-accepted snapped parameters were written to the output version. "
+            "Selected HPI-constrained snapped parameters were written to the output version. "
             "Run input-data-versions/validate.sh before claiming release calibration validity."
         ),
     }
@@ -678,6 +771,27 @@ def build_local_refinement_candidates(
     return _dedupe_parameter_sets(candidates)[:max_candidates]
 
 
+def select_local_refinement_seed_members(
+    member_results: Sequence[MemberValidationResult],
+    *,
+    baseline_member: MemberValidationResult,
+    top_n: int,
+) -> list[MemberValidationResult]:
+    """Select only HPI-constrained eligible ES-MDA members for local refinement."""
+
+    if top_n <= 0:
+        raise ValueError("top_n must be positive")
+    eligible_members = [
+        member
+        for member in member_results
+        if constrained_member_is_eligible(member, baseline_member=baseline_member)
+    ]
+    return sorted(
+        eligible_members,
+        key=lambda member: constrained_member_rank_key(member, baseline_member=baseline_member),
+    )[:top_n]
+
+
 def _local_refinement_step(spec: object, value: float) -> float:
     snap = getattr(spec, "final_snap", None)
     if snap is not None:
@@ -774,7 +888,7 @@ def _build_model_quality_warnings(
         baseline_metric_loss = baseline_metric.get("metricLoss")
         if selected_metric_loss is None or baseline_metric_loss is None:
             continue
-        if float(selected_metric_loss) > float(baseline_metric_loss) + 0.1:
+        if float(selected_metric_loss) > float(baseline_metric_loss) + DEFAULT_STRATEGIC_METRIC_DEGRADATION_TOLERANCE:
             degraded.append(metric_id)
     if degraded:
         warnings.append(
@@ -789,7 +903,7 @@ def select_guardrailed_member(
     candidates: Sequence[MemberValidationResult],
     baseline_member: MemberValidationResult,
 ) -> dict[str, object]:
-    """Select the best snapped candidate that passes model-quality guardrails."""
+    """Select the best snapped candidate that improves loss without HPI regression."""
 
     if not candidates:
         raise ValueError("At least one candidate is required")
@@ -803,9 +917,12 @@ def select_guardrailed_member(
         for candidate in candidates
         if bool(decisions_by_member[candidate.member_id]["accepted"])
     ]
-    lowest_loss_candidate = min(candidates, key=member_rank_key)
+    lowest_loss_candidate = min(candidates, key=overall_composite_loss)
     if accepted_candidates:
-        promoted = min(accepted_candidates, key=member_rank_key)
+        promoted = min(
+            accepted_candidates,
+            key=lambda member: constrained_member_rank_key(member, baseline_member=baseline_member),
+        )
         return {
             "accepted": True,
             "promotedMember": promoted,
@@ -834,38 +951,20 @@ def _candidate_guardrail_decision(
 ) -> dict[str, object]:
     baseline_counts = required_metric_status_counts(baseline_member.summary)
     candidate_counts = required_metric_status_counts(candidate.summary)
-    loss_improvement = baseline_member.ranking_loss - candidate.ranking_loss
+    loss_improvement = total_loss_improvement(candidate, baseline_member=baseline_member)
     fail_count_increase = int(candidate_counts.get("fail", 0)) - int(baseline_counts.get("fail", 0))
-    strategic_degradations = _strategic_metric_degradations(candidate=candidate, baseline_member=baseline_member)
-    boundary_parameters = _hard_boundary_parameters(candidate.parameters)
+    hpi_deltas = hpi_metric_loss_deltas(candidate, baseline_member=baseline_member)
+    hpi_regressions = hpi_metric_loss_regressions(candidate, baseline_member=baseline_member)
     rejection_reasons: list[str] = []
 
-    if loss_improvement < DEFAULT_REQUIRED_LOSS_IMPROVEMENT:
+    if not (loss_improvement > HPI_CONSTRAINED_RANK_EPSILON):
         rejection_reasons.append(
-            f"loss improvement {loss_improvement:.6f} is below minimum {DEFAULT_REQUIRED_LOSS_IMPROVEMENT:.6f}"
+            f"overallCompositeLoss improvement {loss_improvement:.12f} is not positive"
         )
-    if fail_count_increase > 0 and loss_improvement < DEFAULT_MATERIAL_LOSS_IMPROVEMENT:
+    if hpi_regressions:
         rejection_reasons.append(
-            "required fail count increased without material loss improvement "
-            f"({fail_count_increase:+d} fails, improvement {loss_improvement:.6f})"
-        )
-    if strategic_degradations:
-        rejection_reasons.append(
-            "strategic metric loss degraded beyond tolerance: "
-            + ", ".join(item["metricId"] for item in strategic_degradations)
-        )
-    if boundary_parameters and loss_improvement < DEFAULT_BOUNDARY_LOSS_IMPROVEMENT:
-        rejection_reasons.append(
-            "candidate sits on hard parameter boundary without strong loss improvement: "
-            + ", ".join(boundary_parameters)
-        )
-    if (
-        candidate.normalized_source_movement > DEFAULT_EXCESSIVE_MOVEMENT_THRESHOLD
-        and loss_improvement < DEFAULT_MATERIAL_LOSS_IMPROVEMENT
-    ):
-        rejection_reasons.append(
-            "normalized source movement is excessive for marginal loss improvement "
-            f"({candidate.normalized_source_movement:.6f})"
+            "HPI metric loss regressed versus baseline: "
+            + ", ".join(f"{item['metricId']} ({item['delta']:+.12f})" for item in hpi_regressions)
         )
 
     return {
@@ -876,70 +975,41 @@ def _candidate_guardrail_decision(
         "lossImprovementVersusBaseline": loss_improvement,
         "baselineRankingLoss": baseline_member.ranking_loss,
         "candidateRankingLoss": candidate.ranking_loss,
+        "baselineOverallCompositeLoss": overall_composite_loss(baseline_member),
+        "candidateOverallCompositeLoss": overall_composite_loss(candidate),
         "rankingObjective": candidate.ranking_objective,
+        "improvesTotalLoss": loss_improvement > HPI_CONSTRAINED_RANK_EPSILON,
+        "hpiConstrainedEligible": not rejection_reasons,
+        "hpiMetricLossDeltas": hpi_deltas,
+        "hpiMetricLossRegressions": hpi_regressions,
         "failCountIncrease": fail_count_increase,
         "baselineStatusCounts": baseline_counts,
         "candidateStatusCounts": candidate_counts,
-        "strategicMetricDegradations": strategic_degradations,
-        "hardBoundaryParameters": boundary_parameters,
         "normalizedSourceMovement": candidate.normalized_source_movement,
-        "rankKey": list(member_rank_key(candidate)),
+        "rankKey": list(constrained_member_rank_key(candidate, baseline_member=baseline_member)),
     }
-
-
-def _strategic_metric_degradations(
-    *,
-    candidate: MemberValidationResult,
-    baseline_member: MemberValidationResult,
-) -> list[dict[str, object]]:
-    selected_metrics = _metrics_by_id(candidate.summary)
-    baseline_metrics = _metrics_by_id(baseline_member.summary)
-    degraded: list[dict[str, object]] = []
-    for metric_id in STRATEGIC_METRIC_IDS:
-        selected_metric = selected_metrics.get(metric_id)
-        baseline_metric = baseline_metrics.get(metric_id)
-        if selected_metric is None or baseline_metric is None:
-            continue
-        selected_metric_loss = selected_metric.get("metricLoss")
-        baseline_metric_loss = baseline_metric.get("metricLoss")
-        if selected_metric_loss is None or baseline_metric_loss is None:
-            continue
-        delta = float(selected_metric_loss) - float(baseline_metric_loss)
-        if delta > DEFAULT_STRATEGIC_METRIC_DEGRADATION_TOLERANCE:
-            degraded.append(
-                {
-                    "metricId": metric_id,
-                    "baselineMetricLoss": float(baseline_metric_loss),
-                    "candidateMetricLoss": float(selected_metric_loss),
-                    "delta": delta,
-                }
-            )
-    return degraded
-
-
-def _hard_boundary_parameters(parameters: Mapping[str, float]) -> list[str]:
-    boundary_parameters: list[str] = []
-    for spec in DEFAULT_PARAMETER_SPECS:
-        value = float(parameters[spec.name])
-        if math.isclose(value, spec.lower, rel_tol=0.0, abs_tol=1.0e-12) or math.isclose(
-            value,
-            spec.upper,
-            rel_tol=0.0,
-            abs_tol=1.0e-12,
-        ):
-            boundary_parameters.append(spec.name)
-    return boundary_parameters
 
 
 def _guardrail_thresholds_payload() -> dict[str, object]:
     return {
-        "requiredLossImprovement": DEFAULT_REQUIRED_LOSS_IMPROVEMENT,
-        "materialLossImprovementForFailCountIncrease": DEFAULT_MATERIAL_LOSS_IMPROVEMENT,
-        "strategicMetricDegradationTolerance": DEFAULT_STRATEGIC_METRIC_DEGRADATION_TOLERANCE,
-        "excessiveNormalizedSourceMovement": DEFAULT_EXCESSIVE_MOVEMENT_THRESHOLD,
-        "boundaryParameterMinimumLossImprovement": DEFAULT_BOUNDARY_LOSS_IMPROVEMENT,
-        "strategicMetricIds": list(STRATEGIC_METRIC_IDS),
-        "rankingPrimaryObjective": "lowest 2011/W3 overallCompositeLoss when validation-year=2011 and validation-objective=family_aware_metric_loss",
+        "requiredTotalLossImprovement": "overallCompositeLoss must improve versus iteration 0 member 0",
+        "hpiRegressionTolerance": HPI_CONSTRAINED_RANK_EPSILON,
+        "hpiConstrainedMetricIds": list(HPI_CONSTRAINED_METRIC_IDS),
+        "rankKey": [
+            "not improves_total_loss",
+            "max(0, core_hpiStd_delta)",
+            "max(0, core_hpiCyclePeriod_delta)",
+            "max(0, core_hpiMean_delta)",
+            "overallCompositeLoss",
+            "fail_count",
+            "warn_count",
+            "normalized_source_movement",
+        ],
+        "rankingPrimaryObjective": (
+            "lowest overallCompositeLoss among candidates that improve total loss and do not regress constrained "
+            "HPI metric losses versus iteration 0 member 0"
+        ),
+        "nonHpiSignals": "fail count, warn count, and normalized source movement are rank tie-breakers, not hard gates",
     }
 
 
@@ -957,9 +1027,11 @@ def _metrics_by_id(summary: Mapping[str, object]) -> dict[str, Mapping[str, obje
 def _member_summary_payload(
     member: MemberValidationResult,
     selected_parameters: Mapping[str, float],
+    *,
+    baseline_member: MemberValidationResult | None = None,
 ) -> dict[str, object]:
     counts = required_metric_status_counts(member.summary)
-    return {
+    payload: dict[str, object] = {
         "iteration": member.iteration,
         "memberId": member.member_id,
         "parameters": {key: format_float(float(value), decimals=12) for key, value in selected_parameters.items()},
@@ -970,11 +1042,29 @@ def _member_summary_payload(
         "normalizedSourceMovement": member.normalized_source_movement,
         "rankKey": list(member_rank_key(member)),
     }
+    if baseline_member is not None:
+        payload.update(
+            {
+                "lossImprovementVersusBaseline": total_loss_improvement(member, baseline_member=baseline_member),
+                "improvesTotalLoss": total_loss_improvement(member, baseline_member=baseline_member)
+                > HPI_CONSTRAINED_RANK_EPSILON,
+                "hpiConstrainedEligible": constrained_member_is_eligible(member, baseline_member=baseline_member),
+                "hpiMetricLossDeltas": hpi_metric_loss_deltas(member, baseline_member=baseline_member),
+                "hpiMetricLossRegressions": hpi_metric_loss_regressions(
+                    member,
+                    baseline_member=baseline_member,
+                ),
+                "rankKey": list(constrained_member_rank_key(member, baseline_member=baseline_member)),
+            }
+        )
+    return payload
 
 
 def _local_refinement_summary_payload(
     *,
     args: argparse.Namespace,
+    baseline_member: MemberValidationResult,
+    local_seed_members: Sequence[MemberValidationResult],
     local_candidates: Sequence[Mapping[str, float]],
     local_member_results: Sequence[MemberValidationResult],
     promotion: Mapping[str, object],
@@ -986,6 +1076,11 @@ def _local_refinement_summary_payload(
     return {
         "enabled": not args.no_local_refinement,
         "seedTopN": args.local_refinement_top_n,
+        "eligibleSeedMemberCount": len(local_seed_members),
+        "seedMembers": [
+            _member_summary_payload(member, member.parameters, baseline_member=baseline_member)
+            for member in local_seed_members
+        ],
         "oneParameterNeighbourRadius": 0 if args.no_local_refinement else args.local_refinement_radius,
         "maxCandidates": args.local_refinement_max_candidates,
         "deduplicatedSnappedCandidateCount": len(local_candidates),
@@ -994,11 +1089,51 @@ def _local_refinement_summary_payload(
         "guardrailThresholds": _guardrail_thresholds_payload(),
         "promotionAccepted": bool(promotion["accepted"]),
         "lowestLossRejected": bool(promotion["lowestLossRejected"]),
-        "promoted": _member_summary_payload(promoted_member, promoted_member.parameters),
-        "lowestLoss": _member_summary_payload(lowest_loss_member, lowest_loss_member.parameters),
+        "promoted": _member_summary_payload(
+            promoted_member,
+            promoted_member.parameters,
+            baseline_member=baseline_member,
+        ),
+        "lowestLoss": _member_summary_payload(
+            lowest_loss_member,
+            lowest_loss_member.parameters,
+            baseline_member=baseline_member,
+        ),
         "promotedDecision": promotion["promotedDecision"],
         "lowestLossDecision": promotion["lowestLossDecision"],
         "candidateDecisions": promotion["decisions"],
+    }
+
+
+def _local_refinement_skipped_summary_payload(
+    *,
+    args: argparse.Namespace,
+    all_member_results: Sequence[MemberValidationResult],
+    baseline_member: MemberValidationResult,
+    skipped_reason: str,
+) -> dict[str, object]:
+    ranked_preview = sorted(
+        all_member_results,
+        key=lambda member: constrained_member_rank_key(member, baseline_member=baseline_member),
+    )[: args.local_refinement_top_n]
+    return {
+        "enabled": not args.no_local_refinement,
+        "seedTopN": args.local_refinement_top_n,
+        "eligibleSeedMemberCount": 0,
+        "seedMembers": [],
+        "rankedPreview": [
+            _member_summary_payload(member, member.parameters, baseline_member=baseline_member)
+            for member in ranked_preview
+        ],
+        "oneParameterNeighbourRadius": 0 if args.no_local_refinement else args.local_refinement_radius,
+        "maxCandidates": args.local_refinement_max_candidates,
+        "deduplicatedSnappedCandidateCount": 0,
+        "evaluatedCandidateCount": 0,
+        "seedRuns": 0,
+        "guardrailThresholds": _guardrail_thresholds_payload(),
+        "promotionAccepted": False,
+        "lowestLossRejected": False,
+        "skippedReason": skipped_reason,
     }
 
 
