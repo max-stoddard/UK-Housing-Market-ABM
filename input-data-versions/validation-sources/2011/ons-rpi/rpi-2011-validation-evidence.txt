@@ -1,0 +1,62 @@
+Rental Price Index validation evidence, 2011
+
+Author: Max Stoddard
+
+Metric id:
+- rpi_mean
+
+Source URL:
+https://www.ons.gov.uk/file?uri=/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukhistoricalseries/26march2025/priceindexofprivaterentsukhistoricalseries.xlsx
+
+Context page:
+https://www.ons.gov.uk/economy/inflationandpriceindices/datasets/priceindexofprivaterentsukhistoricalseries
+
+Downloaded:
+2026-05-14
+
+Retained source artifact:
+input-data-versions/validation-sources/2011/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx
+
+Important definition note:
+- RPI means Rental Price Index in this validation metric.
+- It does not mean Retail Prices Index.
+
+Table and columns used:
+- Workbook `Table 1`
+- Geography: Great Britain
+- Months: 2011-01 through 2011-12
+
+Geography note:
+- The workbook marks the UK series as unavailable for the 2011 target year.
+- The validation target therefore uses Great Britain for both 2011 and 2024 to keep the 2011 overlay and 2024 catalog comparable.
+
+Transformations:
+- Read the Great Britain monthly rental price index for 2011.
+- Rebase monthly values to January 2011 = 1.0.
+- rpi_mean is the arithmetic mean of the 12 rebased monthly values.
+
+Rebased monthly values:
+- 1.000000000000
+- 1.001371191823
+- 1.003240967180
+- 1.005175896361
+- 1.007316578688
+- 1.008982007963
+- 1.011082528627
+- 1.013492871667
+- 1.016491367996
+- 1.018751610671
+- 1.021206122160
+- 1.024436208035
+
+Derived target:
+- rpi_mean = 1.010962279264232
+
+Target-band method:
+- The target band is the observed rebased monthly min/max in 2011.
+- rpi_mean target band: [1.0, 1.024436208035]
+
+Model-side observable:
+- `Output-run1.csv`
+- Column: `Rental HPI`
+- Validation reads the validation-window series, rebases it to the first validation-window value = 1.0, and scores the rebased mean.

@@ -1,34 +1,112 @@
 Author: Max Stoddard
 
-Bank of England housing-tools validation evidence for 2024 interest-rate spread derived from:
+Bank of England housing-tools validation evidence for full-year 2024 metrics derived from:
 - input-data-versions/validation-sources/2024/boe/housing-tools.xlsx
 
-Sheet:
-- 8. Spreads new mortgage lending
+The 2024 validation catalog uses annual means as source values and observed 2024 min/max ranges as target bands.
+Monthly count series are converted to thousand count/month for model comparison.
 
-Series:
-- Mortgage 2-year 75% LTV owner-occupier spreads
+Metric: core_mortgageApprovals
+- Sheet: 4.Mortgage approvals
+- Series: Mortgage Approvals
+- 2024 monthly values, count/month:
+  - Jan 2024: 55575
+  - Feb 2024: 59828
+  - Mar 2024: 61632
+  - Apr 2024: 61976
+  - May 2024: 61297
+  - Jun 2024: 61119
+  - Jul 2024: 62447
+  - Aug 2024: 65137
+  - Sep 2024: 65628
+  - Oct 2024: 68073
+  - Nov 2024: 65669
+  - Dec 2024: 65982
+- Raw source value: annual mean = 62863.583333333336 count/month
+- Normalized source value: 62.86358333333334 thousand count/month
+- Target band: observed monthly range = [55.575, 68.073] thousand count/month
 
-2024 monthly values:
-- Jan 2024: 0.5278707362670447
-- Feb 2024: 0.3083474590368747
-- Mar 2024: 0.5273310981355896
-- Apr 2024: 0.4401329138464201
-- May 2024: 0.6321420249883545
-- Jun 2024: 0.6615625183658045
-- Jul 2024: 0.6375778923320610
-- Aug 2024: 0.7641352166442656
-- Sep 2024: 0.7593864679099389
-- Oct 2024: 0.4355699433225699
-- Nov 2024: 0.3464527457003541
-- Dec 2024: 0.4538682238309004
+Metric: core_housingTransactions
+- Sheet: 5.Housing transactions
+- Series: Housing Transactions
+- 2024 monthly values, count/month:
+  - Jan 2024: 82430
+  - Feb 2024: 84310
+  - Mar 2024: 86500
+  - Apr 2024: 89730
+  - May 2024: 92900
+  - Jun 2024: 92120
+  - Jul 2024: 91490
+  - Aug 2024: 92200
+  - Sep 2024: 92590
+  - Oct 2024: 100830
+  - Nov 2024: 93680
+  - Dec 2024: 96030
+- Raw source value: annual mean = 91234.16666666667 count/month
+- Normalized source value: 91.23416666666667 thousand count/month
+- Target band: observed monthly range = [82.43, 100.83] thousand count/month
 
-Quarterly means:
-- 2024 Q1: 0.45451643114650303
-- 2024 Q2: 0.5779458190668597
-- 2024 Q3: 0.7203665256287551
-- 2024 Q4: 0.41196363761794147
+Metric: core_debtToIncome
+- Sheet: 3. Household debt to income
+- Series: Household debt to income (%)
+- 2024 quarterly values:
+  - 2024 Q1: 139.0765196216166
+  - 2024 Q2: 137.830176395903
+  - 2024 Q3: 136.7031366339467
+  - 2024 Q4: 133.7791854721206
+- Source value: annual mean = 136.84725453089672
+- Target band: observed quarterly range = [133.7791854721206, 139.0765196216166]
 
-Validation comparison:
-- 2024 annual mean = (Q1 + Q2 + Q3 + Q4) / 4 = 0.5411981033650148
-- Target band = observed 2024 quarterly range = [0.41196363761794147, 0.7203665256287551]
+Metric: core_housePriceGrowth
+- Sheet: 6.House price growth
+- Series: House prices (Percentage change three months on three months earlier)
+- 2024 monthly values:
+  - Jan 2024: -0.675904021628948
+  - Feb 2024: -0.406641816333464
+  - Mar 2024: 0.2380142808568353
+  - Apr 2024: 0.5784280367472139
+  - May 2024: 1.020755358965664
+  - Jun 2024: 1.01763907734056
+  - Jul 2024: 0.8795669824086749
+  - Aug 2024: 0.5725833614011355
+  - Sep 2024: 0.503693754197454
+  - Oct 2024: 0.7712944332662452
+  - Nov 2024: 0.9377093101138323
+  - Dec 2024: 1.069161376545269
+- Source value: annual mean = 0.5421916778233726
+- Target band: observed monthly range = [-0.675904021628948, 1.069161376545269]
+
+Metric: core_priceToIncome
+- Sheet: 7.House prices disp. income
+- Series: House prices to disposable income per household
+- 2024 quarterly values:
+  - 2024 Q1: 4.956292571351748
+  - 2024 Q2: 4.955026532074656
+  - 2024 Q3: 4.90668433997867
+  - 2024 Q4: 4.847149441436771
+- Source value: annual mean = 4.916288221210461
+- Target band: observed quarterly range = [4.847149441436771, 4.956292571351748]
+
+Metric: core_interestRateSpread
+- Sheet: 8. Spreads new mortgage lending
+- Series: Mortgage 2-year 75% LTV owner-occupier spreads
+- 2024 monthly values:
+  - Jan 2024: 0.5278707362670447
+  - Feb 2024: 0.3083474590368747
+  - Mar 2024: 0.5273310981355896
+  - Apr 2024: 0.4401329138464201
+  - May 2024: 0.6321420249883545
+  - Jun 2024: 0.6615625183658045
+  - Jul 2024: 0.6375778923320610
+  - Aug 2024: 0.7641352166442656
+  - Sep 2024: 0.7593864679099389
+  - Oct 2024: 0.4355699433225699
+  - Nov 2024: 0.3464527457003541
+  - Dec 2024: 0.4538682238309004
+- Quarterly means:
+  - 2024 Q1: 0.45451643114650303
+  - 2024 Q2: 0.5779458190668597
+  - 2024 Q3: 0.7203665256287551
+  - 2024 Q4: 0.41196363761794147
+- Source value: annual mean = 0.5411981033650148
+- Target band: observed quarterly range = [0.41196363761794147, 0.7203665256287551]

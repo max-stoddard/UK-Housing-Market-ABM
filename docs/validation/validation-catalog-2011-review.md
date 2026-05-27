@@ -44,19 +44,23 @@ Reviewed files:
   annual mean and the observed 2011 monthly or quarterly range as the target
   band.
 - `core_advancesToFTB`, `core_advancesToHM`, and `core_advancesToBTL` convert the
-  2011 annual totals to monthly thousand-count means and apply a fixed `+/-15%`
+  2011 annual totals to monthly thousand-count means and apply a fixed `+/-5%`
   tolerance band. These remain explicitly labeled secondary-source proxies:
   they are annual purchase-loan totals, not a primary CML release, and the BTL
   figure is the house-purchase count rather than total BTL lending.
 - `core_rentalYield` uses the 2011 annual BM Solutions UK yield with a fixed
-  `+/-15%` tolerance because there is no clean tracked UK quarterly archive
+  `+/-5%` tolerance because there is no clean tracked UK quarterly archive
   equivalent to the 2024 UK Finance series. This is the intended dashboard
   proxy, not a quarterly apples-to-apples equivalent.
 - `core_hpiMean` and `core_hpiCyclePeriod` reuse the existing HPI helper
   methodology on the source series through `2011-12`.
 - `core_hpiStd` is a deliberate exception. It reuses the same official
-  `2005-01 .. 2024-12` UK `IndexSA` std scalar and `+/-15%` target band as the
+  `2005-01 .. 2024-12` UK `IndexSA` std scalar and `+/-5%` target band as the
   2024 framework instead of a 2011-anchored std target.
+- The fixed `+/-5%` width is inherited from the 2024 validation-method enhancement:
+  the observed-range positive-valued 2024 target bands average about `+/-4.27%`
+  of the corresponding source value, so `+/-5%` is the rounded conservative
+  fixed-band rule.
 - `core_ooDebtToIncome` reuses the 2024 reconstruction formula with 2011 MLAR
   balances and a trailing four-quarter QWND denominator built from `2010Q2` to
   `2011Q4`.

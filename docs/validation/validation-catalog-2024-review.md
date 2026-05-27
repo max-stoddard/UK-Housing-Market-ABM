@@ -22,7 +22,7 @@ The key distinction is that `sourceValue` is evidence, while `targetBand` may be
 - UK Finance advances evidence: `input-data-versions/validation-sources/2024/ukf/household-finance-review-2024-q4-validation-evidence.txt`
 - UK Finance BTL advances evidence: `input-data-versions/validation-sources/2024/ukf/btl-mortgage-market-update-2024-validation-evidence.txt`
 - UK Finance rental-yield evidence: `input-data-versions/validation-sources/2024/ukf/btl-rental-yield-2024-validation-evidence.txt`
-- BOE spread workbook: `input-data-versions/validation-sources/2024/boe/housing-tools.xlsx`
+- BOE housing-tools workbook: `input-data-versions/validation-sources/2024/boe/housing-tools.xlsx`
 - MLAR workbook: `input-data-versions/validation-sources/2024/mlar/mlar-longrun-detailed.xlsx`
 - ONS QWND local snapshot: `input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json`
 
@@ -30,9 +30,11 @@ The ONS snapshot is intentionally minimal. It vendors only the quarterly values 
 
 ## Metric Review
 
-### FPC-backed Macro Source Values
+### FPC Point-in-Time Macro Context
 
-- `core_mortgageApprovals`, `core_housingTransactions`, `core_debtToIncome`, `core_housePriceGrowth`, `core_priceToIncome`, and the FPC comparison value for `core_interestRateSpread` are reviewed as `direct_source` values from Table A.2 in the June 2024 FPC text snapshot.
+- The June 2024 FPC Table A.2 values remain reviewed as frozen point-in-time context from the repo-local text snapshot.
+- `core_mortgageApprovals`, `core_housingTransactions`, `core_debtToIncome`, `core_housePriceGrowth`, and `core_priceToIncome` no longer use those FPC values as active 2024 validation source metadata or target bands.
+- The active validation source for those five metrics is now the full-year 2024 Bank of England housing-tools workbook.
 - Count metrics are normalized to `thousand count/month` by dividing by `1,000`.
 - The checker uses fixed regexes against the frozen text extraction aid because the OCR ordering in the text snapshot is imperfect but stable.
 
@@ -43,20 +45,39 @@ The ONS snapshot is intentionally minimal. It vendors only the quarterly values 
 - `core_advancesToBTL` uses the annual sum of the four quarterly house-purchase counts from the Q1-Q4 BTL market updates, then converts with:
   `sum(q1..q4) / 12 / 1,000`
 - The acceptance bands for all three advances metrics are `derived_from_source` using the locked methodology rule:
-  `official_monthly_mean * (1 ± 0.15)`
+  `official_monthly_mean * (1 ± 0.05)`
 - Rounding is fixed to three decimal places using `Decimal(..., ROUND_HALF_UP)`.
+- This fixed `±5%` rule is a validation-method enhancement: for positive-valued validation metrics whose target bands
+  are derived directly from observed 2024 variation, the average target-band half-width is approximately `±4.27%` of
+  the corresponding source value, so `±5%` is a rounded conservative rule that aligns fixed bands more closely with
+  the empirical observed-range widths while remaining simple to audit.
 
 ### Market-Derived Metrics
 
+- `core_mortgageApprovals` is reconstructed from the Jan-Dec 2024 monthly BOE housing-tools workbook series, then reduced to:
+  - annual mean in thousand count/month
+  - observed monthly range target band
+- `core_housingTransactions` is reconstructed from the Jan-Dec 2024 monthly BOE housing-tools workbook series, then reduced to:
+  - annual mean in thousand count/month
+  - observed monthly range target band
+- `core_debtToIncome` is reconstructed from the Q1-Q4 2024 quarterly BOE housing-tools workbook series, then reduced to:
+  - annual mean
+  - observed quarterly range target band
+- `core_housePriceGrowth` is reconstructed from the Jan-Dec 2024 monthly BOE housing-tools workbook series, then reduced to:
+  - annual mean
+  - observed monthly range target band
+- `core_priceToIncome` is reconstructed from the Q1-Q4 2024 quarterly BOE housing-tools workbook series, then reduced to:
+  - annual mean
+  - observed quarterly range target band
 - `core_hpiMean` is reconstructed from the archived HMLR full-file UK `IndexSA` series for `2024-01 .. 2024-12`, rebased to `2024-01 = 1.0`, then reduced to:
   - annual mean
-  - `±15%` target band around that annual mean
+  - `±5%` target band around that annual mean
 - `core_hpiStd` is reconstructed from the archived HMLR full-file UK `IndexSA` series for `2005-01 .. 2024-12`, rebased to `2005-01 = 1.0`, then reduced to:
   - long-run population std
-  - `±15%` target band around that long-run std
+  - `±5%` target band around that long-run std
 - `core_hpiCyclePeriod` is reconstructed from the archived HMLR full-file UK `Index` history through `2024-12`, then reduced to:
   - dominant cycle period
-  - `±15%` target band around that derived cycle period
+  - `±5%` target band around that derived cycle period
 - `core_interestRateSpread` is reconstructed from the 2024 monthly BOE housing-tools workbook series, grouped into contiguous quarterly means, then reduced to:
   - annual mean
   - observed quarterly range target band
@@ -154,16 +175,14 @@ member diagnostics.
 
 The following are explicitly reviewed as methodology constants, not official source values:
 
-- FPC-backed macro acceptance bands:
-  - `core_mortgageApprovals`: `[57.0, 63.0]`
-  - `core_housingTransactions`: `[84.2, 100.0]`
-  - `core_debtToIncome`: `[125.0, 145.0]`
-  - `core_priceToIncome`: `[5.4, 9.0]`
-  - `core_housePriceGrowth`: `[0.0, 2.0]`
+- Fixed tolerance acceptance bands:
+  - UK Finance advances and HPI-derived scalar metrics use fixed `±5%` bands around the source value.
 - Household JSD acceptance band:
   - all three household realism metrics use `[0.0, 0.12]`
 
-These bands are reviewed separately from the official evidence values so the audit never implies that the source and the scoring rule are the same thing.
+The BOE housing-tools bands for `core_mortgageApprovals`, `core_housingTransactions`, `core_debtToIncome`,
+`core_housePriceGrowth`, and `core_priceToIncome` are source-derived observed 2024 ranges, not methodology-owned
+FPC bands.
 
 ## Review Contract
 
