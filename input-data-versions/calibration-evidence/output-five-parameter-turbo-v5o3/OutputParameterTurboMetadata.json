@@ -1,0 +1,386 @@
+{
+  "workflow": "five-parameter-turbo",
+  "sourceVersion": "v4.26",
+  "outputVersion": "v5o3",
+  "parameters": [
+    "PSYCHOLOGICAL_COST_OF_RENTING",
+    "SENSITIVITY_RENT_OR_PURCHASE",
+    "BTL_PROBABILITY_MULTIPLIER",
+    "BTL_CHOICE_INTENSITY",
+    "MARKET_AVERAGE_PRICE_DECAY"
+  ],
+  "sourceParameters": {
+    "PSYCHOLOGICAL_COST_OF_RENTING": 0.4,
+    "SENSITIVITY_RENT_OR_PURCHASE": 0.001,
+    "BTL_PROBABILITY_MULTIPLIER": 1.76,
+    "BTL_CHOICE_INTENSITY": 100.0,
+    "MARKET_AVERAGE_PRICE_DECAY": 0.5
+  },
+  "validationProfile": {
+    "profileId": "validation-2024",
+    "validationTargetYear": 2024,
+    "wasDataset": "R8",
+    "metricCount": 20,
+    "requiredMetricCount": 20
+  },
+  "validationLossHandling": "TuRBO optimizes an HPI-penalized score while retaining raw family-aware validation loss. Promotion still uses the unchanged guardrail contract: overallCompositeLoss must improve versus iteration 0 member 0 and constrained HPI metric losses must not regress.",
+  "validationObjective": "family_aware_metric_loss",
+  "rankingObjective": "hpi_penalized_family_aware_metric_loss",
+  "validationLossErrorStd": 1.0,
+  "guardrailThresholds": {
+    "requiredTotalLossImprovement": "overallCompositeLoss must improve versus iteration 0 member 0",
+    "hpiRegressionTolerance": 1e-12,
+    "hpiConstrainedMetricIds": [
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
+      "core_hpiMean"
+    ],
+    "rankKey": [
+      "not improves_total_loss",
+      "max(0, core_hpiStd_delta)",
+      "max(0, core_hpiCyclePeriod_delta)",
+      "max(0, core_hpiMean_delta)",
+      "overallCompositeLoss",
+      "fail_count",
+      "warn_count",
+      "normalized_source_movement"
+    ],
+    "rankingPrimaryObjective": "lowest overallCompositeLoss among candidates that improve total loss and do not regress constrained HPI metric losses versus iteration 0 member 0",
+    "nonHpiSignals": "fail count, warn count, and normalized source movement are rank tie-breakers, not hard gates"
+  },
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "workers": 20,
+  "candidateBatchSize": 2,
+  "initialPoints": 20,
+  "maxEvaluations": 120,
+  "rngSeed": 20260525,
+  "nSteps": 3500,
+  "validationWindow": {
+    "startIndex": 500,
+    "endIndex": 3500
+  },
+  "deleteCsvAfterMetrics": true,
+  "evidenceOnly": false,
+  "hpiPenaltyWeight": 1.0,
+  "noiseVarianceFloor": 1e-06,
+  "turboSettings": {
+    "length": 0.8,
+    "lengthMin": 0.0078125,
+    "lengthMax": 1.6,
+    "successTolerance": 10,
+    "failureTolerance": null
+  },
+  "device": "cuda",
+  "dependencyVersions": {
+    "torch": "2.11.0+cu128",
+    "botorch": "0.17.2",
+    "gpytorch": "1.15.2"
+  },
+  "parameterSpecs": [
+    {
+      "name": "PSYCHOLOGICAL_COST_OF_RENTING",
+      "lower": 0.0,
+      "upper": 0.8,
+      "prior_lower": 0.2,
+      "prior_upper": 0.6,
+      "transform": "bounded_logit",
+      "final_snap": 0.05,
+      "final_sigfigs": null
+    },
+    {
+      "name": "SENSITIVITY_RENT_OR_PURCHASE",
+      "lower": 0.0001,
+      "upper": 0.002,
+      "prior_lower": 0.0005,
+      "prior_upper": 0.0015,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": 2
+    },
+    {
+      "name": "BTL_PROBABILITY_MULTIPLIER",
+      "lower": 0.05,
+      "upper": 2.5,
+      "prior_lower": 0.35,
+      "prior_upper": 1.9,
+      "transform": "log10",
+      "final_snap": 0.005,
+      "final_sigfigs": null
+    },
+    {
+      "name": "BTL_CHOICE_INTENSITY",
+      "lower": 25.0,
+      "upper": 250.0,
+      "prior_lower": 50.0,
+      "prior_upper": 150.0,
+      "transform": "log10",
+      "final_snap": 10.0,
+      "final_sigfigs": null
+    },
+    {
+      "name": "MARKET_AVERAGE_PRICE_DECAY",
+      "lower": 0.25,
+      "upper": 0.85,
+      "prior_lower": 0.4,
+      "prior_upper": 0.7,
+      "transform": "bounded_logit",
+      "final_snap": 0.02,
+      "final_sigfigs": null
+    }
+  ],
+  "observations": [
+    {
+      "metric_id": "core_mortgageApprovals",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 55.575,
+      "target_upper": 68.073
+    },
+    {
+      "metric_id": "core_housingTransactions",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 82.43,
+      "target_upper": 100.83
+    },
+    {
+      "metric_id": "core_advancesToFTB",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 26.442,
+      "target_upper": 29.225
+    },
+    {
+      "metric_id": "core_advancesToHM",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 22.8,
+      "target_upper": 25.2
+    },
+    {
+      "metric_id": "core_advancesToBTL",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 4.913,
+      "target_upper": 5.43
+    },
+    {
+      "metric_id": "core_debtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 133.7791854721206,
+      "target_upper": 139.0765196216166
+    },
+    {
+      "metric_id": "core_priceToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 4.847149441436771,
+      "target_upper": 4.956292571351748
+    },
+    {
+      "metric_id": "core_housePriceGrowth",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": -0.675904021628948,
+      "target_upper": 1.069161376545269
+    },
+    {
+      "metric_id": "core_hpiMean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.9687033265444671,
+      "target_upper": 1.0706720977596742
+    },
+    {
+      "metric_id": "core_hpiStd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.2628366847658644,
+      "target_upper": 0.2905037042149028
+    },
+    {
+      "metric_id": "core_hpiCyclePeriod",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 159.125,
+      "target_upper": 175.875
+    },
+    {
+      "metric_id": "rpi_mean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 1.0,
+      "target_upper": 1.082058468918
+    },
+    {
+      "metric_id": "household_owning_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 64.5,
+      "target_upper": 65.5
+    },
+    {
+      "metric_id": "household_renting_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 18.5,
+      "target_upper": 19.5
+    },
+    {
+      "metric_id": "core_ooDebtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 77.16710908000836,
+      "target_upper": 80.29246428438624
+    },
+    {
+      "metric_id": "core_rentalYield",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 6.88,
+      "target_upper": 7.0
+    },
+    {
+      "metric_id": "core_interestRateSpread",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.41196363761794147,
+      "target_upper": 0.7203665256287551
+    },
+    {
+      "metric_id": "income_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "housing_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "financial_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    }
+  ],
+  "outputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v5o3/five-parameter-turbo",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3"
+}

@@ -2204,6 +2204,69 @@
           "decision_logic": "Objective=source-year fidelity and unit consistency; Why=the model annualizes the monthly value by multiplying by 12, so the weekly rate should be converted with 52/12; Tradeoff=this improves self-contained provenance but does not change simulation output relative to v4.25."
         }
       ]
+    },
+    {
+      "version_id": "v5o3",
+      "snapshot_folder": "v5o3",
+      "validation_dataset": "r8",
+      "description": "Strict TuRBO-1 five-parameter output calibration from v4.26 using the 2024 validation objective.",
+      "updated_data_sources": [
+        "output-calibration"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/output_parameter_turbo.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_PROBABILITY_MULTIPLIER",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/OutputParameterTurboCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-26T01:53:12Z after strict TuRBO-1 local-refinement promotion from v4.26. Selected parameters are PSYCHOLOGICAL_COST_OF_RENTING=0.35, SENSITIVITY_RENT_OR_PURCHASE=0.0011, BTL_PROBABILITY_MULTIPLIER=1.75, BTL_CHOICE_INTENSITY=110, and MARKET_AVERAGE_PRICE_DECAY=0.5. Rescored 2024 overallCompositeLoss is 0.586446 versus v4.26=0.613723 (delta -0.027278, -4.44%) and versus v5o2=0.591987 (delta -0.005541, -0.94%). HPI metric-loss deltas versus v4.26 are core_hpiMean=-0.069967, core_hpiStd=-0.164575, and core_hpiCyclePeriod=-0.035988. HPI metric-loss deltas versus v5o2 are core_hpiMean=-0.061821, core_hpiStd=-0.276990, and core_hpiCyclePeriod=+0.065822, so v5o3 improves aggregate loss, HPI mean, and HPI standard deviation versus v5o2 but worsens HPI cycle-period loss. Fresh 2024 status counts are pass=5, warn=1, fail=14."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_PROBABILITY_MULTIPLIER",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "Strict TuRBO local refinement improved 10-seed 2024 overallCompositeLoss versus v4.26 and v5o2 while preserving all constrained HPI metric-loss improvements versus v4.26.",
+          "why_changed": "To replace the manual ES-MDA output-calibration branch with an automated strict TuRBO promotion from v4.26.",
+          "method_chosen": "TuRBO-1 over transformed five-parameter output-calibration priors with HPI-regression penalty, seeds 1..10, 20 workers, initial points 20, max evaluations 120, candidate batch size 2, rng seed 20260525, N_STEPS=3500, validation window 500..3500, and snapped local refinement with top-n 12, radius 1, and max candidates 120.",
+          "decision_logic": "Objective=2024 family-aware validation fit; Why=the selected local-refinement candidate improves aggregate loss and does not regress core_hpiMean, core_hpiStd, or core_hpiCyclePeriod versus v4.26; Tradeoff=v5o3 improves aggregate loss versus v5o2 but worsens core_hpiCyclePeriod loss versus v5o2, so v5o2 comparisons must keep that qualification."
+        }
+      ]
     }
   ]
 }

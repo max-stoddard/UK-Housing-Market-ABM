@@ -1789,3 +1789,47 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
   - `input-data-versions/validation/v4.26.json`
 - Version(s) affected:
   - `v4.26`
+
+### v5o3 - TuRBO five-parameter output calibration from v4.26
+- Script path:
+  - `scripts/python/calibration/output/output_parameter_turbo.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_PROBABILITY_MULTIPLIER`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - `tmp/output-turbo-venv/bin/python -m scripts.python.calibration.output.output_parameter_turbo --version v4.26 --output-version v5o3 --validation-year 2024 --validation-objective family_aware_metric_loss --validation-loss-error-std 1.0 --seeds 1,2,3,4,5,6,7,8,9,10 --workers 20 --candidate-batch-size 2 --initial-points 20 --max-evaluations 120 --rng-seed 20260525 --hpi-penalty-weight 1.0 --noise-variance-floor 1e-06 --turbo-length 0.8 --turbo-length-min 0.0078125 --turbo-length-max 1.6 --success-tolerance 10 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --output-root tmp/output-calibration --evidence-dir input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3 --local-refinement-top-n 12 --local-refinement-radius 1 --local-refinement-max-candidates 120 --delete-csv-after-metrics`
+  - `bash input-data-versions/validate.sh v5o3 --output-dir tmp/validation/v5o3-2024-10seed-3500 --workers 20 --seeds 1,2,3,4,5,6,7,8,9,10 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --allow-noncanonical-seeds`
+- Expected result snippet:
+  - TuRBO-1 created `v5o3` through the strict snapped local-refinement promotion contract.
+  - Promoted local-refinement candidate: iteration `25`, member `1`.
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.35`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0011`
+  - `BTL_PROBABILITY_MULTIPLIER = 1.75`
+  - `BTL_CHOICE_INTENSITY = 110`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.5`
+  - 10-seed 2024 overallCompositeLoss improved from rescored `v4.26=0.6137234580996009` to `v5o3=0.5864457551658543` (delta `-0.02727770293374665`, `-4.444624%`).
+  - HPI metric-loss deltas versus `v4.26`: `core_hpiMean=-0.06996748134065989`, `core_hpiStd=-0.16457527693400126`, `core_hpiCyclePeriod=-0.03598777885830695`.
+  - Compared with `v5o2`, 10-seed 2024 overallCompositeLoss improves from `0.5919869747680289` to `0.5864457551658543` (delta `-0.005541219602174574`, `-0.936037%`). HPI deltas versus `v5o2` are `core_hpiMean=-0.061820944829627966`, `core_hpiStd=-0.2769895198269024`, and `core_hpiCyclePeriod=+0.06582216607865887`, so `v5o3` improves aggregate loss, HPI mean, and HPI standard deviation but worsens HPI cycle-period loss versus `v5o2`.
+  - Fresh 2024 validation status counts are `pass=5`, `warn=1`, `fail=14`.
+- Method chosen:
+  - TuRBO-1 over normalized transformed parameter priors, with an HPI-regression penalty during search and unchanged strict HPI guardrails during promotion.
+  - Source snapshot: `v4.26`.
+  - Output snapshot: `v5o3`.
+  - Validation basis: 10-seed 2024 validation, seeds `1..10`, `N_STEPS=3500`, window `500..3500`.
+  - Comparison scope: `v4.26` as source baseline and `v5o2` as current output-calibrated comparator.
+  - Seed metrics were cached and per-seed CSVs were deleted after metric extraction.
+- Method-selection decision logic:
+  - `Objective=2024 family-aware validation fit; Why=the strict TuRBO local-refinement promotion improves aggregate loss and does not regress core_hpiMean, core_hpiStd, or core_hpiCyclePeriod versus v4.26; Tradeoff=v5o3 also improves aggregate loss versus v5o2 but does not dominate v5o2 on every constrained HPI metric because core_hpiCyclePeriod worsens versus v5o2, so comparisons should retain that qualification.`
+- Rationale category:
+  - output calibration strict TuRBO promotion
+- Evidence:
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/OutputParameterTurboCalibrationSummary.json`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/ValidationComparison-v5o3-vs-v4.26-2024-10seed-500-3500.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/ValidationComparison-v5o3-vs-v5o2-2024-10seed-500-3500.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3/validation-v5o3-2024.json`
+  - `input-data-versions/validation/v5o3.json`
+- Version(s) affected:
+  - `v5o3`

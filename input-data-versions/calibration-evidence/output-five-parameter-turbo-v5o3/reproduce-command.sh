@@ -1,0 +1,27 @@
+python3 -m scripts.python.calibration.output.output_parameter_turbo \
+  --version v4.26 \
+  --output-version v5o3 \
+  --validation-year 2024 \
+  --validation-objective family_aware_metric_loss \
+  --validation-loss-error-std 1.0 \
+  --seeds 1,2,3,4,5,6,7,8,9,10 \
+  --workers 20 \
+  --candidate-batch-size 2 \
+  --initial-points 20 \
+  --max-evaluations 120 \
+  --rng-seed 20260525 \
+  --hpi-penalty-weight 1.0 \
+  --noise-variance-floor 1e-06 \
+  --turbo-length 0.8 \
+  --turbo-length-min 0.0078125 \
+  --turbo-length-max 1.6 \
+  --success-tolerance 10 \
+  --validation-window-start 500 \
+  --validation-window-end 3500 \
+  --output-root tmp/output-calibration \
+  --n-steps 3500 \
+  --evidence-dir input-data-versions/calibration-evidence/output-five-parameter-turbo-v5o3 \
+  --delete-csv-after-metrics \
+  --local-refinement-top-n 12 \
+  --local-refinement-radius 1 \
+  --local-refinement-max-candidates 120
