@@ -194,7 +194,7 @@ The public AWS API is intentionally lightweight:
 
 - Dockerfile: `dashboard/Dockerfile.api`
 - base image: Node 22 slim, aligned with dashboard CI
-- ships only the public dashboard server plus packaged `input-data-versions` snapshots `v0o2`, `v0`, `v4.19`, and `v4.4`; `v0o2` is the packaged optimized 2011 runtime snapshot
+- ships only the public dashboard server plus packaged `input-data-versions` snapshots `v0`, `v0o7`, `v4.26`, and `v5o3`; `v0o7` and `v5o3` are the packaged optimized 2011 and 2024 runtime snapshots respectively, while `v4.26` remains the source baseline for the current output calibration
 - does not include git, Java, Maven, or baseline `Results/` outputs
 - uses compiled server output (`dist-server`) instead of running through `tsx`
 
@@ -221,7 +221,7 @@ GitHub Actions validates:
 - `npm run test:experiment-smoke`
 - `docker build -f dashboard/Dockerfile.api .` whenever API deployment inputs change (`dashboard/server/**`, `dashboard/shared/**`, `dashboard/Dockerfile.api`, `dashboard/tsconfig.server.json`, `input-data-versions/**`, `.dockerignore`, or dashboard package manifests)
 - `./mvnw test` whenever model or Maven inputs change (`src/**`, `pom.xml`, `mvnw`, `mvnw.cmd`, or `.mvn/**`)
-- a real cloud experiment smoke on `master` pushes and manual dispatches, using `v0o2` with `N_STEPS=1`, `N_SIMS=1`, and sensitivity `maxWorkers=2`; the smoke fails if the EC2 runner is not already running and SSM-online
+- a real cloud experiment smoke on `master` pushes and manual dispatches, using `v0o7` with `N_STEPS=1`, `N_SIMS=1`, and sensitivity `maxWorkers=2`; the smoke fails if the EC2 runner is not already running and SSM-online
 
 Pushes to `master` deploy only the changed AWS surfaces:
 

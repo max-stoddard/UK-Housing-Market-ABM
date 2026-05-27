@@ -2881,7 +2881,7 @@ if (inProgressVersion) {
   );
 }
 const latestVersion = versions[versions.length - 1];
-const packagedVersionAllowlist = ['v0o7', 'v0', 'v5o3'];
+const packagedVersionAllowlist = ['v0o7', 'v0', 'v4.26', 'v5o3'];
 const dockerIgnore = fs.readFileSync(path.join(repoRoot, '.dockerignore'), 'utf-8');
 const releaseResourceScript = fs.readFileSync(path.join(repoRoot, 'scripts/windows/assemble-release-resources.mjs'), 'utf-8');
 for (const version of packagedVersionAllowlist) {

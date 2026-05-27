@@ -16,7 +16,7 @@ const mavenBin = process.env.MAVEN_BIN?.trim() || path.join(repoRoot, process.pl
 const defaultOutputRoot = path.join(dashboardRoot, 'release', 'windows', 'resources');
 const modelJarName = 'housing-model-1.0-SNAPSHOT-windows-release.jar';
 const releaseLayoutVersion = 1;
-const releaseInputVersionAllowlist = new Set(['v0o2', 'v0', 'v4.19', 'v4.4']);
+const releaseInputVersionAllowlist = new Set(['v0o7', 'v0', 'v4.26', 'v5o3']);
 
 function usage() {
   return `Usage: node scripts/windows/assemble-release-resources.mjs [options]
