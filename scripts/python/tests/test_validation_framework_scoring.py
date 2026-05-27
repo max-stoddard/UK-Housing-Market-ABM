@@ -66,14 +66,14 @@ class TestValidationFrameworkScoring(unittest.TestCase):
             seed_mean=17.45106215277778,
             p25=17.17581777777778,
             p75=17.730475555555557,
-            lower_bound=4.396,
-            upper_bound=5.947,
+            lower_bound=4.913,
+            upper_bound=5.43,
             inside_rate=0.0,
             source_value=5.17125,
         )
-        expected = math.log(17.45106215277778 / 5.947) + 0.25 * math.log(17.730475555555557 / 17.17581777777778) + 0.50
+        expected = math.log(17.45106215277778 / 5.43) + 0.25 * math.log(17.730475555555557 / 17.17581777777778) + 0.50
         self.assertAlmostEqual(loss, expected)
-        self.assertAlmostEqual(loss, 1.5844592470279106)
+        self.assertAlmostEqual(loss, 1.6754070038065232)
 
     def test_positive_level_uses_zero_floor_penalty_for_nonpositive_means(self) -> None:
         audit = compute_metric_loss_audit(
@@ -127,6 +127,52 @@ class TestValidationFrameworkScoring(unittest.TestCase):
         self.assertLess(low, high)
         self.assertAlmostEqual(low, 0.25 * (0.03 / 0.12) + 0.25 * (0.02 / 0.12))
 
+    def test_bounded_share_loss_is_stable_at_zero_inside_band_and_hundred_percent(self) -> None:
+        zero = compute_metric_loss_audit(
+            loss_family="bounded_share",
+            seed_mean=0.0,
+            p25=0.0,
+            p75=0.0,
+            lower_bound=0.0,
+            upper_bound=1.0,
+            inside_rate=1.0,
+        )
+        inside = compute_metric_loss_audit(
+            loss_family="bounded_share",
+            seed_mean=65.0,
+            p25=65.0,
+            p75=65.0,
+            lower_bound=64.5,
+            upper_bound=65.5,
+            inside_rate=1.0,
+        )
+        outside = compute_metric_loss_audit(
+            loss_family="bounded_share",
+            seed_mean=63.0,
+            p25=63.0,
+            p75=63.0,
+            lower_bound=64.5,
+            upper_bound=65.5,
+            inside_rate=0.0,
+        )
+        hundred = compute_metric_loss_audit(
+            loss_family="bounded_share",
+            seed_mean=100.0,
+            p25=100.0,
+            p75=100.0,
+            lower_bound=99.0,
+            upper_bound=100.0,
+            inside_rate=1.0,
+        )
+
+        self.assertEqual(zero.loss_transform, "bounded_share_domain_normalized_distance")
+        self.assertEqual(zero.loss_scale_basis, "bounded_share_domain_width")
+        self.assertAlmostEqual(zero.loss_scale or 0.0, 100.0)
+        self.assertAlmostEqual(zero.metric_loss, 0.0)
+        self.assertAlmostEqual(inside.metric_loss, 0.0)
+        self.assertAlmostEqual(outside.metric_loss, (1.5 / 100.0) + 0.50)
+        self.assertAlmostEqual(hundred.metric_loss, 0.0)
+
     def test_status_rules_remain_band_and_inside_rate_based(self) -> None:
         status = classify_metric_status(
             seed_mean=300.0,
@@ -137,7 +183,7 @@ class TestValidationFrameworkScoring(unittest.TestCase):
         self.assertEqual(status, "fail")
 
     def test_loss_scale_prefers_positive_source_value(self) -> None:
-        scale, basis = resolve_loss_scale(source_value=27.833, lower_bound=23.658, upper_bound=32.008)
+        scale, basis = resolve_loss_scale(source_value=27.833, lower_bound=26.442, upper_bound=29.225)
         self.assertAlmostEqual(scale, 27.833)
         self.assertEqual(basis, "source_value")
 

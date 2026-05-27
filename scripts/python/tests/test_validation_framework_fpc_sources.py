@@ -39,6 +39,9 @@ class TestValidationFrameworkFpcSources(unittest.TestCase):
                 "core_hpiMean",
                 "core_hpiStd",
                 "core_hpiCyclePeriod",
+                "rpi_mean",
+                "household_owning_share",
+                "household_renting_share",
                 "core_ooDebtToIncome",
                 "core_rentalYield",
             ),
@@ -51,19 +54,35 @@ class TestValidationFrameworkFpcSources(unittest.TestCase):
         self.assertEqual(mortgage.normalized_source_value, 61.325)
         self.assertEqual(mortgage.source_as_of, "Mar 2024")
 
-    def test_target_catalog_uses_locked_fpc_metadata(self) -> None:
+    def test_target_catalog_uses_boe_metadata_for_full_year_macro_targets(self) -> None:
         self.assertEqual(TARGETS_BY_ID["core_debtToIncome"].label, "Household Debt to Income")
-        self.assertEqual(TARGETS_BY_ID["core_priceToIncome"].target_band.lower, 5.4)
-        self.assertEqual(TARGETS_BY_ID["core_housingTransactions"].target_band.lower, 84.2)
+        self.assertAlmostEqual(TARGETS_BY_ID["core_priceToIncome"].target_band.lower, 4.847149441436771)
+        self.assertAlmostEqual(TARGETS_BY_ID["core_housingTransactions"].target_band.lower, 82.43)
         self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].requirement, "required")
         self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].source_label, "UK Finance Household Finance Review 2024 Q4")
-        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.lower, 23.658)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.lower, 26.442)
         self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].source_label, "UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)")
-        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.upper, 5.947)
-        self.assertNotEqual(
-            TARGETS_BY_ID["core_mortgageApprovals"].source_label,
-            "Official 2024 macro indicator target",
-        )
+        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.upper, 5.43)
+        for metric_id in (
+            "core_mortgageApprovals",
+            "core_housingTransactions",
+            "core_debtToIncome",
+            "core_housePriceGrowth",
+            "core_priceToIncome",
+        ):
+            self.assertIsNot(TARGETS_BY_ID[metric_id].source_metadata, FPC_SOURCE_2024_BY_METRIC_ID[metric_id])
+            self.assertEqual(
+                TARGETS_BY_ID[metric_id].source_metadata.source_document_path,
+                "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx",
+            )
+
+    def test_old_fpc_point_values_are_not_active_target_bands(self) -> None:
+        self.assertNotEqual(TARGETS_BY_ID["core_mortgageApprovals"].target_band.lower, 57.0)
+        self.assertNotEqual(TARGETS_BY_ID["core_mortgageApprovals"].target_band.upper, 63.0)
+        self.assertNotEqual(TARGETS_BY_ID["core_housingTransactions"].target_band.lower, 84.2)
+        self.assertNotEqual(TARGETS_BY_ID["core_debtToIncome"].target_band.lower, 125.0)
+        self.assertNotEqual(TARGETS_BY_ID["core_priceToIncome"].target_band.lower, 5.4)
+        self.assertNotEqual(TARGETS_BY_ID["core_housePriceGrowth"].target_band.lower, 0.0)
 
     def test_supported_bands_contain_normalized_official_values(self) -> None:
         for metric_id in (

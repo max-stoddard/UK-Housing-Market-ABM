@@ -207,7 +207,7 @@ class TestValidationFrameworkBulk(unittest.TestCase):
                     "requirement": "required",
                     "units": "count/month",
                     "sourceLabel": "source",
-                    "targetBand": {"lower": 4.396, "upper": 5.947},
+                    "targetBand": {"lower": 4.913, "upper": 5.43},
                     "seedMean": 17.45106215277778,
                     "p25": 17.17581777777778,
                     "p75": 17.730475555555557,
@@ -225,7 +225,7 @@ class TestValidationFrameworkBulk(unittest.TestCase):
 
         self.assertEqual(rescored["schemaVersion"], 4)
         self.assertEqual(metric["lossFamily"], "positive_level")
-        self.assertAlmostEqual(metric["metricLoss"], 1.5844592470279106)
+        self.assertAlmostEqual(metric["metricLoss"], 1.6754070038065232)
         self.assertAlmostEqual(rescored["overallCompositeLoss"], metric["metricLoss"])
 
 

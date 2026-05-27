@@ -8,7 +8,7 @@ from __future__ import annotations
 import unittest
 
 from scripts.python.validation.model import UKF_SOURCE_2024_BY_METRIC_ID as package_ukf_sources
-from scripts.python.validation.model.ukf_source_2024 import UKF_SOURCE_2024_BY_METRIC_ID
+from scripts.python.validation.model.ukf_source_2024 import ADVANCES_TARGET_TOLERANCE, UKF_SOURCE_2024_BY_METRIC_ID
 from scripts.python.validation.model.validation_catalog_2024 import TARGETS_BY_ID
 
 
@@ -35,13 +35,23 @@ class TestValidationFrameworkUkfSources(unittest.TestCase):
         self.assertTrue(all(reference.source_page == 2 for reference in btl.source_references))
 
     def test_target_catalog_promotes_advances_metrics_to_required_with_exact_bands(self) -> None:
+        self.assertEqual(ADVANCES_TARGET_TOLERANCE, 0.05)
         self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].requirement, "required")
-        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.lower, 23.658)
-        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.upper, 32.008)
-        self.assertEqual(TARGETS_BY_ID["core_advancesToHM"].target_band.lower, 20.4)
-        self.assertEqual(TARGETS_BY_ID["core_advancesToHM"].target_band.upper, 27.6)
-        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.lower, 4.396)
-        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.upper, 5.947)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.lower, 26.442)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToFTB"].target_band.upper, 29.225)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToHM"].target_band.lower, 22.8)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToHM"].target_band.upper, 25.2)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.lower, 4.913)
+        self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].target_band.upper, 5.43)
+
+    def test_updated_fixed_tolerance_metadata_does_not_reference_15_percent(self) -> None:
+        for metric_id in ("core_advancesToFTB", "core_advancesToHM", "core_advancesToBTL"):
+            source = TARGETS_BY_ID[metric_id].source_metadata
+            metadata_text = f"{source.band_method or ''} {source.band_notes or ''}"
+            self.assertIn("fixed_plus_minus_5pct", source.band_method or "")
+            self.assertNotIn("15pct", metadata_text)
+            self.assertNotIn("15%", metadata_text)
+            self.assertNotIn("+/-15%", metadata_text)
 
     def test_wrapper_reexports_canonical_ukf_mapping(self) -> None:
         self.assertIs(UKF_SOURCE_2024_BY_METRIC_ID, package_ukf_sources)

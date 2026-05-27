@@ -9,10 +9,16 @@ import unittest
 
 from scripts.python.validation.model.validation_catalog_2024 import HPI_FULL_HISTORY_REBASED_STD
 from scripts.python.validation.model.validation_catalog_2011 import (
+    ADVANCES_TARGET_TOLERANCE,
     HPI_2011_CYCLE_PERIOD_MONTHS,
     HPI_2011_REBASED_MEAN,
+    HPI_TARGET_TOLERANCE,
+    HOUSEHOLD_OWNING_SHARE_2011,
+    HOUSEHOLD_RENTING_SHARE_2011,
     INTEREST_RATE_SPREAD_2011_QUARTERLY_MEANS,
     OO_DEBT_TO_INCOME_2011_QUARTERLY_VALUES,
+    RPI_2011_GB_REBASED_MEAN,
+    RPI_2011_GB_REBASED_MONTHLY_VALUES,
     SOURCE_METADATA_2011_BY_METRIC_ID,
     TARGETS_BY_ID,
 )
@@ -44,6 +50,18 @@ class TestValidationCatalog2011(unittest.TestCase):
             SOURCE_METADATA_2011_BY_METRIC_ID["core_ooDebtToIncome"].normalized_source_value or 0.0,
             99.20166107684075,
         )
+        self.assertAlmostEqual(
+            SOURCE_METADATA_2011_BY_METRIC_ID["rpi_mean"].normalized_source_value or 0.0,
+            RPI_2011_GB_REBASED_MEAN,
+        )
+        self.assertAlmostEqual(
+            SOURCE_METADATA_2011_BY_METRIC_ID["household_owning_share"].normalized_source_value or 0.0,
+            HOUSEHOLD_OWNING_SHARE_2011,
+        )
+        self.assertAlmostEqual(
+            SOURCE_METADATA_2011_BY_METRIC_ID["household_renting_share"].normalized_source_value or 0.0,
+            HOUSEHOLD_RENTING_SHARE_2011,
+        )
 
     def test_interest_rate_spread_band_uses_corrected_2011_quarterly_mean_range(self) -> None:
         spread = TARGETS_BY_ID["core_interestRateSpread"]
@@ -57,10 +75,10 @@ class TestValidationCatalog2011(unittest.TestCase):
 
     def test_weaker_2011_metrics_are_labeled_as_best_available_proxies(self) -> None:
         proxy_band_methods = {
-            "core_advancesToFTB": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
-            "core_advancesToHM": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
-            "core_advancesToBTL": "fixed_plus_minus_15pct_around_best_available_proxy_monthly_mean",
-            "core_rentalYield": "fixed_plus_minus_15pct_around_best_available_annual_proxy",
+            "core_advancesToFTB": "fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
+            "core_advancesToHM": "fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
+            "core_advancesToBTL": "fixed_plus_minus_5pct_around_best_available_proxy_monthly_mean",
+            "core_rentalYield": "fixed_plus_minus_5pct_around_best_available_annual_proxy",
         }
         for metric_id, band_method in proxy_band_methods.items():
             metric = TARGETS_BY_ID[metric_id]
@@ -70,9 +88,36 @@ class TestValidationCatalog2011(unittest.TestCase):
     def test_hpi_metrics_use_same_official_value_band_method_as_2024(self) -> None:
         for metric_id in ("core_hpiMean", "core_hpiStd", "core_hpiCyclePeriod"):
             metric = TARGETS_BY_ID[metric_id]
-            self.assertEqual(metric.source_metadata.band_method, "fixed_plus_minus_15pct_around_official_value")
+            self.assertEqual(metric.source_metadata.band_method, "fixed_plus_minus_5pct_around_official_value")
         self.assertIn("through 2011-12", TARGETS_BY_ID["core_hpiMean"].source_label)
         self.assertIn("through 2011-12", TARGETS_BY_ID["core_hpiCyclePeriod"].source_label)
+
+    def test_fixed_tolerance_constants_and_bands_are_tightened_to_5_percent(self) -> None:
+        self.assertEqual(ADVANCES_TARGET_TOLERANCE, 0.05)
+        self.assertEqual(HPI_TARGET_TOLERANCE, 0.05)
+        expected_bands = {
+            "core_advancesToFTB": (15.279, 16.888),
+            "core_advancesToHM": (25.056, 27.694),
+            "core_advancesToBTL": (6.65, 7.35),
+            "core_rentalYield": (5.795, 6.405),
+        }
+        for metric_id, (lower, upper) in expected_bands.items():
+            with self.subTest(metric_id=metric_id):
+                self.assertAlmostEqual(TARGETS_BY_ID[metric_id].target_band.lower, lower)
+                self.assertAlmostEqual(TARGETS_BY_ID[metric_id].target_band.upper, upper)
+
+    def test_updated_fixed_tolerance_metadata_does_not_reference_15_percent(self) -> None:
+        for metric in TARGETS_BY_ID.values():
+            source_metadata = metric.source_metadata
+            if source_metadata is None or not (source_metadata.band_method or "").startswith("fixed_plus_minus_5pct"):
+                continue
+            metadata_text = " ".join(
+                value or ""
+                for value in (source_metadata.band_method, source_metadata.band_notes)
+            )
+            self.assertNotIn("15pct", metadata_text)
+            self.assertNotIn("15%", metadata_text)
+            self.assertNotIn("+/-15%", metadata_text)
 
     def test_hpi_std_is_deliberate_cross_year_normalization_exception(self) -> None:
         hpi_std = TARGETS_BY_ID["core_hpiStd"]
@@ -101,7 +146,17 @@ class TestValidationCatalog2011(unittest.TestCase):
         self.assertEqual(TARGETS_BY_ID["core_advancesToBTL"].loss_family, "positive_level")
         self.assertEqual(TARGETS_BY_ID["core_housePriceGrowth"].loss_family, "signed_additive")
         self.assertEqual(TARGETS_BY_ID["core_interestRateSpread"].loss_family, "signed_additive")
+        self.assertEqual(TARGETS_BY_ID["household_owning_share"].loss_family, "bounded_share")
+        self.assertEqual(TARGETS_BY_ID["household_renting_share"].loss_family, "bounded_share")
         self.assertEqual(TARGETS_BY_ID["income_distribution_jsd"].loss_family, "bounded_low_is_better")
+
+    def test_2011_tenure_and_rpi_targets_use_source_backed_bands(self) -> None:
+        self.assertEqual(TARGETS_BY_ID["household_owning_share"].target_band.lower, 65.5)
+        self.assertEqual(TARGETS_BY_ID["household_owning_share"].target_band.upper, 66.5)
+        self.assertEqual(TARGETS_BY_ID["household_renting_share"].target_band.lower, 16.5)
+        self.assertEqual(TARGETS_BY_ID["household_renting_share"].target_band.upper, 17.5)
+        self.assertAlmostEqual(TARGETS_BY_ID["rpi_mean"].target_band.lower, min(RPI_2011_GB_REBASED_MONTHLY_VALUES))
+        self.assertAlmostEqual(TARGETS_BY_ID["rpi_mean"].target_band.upper, max(RPI_2011_GB_REBASED_MONTHLY_VALUES))
 
 
 if __name__ == "__main__":
