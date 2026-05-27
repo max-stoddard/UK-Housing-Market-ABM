@@ -2,6 +2,8 @@
 /experiments
 /.worktrees
 /.codex
+/.superpowers/
+/docs/superpowers/
 
 # ignore Intellij IDEA/vscode cruft
 /.idea
