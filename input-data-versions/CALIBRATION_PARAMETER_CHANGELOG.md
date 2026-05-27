@@ -1305,6 +1305,49 @@ python3 -m scripts.python.calibration.btl.bank_icr_hard_min_calibration --output
 - Version(s) affected:
   - `v0o2`
 
+### v0o7
+- Script path:
+  - `scripts/python/calibration/output/output_parameter_turbo.py`
+- Outputs/keys produced:
+  - `PSYCHOLOGICAL_COST_OF_RENTING`
+  - `SENSITIVITY_RENT_OR_PURCHASE`
+  - `BTL_PROBABILITY_MULTIPLIER`
+  - `BTL_CHOICE_INTENSITY`
+  - `MARKET_AVERAGE_PRICE_DECAY`
+- Exact run command:
+  - `python3 -m scripts.python.calibration.output.output_parameter_turbo --version v0 --output-version v0o7 --validation-year 2011 --validation-objective family_aware_metric_loss --validation-loss-error-std 1.0 --seeds 1,2,3,4,5,6,7,8,9,10 --workers 20 --candidate-batch-size 2 --initial-points 20 --max-evaluations 120 --rng-seed 20260525 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --output-root tmp/output-calibration --evidence-dir input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7 --local-refinement-top-n 12 --local-refinement-radius 1 --local-refinement-max-candidates 120 --delete-csv-after-metrics`
+  - `bash input-data-versions/validate.sh v0o7 --validation-year 2011 --output-dir tmp/validation/v0o7-2011-10seed-3500 --workers 20 --seeds 1,2,3,4,5,6,7,8,9,10 --n-steps 3500 --validation-window-start 500 --validation-window-end 3500 --allow-noncanonical-seeds`
+  - `bash input-data-versions/validate.sh v0o7 --output-dir tmp/validation/v0o7-2024 --workers 20`
+- Expected result snippet:
+  - TuRBO-1 promoted snapped local-refinement candidate iteration `28`, member `108`.
+  - `PSYCHOLOGICAL_COST_OF_RENTING = 0.4`
+  - `SENSITIVITY_RENT_OR_PURCHASE = 0.0013`
+  - `BTL_PROBABILITY_MULTIPLIER = 1.825`
+  - `BTL_CHOICE_INTENSITY = 130`
+  - `MARKET_AVERAGE_PRICE_DECAY = 0.54`
+  - 10-seed 2011 reference overallCompositeLoss improved from rescored `v0=0.5652252115924438` and refreshed `v0o2=0.5359511617512418` to `v0o7=0.5211689956810397`.
+  - 2011 HPI metric-loss deltas versus `v0`: `core_hpiMean=-0.0546882242528135`, `core_hpiStd=-0.10113609313370375`, `core_hpiCyclePeriod=-0.32145011345997854`.
+  - 2011 HPI metric-loss deltas versus refreshed `v0o2`: `core_hpiMean=+0.1079488005404271`, `core_hpiStd=-0.05496398628835508`, `core_hpiCyclePeriod=-0.12857808827672268`.
+  - Canonical 2024 validation overallCompositeLoss is `0.7232788599876028` with status counts `pass=5`, `warn=1`, `fail=14`.
+- Method chosen:
+  - TuRBO-1 over transformed output-parameter priors with an HPI-aware optimizer penalty, followed by snapped local refinement around the top HPI-constrained eligible global members.
+  - The campaign used seeds `1..10`, `20` workers, `N_STEPS = 3500`, validation/calibration window `500..3500`, rng seed `20260525`, initial Sobol points `20`, max evaluations `120`, candidate batch size `2`, local-refinement top-n `12`, radius `1`, and max candidates `120`.
+  - Local refinement evaluated `113` deduplicated snapped candidates (`1130` local seed-runs). Seed metrics were cached and per-seed CSVs were deleted after metric extraction.
+- Method-selection decision logic:
+  - `Objective=2011/W3 reference validation loss reduction; Why=the selected local-refinement candidate improves aggregate 2011 loss versus both v0 and refreshed v0o2; Tradeoff=core_hpiMean loss worsens versus v0o2, so this branch is dashboard-visible evidence only and should not be described as a recommended model improvement.`
+- Rationale category:
+  - output calibration evidence-only TuRBO promotion
+- Evidence links:
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/OutputParameterTurboCalibrationSummary.json`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/AllEvaluatedMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/LocalRefinementMembers.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/ValidationComparison-v0o7-vs-v0-2011-10seed-500-3500.csv`
+  - `input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/ValidationComparison-v0o7-vs-v0o2-2011-10seed-500-3500.csv`
+  - `input-data-versions/validation-overlays/v0o7-2011.json`
+  - `input-data-versions/validation/v0o7.json`
+- Version(s) affected:
+  - `v0o7`
+
 ### v4.14oo
 - Script path: `scripts/python/calibration/output/four_parameter_esmda.py`
 - Outputs/keys produced:

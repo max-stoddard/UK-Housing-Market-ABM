@@ -1546,6 +1546,69 @@
       ]
     },
     {
+      "version_id": "v0o7",
+      "snapshot_folder": "v0o7",
+      "validation_dataset": "w3",
+      "description": "TuRBO-1 five-parameter output calibration from v0 using the v0-family 2011 reference objective.",
+      "updated_data_sources": [
+        "output-calibration"
+      ],
+      "calibration_files": [
+        "scripts/python/calibration/output/output_parameter_turbo.py"
+      ],
+      "config_parameters": [
+        "PSYCHOLOGICAL_COST_OF_RENTING",
+        "SENSITIVITY_RENT_OR_PURCHASE",
+        "BTL_PROBABILITY_MULTIPLIER",
+        "BTL_CHOICE_INTENSITY",
+        "MARKET_AVERAGE_PRICE_DECAY"
+      ],
+      "parameter_changes": [
+        {
+          "config_parameter": "PSYCHOLOGICAL_COST_OF_RENTING",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "SENSITIVITY_RENT_OR_PURCHASE",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_PROBABILITY_MULTIPLIER",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "BTL_CHOICE_INTENSITY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/OutputParameterTurboCalibrationSummary.json"
+        },
+        {
+          "config_parameter": "MARKET_AVERAGE_PRICE_DECAY",
+          "dataset_source": "input-data-versions/calibration-evidence/output-five-parameter-turbo-v0o7/OutputParameterTurboCalibrationSummary.json"
+        }
+      ],
+      "validation": {
+        "status": "complete",
+        "income_diff_pct": null,
+        "housing_wealth_diff_pct": null,
+        "financial_wealth_diff_pct": null,
+        "note": "Tracked 2024 validation summary generated on 2026-05-25 after TuRBO-1 promoted local-refinement candidate iteration 28 member 108 from v0. Selected parameters are PSYCHOLOGICAL_COST_OF_RENTING=0.4, SENSITIVITY_RENT_OR_PURCHASE=0.0013, BTL_PROBABILITY_MULTIPLIER=1.825, BTL_CHOICE_INTENSITY=130, and MARKET_AVERAGE_PRICE_DECAY=0.54. The 10-seed 2011 reference overlay over window 500..3500 has overallCompositeLoss=0.521169, improving versus v0=0.565225 and the refreshed v0o2=0.535951. Constrained HPI metric-loss deltas versus v0o2 are core_hpiStd=-0.054964, core_hpiCyclePeriod=-0.128578, and core_hpiMean=+0.107949, so this branch is retained for dashboard comparison but is not recommended as an improved model branch. The tracked 2024 summary is secondary comparability only and has overallCompositeLoss=0.723279 with status counts pass=5/warn=1/fail=14."
+      },
+      "method_variations": [
+        {
+          "config_parameters": [
+            "PSYCHOLOGICAL_COST_OF_RENTING",
+            "SENSITIVITY_RENT_OR_PURCHASE",
+            "BTL_PROBABILITY_MULTIPLIER",
+            "BTL_CHOICE_INTENSITY",
+            "MARKET_AVERAGE_PRICE_DECAY"
+          ],
+          "improvement_summary": "TuRBO-1 produced retained v0-family evidence, but the result is not recommended because constrained-HPI comparison did not clear the campaign decision rule.",
+          "why_changed": "To expose the completed v0o7 TuRBO campaign and its 2011/2024 validation results on the dashboard for comparison.",
+          "method_chosen": "TuRBO-1 over transformed five-parameter output-calibration priors with HPI-aware optimizer penalty, followed by snapped local refinement and 2011 plus 2024 validation publication.",
+          "decision_logic": "Objective=2011/W3 reference validation loss reduction; Why=the selected local-refinement candidate improves aggregate 2011 loss versus v0 and v0o2; Tradeoff=core_hpiMean loss worsens versus v0o2, so v0o7 is shown as evidence-only comparison rather than a recommended model improvement."
+        }
+      ]
+    },
+    {
       "version_id": "v4.14oo",
       "snapshot_folder": "v4.14oo",
       "validation_dataset": "r8",
