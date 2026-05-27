@@ -34,6 +34,9 @@ UNSUPPORTED_FPC_METRIC_IDS = (
     "core_hpiMean",
     "core_hpiStd",
     "core_hpiCyclePeriod",
+    "rpi_mean",
+    "household_owning_share",
+    "household_renting_share",
     "core_ooDebtToIncome",
     "core_rentalYield",
 )
@@ -132,8 +135,8 @@ UKF_BTL_Q4_2024_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/ukf
 UKF_BTL_2024_TEXT_PATH = "input-data-versions/validation-sources/2024/ukf/btl-mortgage-market-update-2024-validation-evidence.txt"
 UKF_BTL_2024_TABLE = "Latest 2024 Q* summary panels"
 
-ADVANCES_TARGET_TOLERANCE = 0.15
-HPI_TARGET_TOLERANCE = 0.15
+ADVANCES_TARGET_TOLERANCE = 0.05
+HPI_TARGET_TOLERANCE = 0.05
 
 FTB_ANNUAL_LOANS = 334_000.0
 HM_ANNUAL_LOANS = 288_000.0
@@ -168,7 +171,7 @@ UKF_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2024 annual total",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_monthly_mean",
+        band_method="fixed_plus_minus_5pct_around_official_monthly_mean",
         band_notes="Converted 2024 annual total to monthly mean: 334,000 / 12 / 1,000 = 27.833.",
         source_references=(
             MetricSourceReference(
@@ -197,7 +200,7 @@ UKF_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2024 annual total",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_monthly_mean",
+        band_method="fixed_plus_minus_5pct_around_official_monthly_mean",
         band_notes="Converted 2024 annual total to monthly mean: 288,000 / 12 / 1,000 = 24.000.",
         source_references=(
             MetricSourceReference(
@@ -226,7 +229,7 @@ UKF_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="thousand count/month",
         source_as_of="2024 annualized monthly mean",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_monthly_mean",
+        band_method="fixed_plus_minus_5pct_around_official_monthly_mean",
         band_notes=(
             "Quarterly house-purchase counts 12,422 + 14,955 + 16,410 + 18,268 converted to "
             "monthly mean: 62,055 / 12 / 1,000 = 5.171."
@@ -286,9 +289,18 @@ UKF_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
 
 BOE_HOUSING_TOOLS_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx"
 BOE_HOUSING_TOOLS_TEXT_PATH = "input-data-versions/validation-sources/2024/boe/housing-tools-2024-validation-evidence.txt"
+BOE_HOUSING_TOOLS_MORTGAGE_APPROVALS_TABLE = "Sheet 4.Mortgage approvals"
+BOE_HOUSING_TOOLS_HOUSING_TRANSACTIONS_TABLE = "Sheet 5.Housing transactions"
+BOE_HOUSING_TOOLS_DTI_TABLE = "Sheet 3. Household debt to income"
+BOE_HOUSING_TOOLS_HOUSE_PRICE_GROWTH_TABLE = "Sheet 6.House price growth"
+BOE_HOUSING_TOOLS_PRICE_TO_INCOME_TABLE = "Sheet 7.House prices disp. income"
 BOE_HOUSING_TOOLS_SPREAD_TABLE = "Sheet 8. Spreads new mortgage lending"
 HMLR_HPI_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/hmlr/UK-HPI-full-file-2024-12.csv"
 HMLR_HPI_TEXT_PATH = "input-data-versions/validation-sources/2024/hmlr/hpi-2024-validation-evidence.txt"
+FRS_TENURE_2024_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx"
+FRS_TENURE_2024_TEXT_PATH = "input-data-versions/validation-sources/2024/frs/household-tenure-2024-validation-evidence.txt"
+ONS_RPI_2024_DOCUMENT_PATH = "input-data-versions/validation-sources/2024/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx"
+ONS_RPI_2024_TEXT_PATH = "input-data-versions/validation-sources/2024/ons-rpi/rpi-2024-validation-evidence.txt"
 
 UKF_BTL_RENTAL_YIELD_TEXT_PATH = "input-data-versions/validation-sources/2024/ukf/btl-rental-yield-2024-validation-evidence.txt"
 UKF_BTL_RENTAL_YIELD_TABLE = "Page 2 summary panels"
@@ -298,6 +310,84 @@ MLAR_OO_DTI_TEXT_PATH = "input-data-versions/validation-sources/2024/mlar/oo-deb
 MLAR_OO_DTI_TABLE = "Sheet 1.11 row 33 and sheet 1.33 rows 41, 53, 91, 95"
 ONS_QWND_2024_SNAPSHOT_PATH = "input-data-versions/validation-sources/2024/ons/qwnd-household-gross-disposable-income-2023q2-2024q4.json"
 
+BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID: dict[str, tuple[float, ...]] = {
+    "core_mortgageApprovals": (
+        55_575.0,
+        59_828.0,
+        61_632.0,
+        61_976.0,
+        61_297.0,
+        61_119.0,
+        62_447.0,
+        65_137.0,
+        65_628.0,
+        68_073.0,
+        65_669.0,
+        65_982.0,
+    ),
+    "core_housingTransactions": (
+        82_430.0,
+        84_310.0,
+        86_500.0,
+        89_730.0,
+        92_900.0,
+        92_120.0,
+        91_490.0,
+        92_200.0,
+        92_590.0,
+        100_830.0,
+        93_680.0,
+        96_030.0,
+    ),
+    "core_debtToIncome": (
+        139.0765196216166,
+        137.830176395903,
+        136.7031366339467,
+        133.7791854721206,
+    ),
+    "core_housePriceGrowth": (
+        -0.675904021628948,
+        -0.406641816333464,
+        0.2380142808568353,
+        0.5784280367472139,
+        1.020755358965664,
+        1.01763907734056,
+        0.8795669824086749,
+        0.5725833614011355,
+        0.503693754197454,
+        0.7712944332662452,
+        0.9377093101138323,
+        1.069161376545269,
+    ),
+    "core_priceToIncome": (
+        4.956292571351748,
+        4.955026532074656,
+        4.90668433997867,
+        4.847149441436771,
+    ),
+}
+BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID: dict[str, float] = {
+    "core_mortgageApprovals": 0.001,
+    "core_housingTransactions": 0.001,
+    "core_debtToIncome": 1.0,
+    "core_housePriceGrowth": 1.0,
+    "core_priceToIncome": 1.0,
+}
+BOE_HOUSING_TOOLS_2024_MONTH_LABELS = (
+    "Jan 2024",
+    "Feb 2024",
+    "Mar 2024",
+    "Apr 2024",
+    "May 2024",
+    "Jun 2024",
+    "Jul 2024",
+    "Aug 2024",
+    "Sep 2024",
+    "Oct 2024",
+    "Nov 2024",
+    "Dec 2024",
+)
+BOE_HOUSING_TOOLS_2024_QUARTER_LABELS = ("2024 Q1", "2024 Q2", "2024 Q3", "2024 Q4")
 INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS = (
     0.45451643114650303,
     0.5779458190668597,
@@ -308,6 +398,23 @@ HPI_2024_REBASED_MEAN = 1.0196877121520707
 HPI_2024_REBASED_STD = 0.013499008027934953
 HPI_FULL_HISTORY_REBASED_STD = 0.2766701944903836
 HPI_2024_CYCLE_PERIOD_MONTHS = 167.5
+HOUSEHOLD_OWNING_SHARE_2024 = 65.0
+HOUSEHOLD_RENTING_SHARE_2024 = 19.0
+RPI_2024_GB_REBASED_MEAN = 1.0404173774620358
+RPI_2024_GB_REBASED_MONTHLY_VALUES = (
+    1.0,
+    1.009019047842,
+    1.016467250817,
+    1.022603099237,
+    1.029361598503,
+    1.0361922001,
+    1.043053273569,
+    1.048951935269,
+    1.056033563547,
+    1.065168527979,
+    1.076099563763,
+    1.082058468918,
+)
 RENTAL_YIELD_2024_QUARTERLY_VALUES = (6.88, 6.90, 6.93, 7.00)
 OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES = (
     80.29246428438624,
@@ -321,7 +428,175 @@ def _annual_mean(values: tuple[float, ...]) -> float:
     return float(fmean(values))
 
 
+def _boe_housing_tools_raw_mean(metric_id: str) -> float:
+    return _annual_mean(BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID[metric_id])
+
+
+def _boe_housing_tools_comparison_scale(metric_id: str) -> float:
+    return BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID[metric_id]
+
+
+def _boe_housing_tools_comparison_value(metric_id: str, raw_value: float) -> float:
+    scale = _boe_housing_tools_comparison_scale(metric_id)
+    if scale == 0.001:
+        return raw_value / 1_000.0
+    return raw_value * scale
+
+
+def _boe_housing_tools_normalized_mean(metric_id: str) -> float:
+    return _boe_housing_tools_comparison_value(metric_id, _boe_housing_tools_raw_mean(metric_id))
+
+
+def _boe_housing_tools_comparison_values(metric_id: str) -> tuple[float, ...]:
+    return tuple(
+        _boe_housing_tools_comparison_value(metric_id, value)
+        for value in BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID[metric_id]
+    )
+
+
+def _boe_housing_tools_target_band(metric_id: str) -> TargetBand:
+    values = _boe_housing_tools_comparison_values(metric_id)
+    return TargetBand(lower=min(values), upper=max(values))
+
+
+def _boe_housing_tools_source_references(
+    *,
+    metric_id: str,
+    label_prefix: str,
+    source_table: str,
+    source_indicator_label: str,
+    source_units: str,
+) -> tuple[MetricSourceReference, ...]:
+    values = BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID[metric_id]
+    labels = BOE_HOUSING_TOOLS_2024_MONTH_LABELS if len(values) == 12 else BOE_HOUSING_TOOLS_2024_QUARTER_LABELS
+    return tuple(
+        MetricSourceReference(
+            label=f"{label_prefix} {period_label}",
+            source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
+            source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
+            source_table=source_table,
+            source_page=1,
+            source_indicator_label=source_indicator_label,
+            raw_source_value=value,
+            source_as_of=period_label,
+            source_units=source_units,
+            notes="Workbook value used in the 2024 annual mean and observed-range target band.",
+        )
+        for period_label, value in zip(labels, values, strict=True)
+    )
+
+
 MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
+    "core_mortgageApprovals": MetricSourceMetadata(
+        source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
+        source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
+        source_table=f"{BOE_HOUSING_TOOLS_MORTGAGE_APPROVALS_TABLE}; Jan-Dec 2024 monthly values",
+        source_page=1,
+        source_indicator_label="Mortgage approvals, 2024 annual mean",
+        raw_source_value=_boe_housing_tools_raw_mean("core_mortgageApprovals"),
+        normalized_source_value=_boe_housing_tools_normalized_mean("core_mortgageApprovals"),
+        source_units="count/month",
+        comparison_units="thousand count/month",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_monthly_range",
+        band_notes="Target band is the observed Jan-Dec 2024 monthly range after converting counts to thousand count/month.",
+        source_references=_boe_housing_tools_source_references(
+            metric_id="core_mortgageApprovals",
+            label_prefix="Bank of England housing tools mortgage approvals",
+            source_table=BOE_HOUSING_TOOLS_MORTGAGE_APPROVALS_TABLE,
+            source_indicator_label="Mortgage Approvals",
+            source_units="count/month",
+        ),
+    ),
+    "core_housingTransactions": MetricSourceMetadata(
+        source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
+        source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
+        source_table=f"{BOE_HOUSING_TOOLS_HOUSING_TRANSACTIONS_TABLE}; Jan-Dec 2024 monthly values",
+        source_page=1,
+        source_indicator_label="Housing transactions, 2024 annual mean",
+        raw_source_value=_boe_housing_tools_raw_mean("core_housingTransactions"),
+        normalized_source_value=_boe_housing_tools_normalized_mean("core_housingTransactions"),
+        source_units="count/month",
+        comparison_units="thousand count/month",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_monthly_range",
+        band_notes="Target band is the observed Jan-Dec 2024 monthly range after converting counts to thousand count/month.",
+        source_references=_boe_housing_tools_source_references(
+            metric_id="core_housingTransactions",
+            label_prefix="Bank of England housing tools housing transactions",
+            source_table=BOE_HOUSING_TOOLS_HOUSING_TRANSACTIONS_TABLE,
+            source_indicator_label="Housing Transactions",
+            source_units="count/month",
+        ),
+    ),
+    "core_debtToIncome": MetricSourceMetadata(
+        source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
+        source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
+        source_table=f"{BOE_HOUSING_TOOLS_DTI_TABLE}; Q1-Q4 2024 quarterly values",
+        source_page=1,
+        source_indicator_label="Household debt to income ratio, 2024 annual mean",
+        raw_source_value=_boe_housing_tools_raw_mean("core_debtToIncome"),
+        normalized_source_value=_boe_housing_tools_normalized_mean("core_debtToIncome"),
+        source_units="%",
+        comparison_units="%",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_quarterly_range",
+        band_notes="Target band is the observed Q1-Q4 2024 quarterly range.",
+        source_references=_boe_housing_tools_source_references(
+            metric_id="core_debtToIncome",
+            label_prefix="Bank of England housing tools household debt to income",
+            source_table=BOE_HOUSING_TOOLS_DTI_TABLE,
+            source_indicator_label="Household debt to income (%)",
+            source_units="%",
+        ),
+    ),
+    "core_housePriceGrowth": MetricSourceMetadata(
+        source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
+        source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
+        source_table=f"{BOE_HOUSING_TOOLS_HOUSE_PRICE_GROWTH_TABLE}; Jan-Dec 2024 monthly values",
+        source_page=1,
+        source_indicator_label="House price growth, 2024 annual mean",
+        raw_source_value=_boe_housing_tools_raw_mean("core_housePriceGrowth"),
+        normalized_source_value=_boe_housing_tools_normalized_mean("core_housePriceGrowth"),
+        source_units="%",
+        comparison_units="%",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_monthly_range",
+        band_notes="Target band is the observed Jan-Dec 2024 monthly range.",
+        source_references=_boe_housing_tools_source_references(
+            metric_id="core_housePriceGrowth",
+            label_prefix="Bank of England housing tools house price growth",
+            source_table=BOE_HOUSING_TOOLS_HOUSE_PRICE_GROWTH_TABLE,
+            source_indicator_label="House prices (Percentage change three months on three months earlier)",
+            source_units="%",
+        ),
+    ),
+    "core_priceToIncome": MetricSourceMetadata(
+        source_document_path=BOE_HOUSING_TOOLS_DOCUMENT_PATH,
+        source_text_path=BOE_HOUSING_TOOLS_TEXT_PATH,
+        source_table=f"{BOE_HOUSING_TOOLS_PRICE_TO_INCOME_TABLE}; Q1-Q4 2024 quarterly values",
+        source_page=1,
+        source_indicator_label="House prices to disposable income per household, 2024 annual mean",
+        raw_source_value=_boe_housing_tools_raw_mean("core_priceToIncome"),
+        normalized_source_value=_boe_housing_tools_normalized_mean("core_priceToIncome"),
+        source_units="ratio",
+        comparison_units="ratio",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_quarterly_range",
+        band_notes="Target band is the observed Q1-Q4 2024 quarterly range.",
+        source_references=_boe_housing_tools_source_references(
+            metric_id="core_priceToIncome",
+            label_prefix="Bank of England housing tools price to income",
+            source_table=BOE_HOUSING_TOOLS_PRICE_TO_INCOME_TABLE,
+            source_indicator_label="House prices to disposable income per household",
+            source_units="ratio",
+        ),
+    ),
     "core_hpiMean": MetricSourceMetadata(
         source_document_path=HMLR_HPI_DOCUMENT_PATH,
         source_text_path=HMLR_HPI_TEXT_PATH,
@@ -334,10 +609,10 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="rebased index",
         source_as_of="2024 annual mean",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_method="fixed_plus_minus_5pct_around_official_value",
         band_notes=(
             "2024 UK IndexSA values rebased to January 2024 = 1.0 before computing the annual mean. "
-            "Target band is +/-15% around the official rebased mean."
+            "Target band is +/-5% around the official rebased mean."
         ),
         source_references=(
             MetricSourceReference(
@@ -366,10 +641,10 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="rebased index",
         source_as_of="2005-01 to 2024-12 population std",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_method="fixed_plus_minus_5pct_around_official_value",
         band_notes=(
             "United Kingdom IndexSA values from 2005-01 through 2024-12 are rebased to January 2005 = 1.0 before "
-            "computing the long-run population standard deviation. Target band is +/-15% around the official rebased std."
+            "computing the long-run population standard deviation. Target band is +/-5% around the official rebased std."
         ),
         source_references=(
             MetricSourceReference(
@@ -473,11 +748,11 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
         comparison_units="months",
         source_as_of="1968-04 to 2024-12 history, December 2024 release",
         mapping_status="derived_match",
-        band_method="fixed_plus_minus_15pct_around_official_value",
+        band_method="fixed_plus_minus_5pct_around_official_value",
         band_notes=(
             "Cycle period is derived from the archived United Kingdom Index history through December 2024 using the "
             "locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months. "
-            "Target band is +/-15% around the official derived period."
+            "Target band is +/-5% around the official derived period."
         ),
         source_references=(
             MetricSourceReference(
@@ -491,6 +766,105 @@ MARKET_SOURCE_2024_BY_METRIC_ID: dict[str, MetricSourceMetadata] = {
                 source_as_of="1968-04 to 2024-12 history",
                 source_units="months",
                 notes="Derived with a 12-month moving average, log transform, linear detrend, and FFT peak search over 60..240 months.",
+            ),
+        ),
+    ),
+    "rpi_mean": MetricSourceMetadata(
+        source_document_path=ONS_RPI_2024_DOCUMENT_PATH,
+        source_text_path=ONS_RPI_2024_TEXT_PATH,
+        source_table="Table 1: Great Britain index rows for 2024-01 through 2024-12, rebased to 2024-01 = 1.0",
+        source_page=1,
+        source_indicator_label="Rebased Great Britain Rental Price Index, 2024 annual mean",
+        raw_source_value=RPI_2024_GB_REBASED_MEAN,
+        normalized_source_value=RPI_2024_GB_REBASED_MEAN,
+        source_units="rebased index",
+        comparison_units="rebased index",
+        source_as_of="2024 annual mean",
+        mapping_status="derived_match",
+        band_method="observed_2024_rebased_monthly_range",
+        band_notes=(
+            "Uses the ONS Price Index of Private Rents historical-series Great Britain index because the downloaded "
+            "workbook marks the UK series as unavailable in 2011. The same Great Britain geography is used for 2024 "
+            "for like-for-like comparison. Monthly values are rebased to January 2024 = 1.0; the target band is the "
+            "observed 2024 rebased monthly min/max."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="ONS Price Index of Private Rents, UK: historical series",
+                source_document_path=ONS_RPI_2024_DOCUMENT_PATH,
+                source_text_path=ONS_RPI_2024_TEXT_PATH,
+                source_table="Table 1",
+                source_page=1,
+                source_indicator_label="Great Britain rental price index",
+                raw_source_value=RPI_2024_GB_REBASED_MEAN,
+                source_as_of="2024 annual mean after rebasing to January 2024",
+                source_units="rebased index",
+                notes="Rental Price Index target; this is not Retail Prices Index.",
+            ),
+        ),
+    ),
+    "household_owning_share": MetricSourceMetadata(
+        source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+        source_text_path=FRS_TENURE_2024_TEXT_PATH,
+        source_table="FRS 2023/24 table 3.6: Households by tenure, United Kingdom",
+        source_page=1,
+        source_indicator_label="Owner-occupied households, owned outright plus buying with a mortgage",
+        raw_source_value=HOUSEHOLD_OWNING_SHARE_2024,
+        normalized_source_value=HOUSEHOLD_OWNING_SHARE_2024,
+        source_units="%",
+        comparison_units="%",
+        source_as_of="financial year ending 2024",
+        mapping_status="derived_match",
+        band_method="published_rounded_percentage_interval",
+        band_notes=(
+            "FRS table 3.6 publishes whole-percent household tenure shares. Target band is the rounded-value "
+            "interval [64.5, 65.5] around the published 65% owner-occupied share."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="DWP Family Resources Survey 2023/24 tenure table 3.6",
+                source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+                source_text_path=FRS_TENURE_2024_TEXT_PATH,
+                source_table="3_6",
+                source_page=1,
+                source_indicator_label="Owned outright 37%; buying with a mortgage 28%",
+                raw_source_value=HOUSEHOLD_OWNING_SHARE_2024,
+                source_as_of="financial year ending 2024",
+                source_units="%",
+                notes="Owner-occupied share is 37% + 28% = 65%.",
+            ),
+        ),
+    ),
+    "household_renting_share": MetricSourceMetadata(
+        source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+        source_text_path=FRS_TENURE_2024_TEXT_PATH,
+        source_table="FRS 2023/24 table 3.6: Households by tenure, United Kingdom",
+        source_page=1,
+        source_indicator_label="Private renting sector households",
+        raw_source_value=HOUSEHOLD_RENTING_SHARE_2024,
+        normalized_source_value=HOUSEHOLD_RENTING_SHARE_2024,
+        source_units="%",
+        comparison_units="%",
+        source_as_of="financial year ending 2024",
+        mapping_status="derived_match",
+        band_method="published_rounded_percentage_interval",
+        band_notes=(
+            "FRS table 3.6 publishes whole-percent household tenure shares. Target band is the rounded-value "
+            "interval [18.5, 19.5] around the published 19% private-rented-sector share. Social renting is excluded "
+            "to match model HousingStatus == 1."
+        ),
+        source_references=(
+            MetricSourceReference(
+                label="DWP Family Resources Survey 2023/24 tenure table 3.6",
+                source_document_path=FRS_TENURE_2024_DOCUMENT_PATH,
+                source_text_path=FRS_TENURE_2024_TEXT_PATH,
+                source_table="3_6",
+                source_page=1,
+                source_indicator_label="Private renting sector 19%",
+                raw_source_value=HOUSEHOLD_RENTING_SHARE_2024,
+                source_as_of="financial year ending 2024",
+                source_units="%",
+                notes="Private renting is used because model HousingStatus == 1 excludes social housing.",
             ),
         ),
     ),
@@ -662,11 +1036,11 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         label="Mortgage Approvals",
         requirement="required",
         units="count/month",
-        source_label="Bank of England FPC core indicators, June 2024",
+        source_label="Bank of England housing-tools workbook (full-year 2024 monthly mortgage approvals series)",
         kind="core_indicator",
         loss_family="positive_level",
-        source_metadata=FPC_SOURCE_2024_BY_METRIC_ID["core_mortgageApprovals"],
-        target_band=TargetBand(lower=57.0, upper=63.0),
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_mortgageApprovals"],
+        target_band=_boe_housing_tools_target_band("core_mortgageApprovals"),
         file_name="coreIndicator-mortgageApprovals.csv",
         scale=0.001,
     ),
@@ -675,11 +1049,11 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         label="Housing Transactions",
         requirement="required",
         units="count/month",
-        source_label="Bank of England FPC core indicators, June 2024",
+        source_label="Bank of England housing-tools workbook (full-year 2024 monthly housing transactions series)",
         kind="core_indicator",
         loss_family="positive_level",
-        source_metadata=FPC_SOURCE_2024_BY_METRIC_ID["core_housingTransactions"],
-        target_band=TargetBand(lower=84.2, upper=100.0),
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_housingTransactions"],
+        target_band=_boe_housing_tools_target_band("core_housingTransactions"),
         file_name="coreIndicator-housingTransactions.csv",
         scale=0.001,
     ),
@@ -692,7 +1066,7 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         kind="core_indicator",
         loss_family="positive_level",
         source_metadata=UKF_SOURCE_2024_BY_METRIC_ID["core_advancesToFTB"],
-        target_band=TargetBand(lower=23.658, upper=32.008),
+        target_band=TargetBand(lower=26.442, upper=29.225),
         file_name="coreIndicator-advancesToFTB.csv",
         scale=0.001,
     ),
@@ -705,7 +1079,7 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         kind="core_indicator",
         loss_family="positive_level",
         source_metadata=UKF_SOURCE_2024_BY_METRIC_ID["core_advancesToHM"],
-        target_band=TargetBand(lower=20.400, upper=27.600),
+        target_band=TargetBand(lower=22.800, upper=25.200),
         file_name="coreIndicator-advancesToHM.csv",
         scale=0.001,
     ),
@@ -718,7 +1092,7 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         kind="core_indicator",
         loss_family="positive_level",
         source_metadata=UKF_SOURCE_2024_BY_METRIC_ID["core_advancesToBTL"],
-        target_band=TargetBand(lower=4.396, upper=5.947),
+        target_band=TargetBand(lower=4.913, upper=5.430),
         file_name="coreIndicator-advancesToBTL.csv",
         scale=0.001,
     ),
@@ -727,11 +1101,11 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         label="Household Debt to Income",
         requirement="required",
         units="%",
-        source_label="Bank of England FPC core indicators, June 2024",
+        source_label="Bank of England housing-tools workbook (full-year 2024 quarterly household debt-to-income series)",
         kind="core_indicator",
         loss_family="positive_level",
-        source_metadata=FPC_SOURCE_2024_BY_METRIC_ID["core_debtToIncome"],
-        target_band=TargetBand(lower=125.0, upper=145.0),
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_debtToIncome"],
+        target_band=_boe_housing_tools_target_band("core_debtToIncome"),
         file_name="coreIndicator-debtToIncome.csv",
     ),
     MetricDefinition(
@@ -739,11 +1113,11 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         label="House Price to Household Disposable Income",
         requirement="required",
         units="ratio",
-        source_label="Bank of England FPC core indicators, June 2024",
+        source_label="Bank of England housing-tools workbook (full-year 2024 quarterly price-to-income series)",
         kind="core_indicator",
         loss_family="positive_level",
-        source_metadata=FPC_SOURCE_2024_BY_METRIC_ID["core_priceToIncome"],
-        target_band=TargetBand(lower=5.4, upper=9.0),
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_priceToIncome"],
+        target_band=_boe_housing_tools_target_band("core_priceToIncome"),
         file_name="coreIndicator-priceToIncome.csv",
     ),
     MetricDefinition(
@@ -751,11 +1125,11 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
         label="House Price Growth",
         requirement="required",
         units="%",
-        source_label="Bank of England FPC core indicators, June 2024",
+        source_label="Bank of England housing-tools workbook (full-year 2024 monthly house-price-growth series)",
         kind="core_indicator",
         loss_family="signed_additive",
-        source_metadata=FPC_SOURCE_2024_BY_METRIC_ID["core_housePriceGrowth"],
-        target_band=TargetBand(lower=0.0, upper=2.0),
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["core_housePriceGrowth"],
+        target_band=_boe_housing_tools_target_band("core_housePriceGrowth"),
         file_name="coreIndicator-housePriceGrowth.csv",
     ),
     MetricDefinition(
@@ -805,6 +1179,45 @@ TARGET_CATALOG: tuple[MetricDefinition, ...] = (
             tolerance=HPI_TARGET_TOLERANCE,
         ),
         file_name="Output-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="rpi_mean",
+        label="RPI Mean",
+        requirement="required",
+        units="rebased index",
+        source_label="ONS Price Index of Private Rents historical series (Great Britain rebased to January 2024)",
+        kind="output_series",
+        loss_family="positive_level",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["rpi_mean"],
+        target_band=TargetBand(
+            lower=min(RPI_2024_GB_REBASED_MONTHLY_VALUES),
+            upper=max(RPI_2024_GB_REBASED_MONTHLY_VALUES),
+        ),
+        file_name="Output-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="household_owning_share",
+        label="Household Owning Share",
+        requirement="required",
+        units="%",
+        source_label="DWP Family Resources Survey 2023/24, UK household tenure table",
+        kind="household_share",
+        loss_family="bounded_share",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["household_owning_share"],
+        target_band=TargetBand(lower=64.5, upper=65.5),
+        file_name="HousingStatus-run1.csv",
+    ),
+    MetricDefinition(
+        metric_id="household_renting_share",
+        label="Household Private Renting Share",
+        requirement="required",
+        units="%",
+        source_label="DWP Family Resources Survey 2023/24, UK household tenure table",
+        kind="household_share",
+        loss_family="bounded_share",
+        source_metadata=MARKET_SOURCE_2024_BY_METRIC_ID["household_renting_share"],
+        target_band=TargetBand(lower=18.5, upper=19.5),
+        file_name="HousingStatus-run1.csv",
     ),
     MetricDefinition(
         metric_id="core_ooDebtToIncome",
@@ -896,10 +1309,14 @@ __all__ = [
     "HPI_2024_REBASED_STD",
     "HPI_FULL_HISTORY_REBASED_STD",
     "HPI_TARGET_TOLERANCE",
+    "HOUSEHOLD_OWNING_SHARE_2024",
+    "HOUSEHOLD_RENTING_SHARE_2024",
     "INTEREST_RATE_SPREAD_2024_QUARTERLY_MEANS",
     "MARKET_SOURCE_2024_BY_METRIC_ID",
     "OO_DEBT_TO_INCOME_2024_QUARTERLY_VALUES",
     "RENTAL_YIELD_2024_QUARTERLY_VALUES",
+    "RPI_2024_GB_REBASED_MEAN",
+    "RPI_2024_GB_REBASED_MONTHLY_VALUES",
     "SUPPORTED_FPC_METRIC_IDS",
     "TARGET_CATALOG",
     "TARGETS_BY_ID",

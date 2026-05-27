@@ -26,7 +26,9 @@ from scripts.python.validation.model.validation_profiles import ValidationProfil
 
 VERSION_NAME_PATTERN = re.compile(r"^v\d+(?:\.\d+)*(?:o+|o\d+)?$", re.IGNORECASE)
 DEFAULT_OUTPUT_ROOT = "tmp/output-calibration"
-EVIDENCE_DIR_TEMPLATE = "input-data-versions/calibration-evidence/output-four-parameter-esmda-{output_version}"
+EVIDENCE_DIR_TEMPLATE = "input-data-versions/calibration-evidence/output-five-parameter-esmda-{output_version}"
+OUTPUT_CALIBRATION_SEED_METRICS_FILENAME = "output_calibration_seed_metrics.json"
+LEGACY_FOUR_PARAMETER_SEED_METRICS_FILENAME = "four_parameter_seed_metrics.json"
 
 
 @dataclass(frozen=True)
@@ -140,11 +142,18 @@ def format_parameter_updates(parameters: Mapping[str, float]) -> dict[str, str]:
     return {key: format_float(float(value), decimals=12) for key, value in parameters.items()}
 
 
-def build_candidate_run_overrides(*, parameters: Mapping[str, float], seed: int) -> dict[str, str]:
+def build_candidate_run_overrides(
+    *,
+    parameters: Mapping[str, float],
+    seed: int,
+    n_steps: int | None = None,
+) -> dict[str, str]:
     """Build validation recording and parameter overrides for one seed run."""
 
     overrides = dict(VALIDATION_RECORDING_OVERRIDES)
     overrides["SEED"] = str(seed)
+    if n_steps is not None:
+        overrides["N_STEPS"] = str(n_steps)
     overrides.update(format_parameter_updates(parameters))
     return overrides
 
@@ -230,6 +239,10 @@ def run_seed_request(
     force_rerun: bool,
     validation_profile: ValidationProfile,
     was_data_root: Path,
+    delete_csv_after_metrics: bool = False,
+    n_steps: int | None = None,
+    validation_window_start: int | None = None,
+    validation_window_end: int | None = None,
 ) -> SeedRunResult:
     """Run or reuse one snapshot-local candidate/seed evaluation."""
 
@@ -242,17 +255,18 @@ def run_seed_request(
     seed_dir = f"seed-{seed}"
     output_dir = output_root / "runs" / iter_dir / member_dir / seed_dir
     config_path = output_root / "configs" / iter_dir / member_dir / f"{seed_dir}.properties"
-    metrics_path = output_dir / "four_parameter_seed_metrics.json"
+    metrics_path = output_dir / OUTPUT_CALIBRATION_SEED_METRICS_FILENAME
     metric_ids = tuple(validation_profile.targets_by_id.keys())
 
     config_text = build_snapshot_local_config_text(
         version_config_path,
-        build_candidate_run_overrides(parameters=parameters, seed=seed),
+        build_candidate_run_overrides(parameters=parameters, seed=seed, n_steps=n_steps),
     )
     expected_config_hash = config_text_hash(config_text)
-    if metrics_path.exists() and not force_rerun:
-        cached = load_cached_seed_run_result(
-            metrics_path,
+    if not force_rerun:
+        cached = _load_seed_metrics_cache(
+            output_dir=output_dir,
+            metrics_path=metrics_path,
             expected_iteration=iteration,
             expected_member_id=member_id,
             expected_seed=seed,
@@ -261,6 +275,9 @@ def run_seed_request(
             expected_metric_ids=metric_ids,
         )
         if cached is not None:
+            _write_seed_metrics_cache(metrics_path, cached)
+            if delete_csv_after_metrics:
+                _delete_seed_run_csv_outputs(output_dir)
             return cached
 
     if output_dir.exists() and config_path.exists() and not force_rerun:
@@ -278,6 +295,9 @@ def run_seed_request(
                 was_data_root=was_data_root,
                 metric_ids=metric_ids,
                 metrics_path=metrics_path,
+                delete_csv_after_metrics=delete_csv_after_metrics,
+                validation_window_start=validation_window_start,
+                validation_window_end=validation_window_end,
             )
             if recovered is not None:
                 return recovered
@@ -299,7 +319,7 @@ def run_seed_request(
     )
     if proc.returncode != 0:
         raise RuntimeError(
-            "Four-parameter candidate model run failed.\n"
+            "Output-parameter candidate model run failed.\n"
             f"version={version} iteration={iteration} member={member_id} seed={seed}\n"
             f"Output tail:\n{proc.stdout[-3000:]}"
         )
@@ -308,6 +328,8 @@ def run_seed_request(
         seed_output_dir=output_dir,
         was_data_root=was_data_root,
         validation_profile=validation_profile,
+        window_start=validation_window_start,
+        window_end=validation_window_end,
     )
     result = SeedRunResult(
         iteration=iteration,
@@ -322,7 +344,9 @@ def run_seed_request(
         cached=False,
         metrics=metrics,
     )
-    metrics_path.write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    _write_seed_metrics_cache(metrics_path, result)
+    if delete_csv_after_metrics:
+        _delete_seed_run_csv_outputs(output_dir)
     return result
 
 
@@ -339,6 +363,9 @@ def _try_recover_seed_metrics(
     was_data_root: Path,
     metric_ids: Sequence[str],
     metrics_path: Path,
+    delete_csv_after_metrics: bool = False,
+    validation_window_start: int | None = None,
+    validation_window_end: int | None = None,
 ) -> SeedRunResult | None:
     """Recover a cache entry from an already-complete seed output directory."""
 
@@ -347,6 +374,8 @@ def _try_recover_seed_metrics(
             seed_output_dir=output_dir,
             was_data_root=was_data_root,
             validation_profile=validation_profile,
+            window_start=validation_window_start,
+            window_end=validation_window_end,
         )
     except (FileNotFoundError, RuntimeError, ValueError, OSError):
         return None
@@ -364,8 +393,60 @@ def _try_recover_seed_metrics(
         cached=True,
         metrics=metrics,
     )
-    metrics_path.write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    _write_seed_metrics_cache(metrics_path, result)
+    if delete_csv_after_metrics:
+        _delete_seed_run_csv_outputs(output_dir)
     return result
+
+
+def _load_seed_metrics_cache(
+    *,
+    output_dir: Path,
+    metrics_path: Path,
+    expected_iteration: int,
+    expected_member_id: int,
+    expected_seed: int,
+    expected_config_hash: str,
+    expected_validation_profile_id: str,
+    expected_metric_ids: Sequence[str],
+) -> SeedRunResult | None:
+    """Load a valid generic cache, falling back to the legacy four-parameter name."""
+
+    for path in (
+        metrics_path,
+        output_dir / LEGACY_FOUR_PARAMETER_SEED_METRICS_FILENAME,
+    ):
+        if not path.exists():
+            continue
+        cached = load_cached_seed_run_result(
+            path,
+            expected_iteration=expected_iteration,
+            expected_member_id=expected_member_id,
+            expected_seed=expected_seed,
+            expected_config_hash=expected_config_hash,
+            expected_validation_profile_id=expected_validation_profile_id,
+            expected_metric_ids=expected_metric_ids,
+        )
+        if cached is not None:
+            return cached
+    return None
+
+
+def _write_seed_metrics_cache(path: Path, result: SeedRunResult) -> None:
+    """Safely write a per-seed metric cache before optional CSV cleanup."""
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_name(f".{path.name}.tmp")
+    temp_path.write_text(json.dumps(asdict(result), indent=2) + "\n", encoding="utf-8")
+    temp_path.replace(path)
+
+
+def _delete_seed_run_csv_outputs(output_dir: Path) -> None:
+    """Delete only immediate generated CSV outputs from one candidate seed directory."""
+
+    for path in output_dir.glob("*.csv"):
+        if path.is_file():
+            path.unlink()
 
 
 def execute_seed_requests_for_members(
@@ -381,6 +462,10 @@ def execute_seed_requests_for_members(
     validation_profile: ValidationProfile,
     was_data_root: Path,
     workers: int,
+    delete_csv_after_metrics: bool = False,
+    n_steps: int | None = None,
+    validation_window_start: int | None = None,
+    validation_window_end: int | None = None,
 ) -> list[SeedRunResult]:
     """Run candidate members with grouped candidate concurrency."""
 
@@ -401,12 +486,12 @@ def execute_seed_requests_for_members(
     started_at = time.monotonic()
     for batch in build_candidate_batches(member_ids, seed_count=len(seeds), workers=workers):
         print(
-            "[four-parameter-esmda] "
+            "[output-esmda] "
             f"iteration={iteration} evaluatingMembers={batch[0]}..{batch[-1]} "
             f"seedRuns={len(batch) * len(seeds)} totalSeedRuns={total_seed_runs}",
             flush=True,
         )
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="four-parameter-esmda") as executor:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="output-esmda") as executor:
             futures = []
             for member_id in batch:
                 for seed in seeds:
@@ -424,6 +509,10 @@ def execute_seed_requests_for_members(
                             force_rerun=force_rerun,
                             validation_profile=validation_profile,
                             was_data_root=was_data_root,
+                            delete_csv_after_metrics=delete_csv_after_metrics,
+                            n_steps=n_steps,
+                            validation_window_start=validation_window_start,
+                            validation_window_end=validation_window_end,
                         )
                     )
             for future in as_completed(futures):
@@ -442,7 +531,7 @@ def execute_seed_requests_for_members(
                 remaining_runs = total_seed_runs - completed_runs
                 eta_seconds = remaining_runs / throughput if throughput > 0 else None
                 print(
-                    "[four-parameter-esmda] "
+                    "[output-esmda] "
                     f"iteration={iteration} member={result.member_id} seed={result.seed} "
                     f"cached={str(result.cached).lower()} "
                     f"completedSeedRuns={completed_runs}/{total_seed_runs} "
@@ -464,7 +553,7 @@ def create_output_version(
     selected_parameters: Mapping[str, float],
     overwrite: bool,
 ) -> Path:
-    """Copy a source input-data snapshot and update only the four calibrated parameters."""
+    """Copy a source input-data snapshot and update only the calibrated output parameters."""
 
     source_version = validate_version_name(source_version)
     output_version = validate_version_name(output_version)
@@ -521,6 +610,8 @@ def _format_finish_time(seconds: float | None) -> str:
 __all__ = [
     "DEFAULT_OUTPUT_ROOT",
     "EVIDENCE_DIR_TEMPLATE",
+    "LEGACY_FOUR_PARAMETER_SEED_METRICS_FILENAME",
+    "OUTPUT_CALIBRATION_SEED_METRICS_FILENAME",
     "SeedRunResult",
     "build_candidate_batches",
     "build_candidate_run_overrides",

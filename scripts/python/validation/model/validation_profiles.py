@@ -51,7 +51,7 @@ VALIDATION_PROFILE_REFERENCE_V0_2011 = ValidationProfile(
     },
 )
 
-V0_2011_REFERENCE_VERSIONS = frozenset({"v0", "v0o", "v0oo", "v0o1", "v0o2"})
+V0_2011_REFERENCE_VERSIONS = frozenset({"v0", "v0o", "v0oo", "v0o1", "v0o2", "v0o3", "v0o6", "v0o7"})
 
 
 def resolve_validation_profile(version: str) -> ValidationProfile:

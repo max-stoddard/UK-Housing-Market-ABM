@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 from scripts.python.validation.model.validation_catalog_2024 import (
+    BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID,
+    BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID,
     HPI_2024_CYCLE_PERIOD_MONTHS,
     HPI_2024_REBASED_MEAN,
     HPI_2024_REBASED_STD,
@@ -18,6 +20,8 @@ from scripts.python.validation.model.validation_catalog_2024 import (
 )
 
 __all__ = [
+    "BOE_HOUSING_TOOLS_2024_COMPARISON_SCALE_BY_METRIC_ID",
+    "BOE_HOUSING_TOOLS_2024_VALUES_BY_METRIC_ID",
     "HPI_2024_CYCLE_PERIOD_MONTHS",
     "HPI_2024_REBASED_MEAN",
     "HPI_2024_REBASED_STD",

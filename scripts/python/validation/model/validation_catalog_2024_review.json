@@ -46,6 +46,9 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
+      "household_owning_share",
+      "household_renting_share",
       "core_ooDebtToIncome",
       "core_rentalYield"
     ],
@@ -68,6 +71,9 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
+      "household_owning_share",
+      "household_renting_share",
       "core_ooDebtToIncome",
       "core_rentalYield"
     ],
@@ -85,7 +91,7 @@
       "core_advancesToBTL"
     ],
     "value_class": "methodology_constant",
-    "current_value": "0.15",
+    "current_value": "0.05",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "docs/validation/validation-catalog-2024-review.md"
@@ -94,11 +100,11 @@
       "section": "UK Finance advances methodology note"
     },
     "recalculation_rule": null,
-    "methodology_rule": "The UK Finance advances bands are defined as plus/minus 15 percent around the official monthly mean.",
-    "expected_result": 0.15,
+    "methodology_rule": "The UK Finance advances bands are defined as plus/minus 5 percent around the official monthly mean.",
+    "expected_result": 0.05,
     "rounding_policy": "exact_numeric_match",
     "status": "verified",
-    "notes": "This constant is not an official source value; it is the locked band-width rule for UK Finance advances metrics."
+    "notes": "This constant is not an official source value; it is the tightened band-width rule for UK Finance advances metrics."
   },
   {
     "review_id": "metric_weighting_and_composite_aggregation",
@@ -116,6 +122,9 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
+      "household_owning_share",
+      "household_renting_share",
       "core_ooDebtToIncome",
       "core_rentalYield",
       "core_interestRateSpread",
@@ -149,6 +158,9 @@
         "core_hpiMean",
         "core_hpiStd",
         "core_hpiCyclePeriod",
+        "rpi_mean",
+        "household_owning_share",
+        "household_renting_share",
         "core_ooDebtToIncome",
         "core_rentalYield",
         "core_interestRateSpread",
@@ -156,7 +168,7 @@
         "housing_wealth_distribution_jsd",
         "financial_wealth_distribution_jsd"
       ],
-      "required_metric_count": 17,
+      "required_metric_count": 20,
       "metric_weight": 1.0,
       "composite_rule": "weighted_mean"
     },
@@ -166,7 +178,7 @@
   },
   {
     "review_id": "source_fpc_core_metrics",
-    "review_category": "source_metadata",
+    "review_category": "source_context",
     "catalog_symbol": "FPC_SOURCE_2024_BY_METRIC_ID",
     "metric_ids": [
       "core_mortgageApprovals",
@@ -177,7 +189,7 @@
       "core_interestRateSpread"
     ],
     "value_class": "direct_source",
-    "current_value": "Locked June 2024 FPC latest values parsed from the repo-local text extraction aid.",
+    "current_value": "Frozen June 2024 FPC point-in-time macro values retained as historical context.",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "input-data-versions/validation-sources/2024/cis/fpc-core-indicators-june-2024.txt"
@@ -186,7 +198,7 @@
       "table": "Table A.2: Core indicator set for LTV and DTI limits",
       "page": 5
     },
-    "recalculation_rule": "Parse the latest-value section of the repo-local FPC text snapshot and normalize counts to thousand count/month where required.",
+    "recalculation_rule": "Extract the June 2024 FPC point-in-time values from the frozen Table A.2 text snapshot; these values are not active target metadata for the five BOE-backed full-year metrics.",
     "methodology_rule": null,
     "expected_result": {
       "core_mortgageApprovals": {
@@ -234,7 +246,7 @@
     },
     "rounding_policy": "exact_numeric_match after source normalization",
     "status": "verified",
-    "notes": "The OCR ordering in the FPC text is imperfect, so the review helper uses fixed regexes against the frozen text snapshot."
+    "notes": "Active 2024 source metadata for the five macro targets now comes from the full-year BOE housing-tools workbook."
   },
   {
     "review_id": "source_ukf_advances_metrics",
@@ -246,7 +258,7 @@
       "core_advancesToBTL"
     ],
     "value_class": "derived_from_source",
-    "current_value": "UK Finance annual totals and quarterly BTL counts converted to monthly means and \u00b115% bands.",
+    "current_value": "UK Finance annual totals and quarterly BTL counts converted to monthly means and ±5% bands.",
     "repo_source_paths": [
       "scripts/python/validation/model/validation_catalog_2024.py",
       "input-data-versions/validation-sources/2024/ukf/household-finance-review-2024-q4-validation-evidence.txt",
@@ -258,15 +270,15 @@
         "Latest 2024 Q* summary panels"
       ]
     },
-    "recalculation_rule": "Convert annual totals to monthly thousand counts and derive target bands by applying a \u00b115% tolerance, rounded to three decimals with Decimal ROUND_HALF_UP.",
+    "recalculation_rule": "Convert annual totals to monthly thousand counts and derive target bands by applying a ±5% tolerance, rounded to three decimals with Decimal ROUND_HALF_UP.",
     "methodology_rule": null,
     "expected_result": {
       "core_advancesToFTB": {
         "raw_source_value": 334000.0,
         "normalized_source_value": 27.833333333333332,
         "target_band": {
-          "lower": 23.658,
-          "upper": 32.008
+          "lower": 26.442,
+          "upper": 29.225
         },
         "source_reference_raw_values": [
           334000.0
@@ -276,8 +288,8 @@
         "raw_source_value": 288000.0,
         "normalized_source_value": 24.0,
         "target_band": {
-          "lower": 20.4,
-          "upper": 27.6
+          "lower": 22.8,
+          "upper": 25.2
         },
         "source_reference_raw_values": [
           288000.0
@@ -293,14 +305,14 @@
           18268.0
         ],
         "target_band": {
-          "lower": 4.396,
-          "upper": 5.947
+          "lower": 4.913,
+          "upper": 5.43
         }
       }
     },
     "rounding_policy": "derived monthly means exact; target bands rounded to three decimals with Decimal ROUND_HALF_UP",
     "status": "verified",
-    "notes": "This group covers both the source-value conversions and the methodology-owned \u00b115% band rule applied to UK Finance advances metrics."
+    "notes": "This group covers both the source-value conversions and the methodology-owned ±5% band rule applied to UK Finance advances metrics."
   },
   {
     "review_id": "source_market_hpi",
@@ -325,7 +337,7 @@
     "recalculation_rule": "Read the archived HMLR full-file CSV. For mean, take the 2024 United Kingdom IndexSA values, rebase them to January 2024 = 1.0, and compute the annual mean. For std, take the full available United Kingdom IndexSA history from 2005-01 through 2024-12, rebase it to January 2005 = 1.0, and compute the population std. For cycle period, take the full United Kingdom Index history through December 2024, apply a 12-month moving average, log transform, remove a linear trend, and take the dominant FFT peak over 60..240 months.",
     "methodology_rule": null,
     "expected_result": {
-      "hpi_target_tolerance": 0.15,
+      "hpi_target_tolerance": 0.05,
       "index_sa_2024_values": [
         98.2,
         98.3,
@@ -363,21 +375,158 @@
       "full_history_std": 0.2766701944903836,
       "cycle_period_months": 167.5,
       "mean_target_band": {
-        "lower": 0.86673455532926,
-        "upper": 1.172640868974881
+        "lower": 0.9687033265444671,
+        "upper": 1.0706720977596742
       },
       "std_target_band": {
-        "lower": 0.23516966531682607,
-        "upper": 0.3181707236639411
+        "lower": 0.2628366847658644,
+        "upper": 0.2905037042149028
       },
       "cycle_target_band": {
-        "lower": 142.375,
-        "upper": 192.62499999999997
+        "lower": 159.125,
+        "upper": 175.875
       }
     },
     "rounding_policy": "full precision floating comparison against the locked repo method",
     "status": "verified",
     "notes": "The mean remains a 2024 annual metric, the std is now a full available-history volatility metric, and the cycle period remains a repo-derived official-source metric rather than a scalar published directly by HM Land Registry."
+  },
+  {
+    "review_id": "source_boe_housing_tools_core_metrics",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID",
+    "metric_ids": [
+      "core_mortgageApprovals",
+      "core_housingTransactions",
+      "core_debtToIncome",
+      "core_housePriceGrowth",
+      "core_priceToIncome"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Full-year 2024 BOE housing-tools workbook means and observed 2024 ranges for active macro validation targets.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/catalog_review_2024.py",
+      "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx",
+      "input-data-versions/validation-sources/2024/boe/housing-tools-2024-validation-evidence.txt",
+      "docs/validation/validation-catalog-2024-review.md"
+    ],
+    "source_locator": {
+      "workbook": "input-data-versions/validation-sources/2024/boe/housing-tools.xlsx",
+      "sheets": [
+        "4.Mortgage approvals",
+        "5.Housing transactions",
+        "3. Household debt to income",
+        "6.House price growth",
+        "7.House prices disp. income"
+      ]
+    },
+    "recalculation_rule": "Read 2024 workbook rows from each sheet, assert 12 monthly values for monthly metrics and 4 quarterly values for quarterly metrics, compute annual means, and use observed 2024 min/max ranges as target bands.",
+    "methodology_rule": "Monthly count metrics are divided by 1,000 for comparison against scaled model outputs; no fixed tolerance or widened band is applied.",
+    "expected_result": {
+      "core_mortgageApprovals": {
+        "raw_values": [
+          55575.0,
+          59828.0,
+          61632.0,
+          61976.0,
+          61297.0,
+          61119.0,
+          62447.0,
+          65137.0,
+          65628.0,
+          68073.0,
+          65669.0,
+          65982.0
+        ],
+        "value_count": 12,
+        "raw_source_value": 62863.583333333336,
+        "normalized_source_value": 62.86358333333334,
+        "target_band": {
+          "lower": 55.575,
+          "upper": 68.073
+        }
+      },
+      "core_housingTransactions": {
+        "raw_values": [
+          82430.0,
+          84310.0,
+          86500.0,
+          89730.0,
+          92900.0,
+          92120.0,
+          91490.0,
+          92200.0,
+          92590.0,
+          100830.0,
+          93680.0,
+          96030.0
+        ],
+        "value_count": 12,
+        "raw_source_value": 91234.16666666667,
+        "normalized_source_value": 91.23416666666667,
+        "target_band": {
+          "lower": 82.43,
+          "upper": 100.83
+        }
+      },
+      "core_debtToIncome": {
+        "raw_values": [
+          139.0765196216166,
+          137.830176395903,
+          136.7031366339467,
+          133.7791854721206
+        ],
+        "value_count": 4,
+        "raw_source_value": 136.84725453089672,
+        "normalized_source_value": 136.84725453089672,
+        "target_band": {
+          "lower": 133.7791854721206,
+          "upper": 139.0765196216166
+        }
+      },
+      "core_housePriceGrowth": {
+        "raw_values": [
+          -0.675904021628948,
+          -0.406641816333464,
+          0.2380142808568353,
+          0.5784280367472139,
+          1.020755358965664,
+          1.01763907734056,
+          0.8795669824086749,
+          0.5725833614011355,
+          0.503693754197454,
+          0.7712944332662452,
+          0.9377093101138323,
+          1.069161376545269
+        ],
+        "value_count": 12,
+        "raw_source_value": 0.5421916778233726,
+        "normalized_source_value": 0.5421916778233726,
+        "target_band": {
+          "lower": -0.675904021628948,
+          "upper": 1.069161376545269
+        }
+      },
+      "core_priceToIncome": {
+        "raw_values": [
+          4.956292571351748,
+          4.955026532074656,
+          4.90668433997867,
+          4.847149441436771
+        ],
+        "value_count": 4,
+        "raw_source_value": 4.916288221210461,
+        "normalized_source_value": 4.916288221210461,
+        "target_band": {
+          "lower": 4.847149441436771,
+          "upper": 4.956292571351748
+        }
+      }
+    },
+    "rounding_policy": "floating_point_exact_with_1e-12_review_tolerance",
+    "status": "verified",
+    "notes": "This replaces the active June 2024 FPC point-in-time bands for the five affected macro targets."
   },
   {
     "review_id": "source_market_interest_rate_spread",
@@ -414,6 +563,97 @@
     "rounding_policy": "full precision means from workbook series; compare within floating tolerance",
     "status": "verified",
     "notes": "The direct monthly series is verified by tests; the ledger stores the reviewed quarterly and annual outputs."
+  },
+  {
+    "review_id": "source_market_rpi",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID.rpi_mean",
+    "metric_ids": [
+      "rpi_mean"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "Great Britain Rental Price Index monthly values rebased to January 2024 and summarized as an annual mean and observed monthly range.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/catalog_review_2024.py",
+      "input-data-versions/validation-sources/2024/ons-rpi/priceindexofprivaterentsukhistoricalseries-2025-03-26.xlsx",
+      "input-data-versions/validation-sources/2024/ons-rpi/rpi-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "table": "Table 1",
+      "geography": "Great Britain"
+    },
+    "recalculation_rule": "Read the 2024 Great Britain monthly index values from ONS Table 1, rebase to January 2024 = 1.0, compute the annual arithmetic mean, and use the observed rebased monthly min/max as the target band.",
+    "methodology_rule": "RPI means Rental Price Index. The target uses Great Britain for 2024 because the same ONS workbook has no UK value for the 2011 overlay year.",
+    "expected_result": {
+      "geography": "Great Britain",
+      "rebased_monthly_values": [
+        1.0,
+        1.0090190478415961,
+        1.016467250817479,
+        1.0226030992373536,
+        1.0293615985034117,
+        1.0361922000998245,
+        1.0430532735692704,
+        1.0489519352689327,
+        1.0560335635472438,
+        1.0651685279787264,
+        1.0760995637629334,
+        1.0820584689176576
+      ],
+      "annual_mean": 1.0404173774620358,
+      "target_band": {
+        "lower": 1.0,
+        "upper": 1.082058468918
+      }
+    },
+    "rounding_policy": "rebased monthly values are full precision from workbook values; catalog target-band upper is locked to the retained evidence precision",
+    "status": "verified",
+    "notes": "This metric intentionally does not use sale or rental transaction logs; it reads the model's Rental HPI output series."
+  },
+  {
+    "review_id": "source_household_tenure",
+    "review_category": "source_metadata",
+    "catalog_symbol": "MARKET_SOURCE_2024_BY_METRIC_ID tenure metrics",
+    "metric_ids": [
+      "household_owning_share",
+      "household_renting_share"
+    ],
+    "value_class": "derived_from_source",
+    "current_value": "FRS 2023/24 UK household tenure shares for owner occupation and private renting.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/catalog_review_2024.py",
+      "input-data-versions/validation-sources/2024/frs/frs-2023-24-tenure-tables.xlsx",
+      "input-data-versions/validation-sources/2024/frs/household-tenure-2024-validation-evidence.txt"
+    ],
+    "source_locator": {
+      "sheet": "3_6",
+      "row": "2023/24"
+    },
+    "recalculation_rule": "Read FRS table 3.6 row 2023/24. Compute owner share as owned outright plus buying with a mortgage. Use private renting sector directly for the renting share.",
+    "methodology_rule": "Bands are whole-percent rounded-value intervals. Social renting is excluded to match model HousingStatus == 1 private renting semantics.",
+    "expected_result": {
+      "household_owning_share": {
+        "raw_source_value": 65.0,
+        "normalized_source_value": 65.0,
+        "target_band": {
+          "lower": 64.5,
+          "upper": 65.5
+        }
+      },
+      "household_renting_share": {
+        "raw_source_value": 19.0,
+        "normalized_source_value": 19.0,
+        "target_band": {
+          "lower": 18.5,
+          "upper": 19.5
+        }
+      }
+    },
+    "rounding_policy": "whole-percent FRS table values with rounded-value target intervals",
+    "status": "verified",
+    "notes": "The runtime extractor uses HousingStatus-run1.csv stock snapshots and does not infer tenure from transactions."
   },
   {
     "review_id": "source_market_rental_yield",
@@ -509,6 +749,7 @@
       "core_hpiMean",
       "core_hpiStd",
       "core_hpiCyclePeriod",
+      "rpi_mean",
       "core_ooDebtToIncome",
       "core_rentalYield",
       "core_interestRateSpread"
@@ -527,10 +768,10 @@
       "core_mortgageApprovals": {
         "requirement": "required",
         "units": "count/month",
-        "source_label": "Bank of England FPC core indicators, June 2024",
+        "source_label": "Bank of England housing-tools workbook (full-year 2024 monthly mortgage approvals series)",
         "target_band": {
-          "lower": 57.0,
-          "upper": 63.0
+          "lower": 55.575,
+          "upper": 68.073
         },
         "file_name": "coreIndicator-mortgageApprovals.csv",
         "scale": 0.001
@@ -538,10 +779,10 @@
       "core_housingTransactions": {
         "requirement": "required",
         "units": "count/month",
-        "source_label": "Bank of England FPC core indicators, June 2024",
+        "source_label": "Bank of England housing-tools workbook (full-year 2024 monthly housing transactions series)",
         "target_band": {
-          "lower": 84.2,
-          "upper": 100.0
+          "lower": 82.43,
+          "upper": 100.83
         },
         "file_name": "coreIndicator-housingTransactions.csv",
         "scale": 0.001
@@ -551,8 +792,8 @@
         "units": "count/month",
         "source_label": "UK Finance Household Finance Review 2024 Q4",
         "target_band": {
-          "lower": 23.658,
-          "upper": 32.008
+          "lower": 26.442,
+          "upper": 29.225
         },
         "file_name": "coreIndicator-advancesToFTB.csv",
         "scale": 0.001
@@ -562,8 +803,8 @@
         "units": "count/month",
         "source_label": "UK Finance Household Finance Review 2024 Q4",
         "target_band": {
-          "lower": 20.4,
-          "upper": 27.6
+          "lower": 22.8,
+          "upper": 25.2
         },
         "file_name": "coreIndicator-advancesToHM.csv",
         "scale": 0.001
@@ -573,8 +814,8 @@
         "units": "count/month",
         "source_label": "UK Finance BTL Mortgage Market Update 2024 (Q1-Q4)",
         "target_band": {
-          "lower": 4.396,
-          "upper": 5.947
+          "lower": 4.913,
+          "upper": 5.43
         },
         "file_name": "coreIndicator-advancesToBTL.csv",
         "scale": 0.001
@@ -582,10 +823,10 @@
       "core_debtToIncome": {
         "requirement": "required",
         "units": "%",
-        "source_label": "Bank of England FPC core indicators, June 2024",
+        "source_label": "Bank of England housing-tools workbook (full-year 2024 quarterly household debt-to-income series)",
         "target_band": {
-          "lower": 125.0,
-          "upper": 145.0
+          "lower": 133.7791854721206,
+          "upper": 139.0765196216166
         },
         "file_name": "coreIndicator-debtToIncome.csv",
         "scale": 1.0
@@ -593,10 +834,10 @@
       "core_priceToIncome": {
         "requirement": "required",
         "units": "ratio",
-        "source_label": "Bank of England FPC core indicators, June 2024",
+        "source_label": "Bank of England housing-tools workbook (full-year 2024 quarterly price-to-income series)",
         "target_band": {
-          "lower": 5.4,
-          "upper": 9.0
+          "lower": 4.847149441436771,
+          "upper": 4.956292571351748
         },
         "file_name": "coreIndicator-priceToIncome.csv",
         "scale": 1.0
@@ -604,10 +845,10 @@
       "core_housePriceGrowth": {
         "requirement": "required",
         "units": "%",
-        "source_label": "Bank of England FPC core indicators, June 2024",
+        "source_label": "Bank of England housing-tools workbook (full-year 2024 monthly house-price-growth series)",
         "target_band": {
-          "lower": 0.0,
-          "upper": 2.0
+          "lower": -0.675904021628948,
+          "upper": 1.069161376545269
         },
         "file_name": "coreIndicator-housePriceGrowth.csv",
         "scale": 1.0
@@ -617,8 +858,8 @@
         "units": "rebased index",
         "source_label": "HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2024)",
         "target_band": {
-          "lower": 0.86673455532926,
-          "upper": 1.172640868974881
+          "lower": 0.9687033265444671,
+          "upper": 1.0706720977596742
         },
         "file_name": "Output-run1.csv",
         "scale": 1.0
@@ -628,8 +869,8 @@
         "units": "rebased index",
         "source_label": "HM Land Registry UK HPI full file December 2024 (UK IndexSA rebased to January 2005 over 2005-01 to 2024-12)",
         "target_band": {
-          "lower": 0.23516966531682607,
-          "upper": 0.3181707236639411
+          "lower": 0.2628366847658644,
+          "upper": 0.2905037042149028
         },
         "file_name": "Output-run1.csv",
         "scale": 1.0
@@ -639,8 +880,19 @@
         "units": "months",
         "source_label": "HM Land Registry UK HPI full file December 2024 (UK Index history through 2024-12)",
         "target_band": {
-          "lower": 142.375,
-          "upper": 192.62499999999997
+          "lower": 159.125,
+          "upper": 175.875
+        },
+        "file_name": "Output-run1.csv",
+        "scale": 1.0
+      },
+      "rpi_mean": {
+        "requirement": "required",
+        "units": "rebased index",
+        "source_label": "ONS Price Index of Private Rents historical series (Great Britain rebased to January 2024)",
+        "target_band": {
+          "lower": 1.0,
+          "upper": 1.082058468918
         },
         "file_name": "Output-run1.csv",
         "scale": 1.0
@@ -682,6 +934,53 @@
     "rounding_policy": "exact field match against the live catalog",
     "status": "verified",
     "notes": "This entry locks the runtime fields that affect metric extraction, scaling, labeling, and scoring."
+  },
+  {
+    "review_id": "metric_definitions_household_share",
+    "review_category": "metric_definition",
+    "catalog_symbol": "TARGETS_BY_ID for household_share metrics",
+    "metric_ids": [
+      "household_owning_share",
+      "household_renting_share"
+    ],
+    "value_class": "methodology_constant",
+    "current_value": "Live runtime metric-definition fields for household tenure share metrics.",
+    "repo_source_paths": [
+      "scripts/python/validation/model/validation_catalog_2024.py",
+      "scripts/python/validation/model/extractors.py"
+    ],
+    "source_locator": {
+      "symbol": "TARGET_CATALOG / HOUSEHOLD_SHARE_SPECS"
+    },
+    "recalculation_rule": null,
+    "methodology_rule": "Household share metric definitions are runtime methodology configuration; extraction uses household stock/state snapshots from HousingStatus-run1.csv.",
+    "expected_result": {
+      "household_owning_share": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "DWP Family Resources Survey 2023/24, UK household tenure table",
+        "target_band": {
+          "lower": 64.5,
+          "upper": 65.5
+        },
+        "file_name": "HousingStatus-run1.csv",
+        "loss_family": "bounded_share"
+      },
+      "household_renting_share": {
+        "requirement": "required",
+        "units": "%",
+        "source_label": "DWP Family Resources Survey 2023/24, UK household tenure table",
+        "target_band": {
+          "lower": 18.5,
+          "upper": 19.5
+        },
+        "file_name": "HousingStatus-run1.csv",
+        "loss_family": "bounded_share"
+      }
+    },
+    "rounding_policy": "exact field match against the live catalog",
+    "status": "verified",
+    "notes": "This entry locks the metric kind and bounded-share scoring family for tenure shares."
   },
   {
     "review_id": "metric_definitions_household_jsd",
@@ -741,56 +1040,6 @@
     "rounding_policy": "exact field match against the live catalog",
     "status": "verified",
     "notes": "The audit ties each household metric definition back to both the catalog entry and the extractor spec used to build the JSD comparison."
-  },
-  {
-    "review_id": "methodology_fpc_target_bands",
-    "review_category": "methodology",
-    "catalog_symbol": "TargetBand values for FPC-backed macro metrics",
-    "metric_ids": [
-      "core_mortgageApprovals",
-      "core_housingTransactions",
-      "core_debtToIncome",
-      "core_priceToIncome",
-      "core_housePriceGrowth"
-    ],
-    "value_class": "methodology_constant",
-    "current_value": "Framework-owned acceptance bands for the FPC-backed macro indicators.",
-    "repo_source_paths": [
-      "scripts/python/validation/model/validation_catalog_2024.py",
-      "docs/validation/validation-catalog-2024-review.md",
-      "scripts/python/validation/model/catalog_review_2024.py",
-      "docs/validation/validation-catalog-2024-review.md"
-    ],
-    "source_locator": {
-      "section": "Target bands are methodology-owned, distinct from official source values"
-    },
-    "recalculation_rule": null,
-    "methodology_rule": "These bands are framework acceptance choices. The official FPC value is evidence; the target band is the scoring rule. The audit note records the locked rationale for each band.",
-    "expected_result": {
-      "core_mortgageApprovals": {
-        "lower": 57.0,
-        "upper": 63.0
-      },
-      "core_housingTransactions": {
-        "lower": 84.2,
-        "upper": 100.0
-      },
-      "core_debtToIncome": {
-        "lower": 125.0,
-        "upper": 145.0
-      },
-      "core_priceToIncome": {
-        "lower": 5.4,
-        "upper": 9.0
-      },
-      "core_housePriceGrowth": {
-        "lower": 0.0,
-        "upper": 2.0
-      }
-    },
-    "rounding_policy": "exact field match",
-    "status": "verified",
-    "notes": "This entry explicitly prevents the audit from conflating official source values with methodology-owned acceptance bands."
   },
   {
     "review_id": "methodology_household_jsd_acceptance_band",

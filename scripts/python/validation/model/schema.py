@@ -10,9 +10,9 @@ from typing import Literal
 
 ValidationStatus = Literal["pass", "warn", "fail", "unsupported"]
 MetricRequirement = Literal["required", "diagnostic"]
-MetricKind = Literal["core_indicator", "output_series", "household_jsd"]
+MetricKind = Literal["core_indicator", "output_series", "household_jsd", "household_share"]
 MappingStatus = Literal["exact_match", "derived_match", "unsupported"]
-LossFamily = Literal["positive_level", "signed_additive", "bounded_low_is_better", "diagnostic"]
+LossFamily = Literal["positive_level", "signed_additive", "bounded_low_is_better", "bounded_share", "diagnostic"]
 LossScaleBasis = Literal[
     "source_value",
     "target_band_midpoint",
@@ -20,6 +20,8 @@ LossScaleBasis = Literal[
     "target_band_lower_abs",
     "target_band_upper_abs",
     "target_band_half_width",
+    "target_band_width",
+    "bounded_share_domain_width",
     "metric_floor",
     "not_applicable",
 ]
