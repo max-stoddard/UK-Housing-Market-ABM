@@ -190,6 +190,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Cloud experiment smoke preflight tests
+        run: npm run test:cloud-experiment-smoke:unit
+
       - name: Smoke tests
         run: npm run test:smoke
 
@@ -562,6 +565,7 @@ jobs:
       DASHBOARD_SMOKE_USERNAME: ${{ secrets.DASHBOARD_SMOKE_USERNAME }}
       DASHBOARD_SMOKE_PASSWORD: ${{ secrets.DASHBOARD_SMOKE_PASSWORD }}
       DASHBOARD_SMOKE_DELETE_KEY: ${{ secrets.DASHBOARD_SMOKE_DELETE_KEY }}
+      DASHBOARD_CLOUD_SMOKE_WARN_ON_STOPPED_RUNNER: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

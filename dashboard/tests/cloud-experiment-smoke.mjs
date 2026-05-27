@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /* global console, fetch, process, setTimeout */
 // Author: Max Stoddard
+import fs from 'node:fs';
+import { pathToFileURL } from 'node:url';
+
 const baseUrl = (process.env.DASHBOARD_CLOUD_SMOKE_BASE_URL || 'https://d2fb77ex4myvdf.cloudfront.net').replace(/\/+$/, '');
 const username = process.env.DASHBOARD_SMOKE_USERNAME || '';
 const password = process.env.DASHBOARD_SMOKE_PASSWORD || '';
@@ -34,6 +37,28 @@ const smokeOverrides = {
 function requireConfigured(value, name) {
   if (!value) {
     throw new Error(`${name} is required for cloud experiment smoke.`);
+  }
+}
+
+function isEnabled(value) {
+  return value === 'true';
+}
+
+function escapeGitHubCommandValue(value) {
+  return value.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+function emitCloudSmokeWarning(message) {
+  console.warn(message);
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.log(`::warning title=Cloud experiment smoke skipped::${escapeGitHubCommandValue(message)}`);
+  }
+  if (process.env.GITHUB_STEP_SUMMARY) {
+    fs.appendFileSync(
+      process.env.GITHUB_STEP_SUMMARY,
+      `### Cloud experiment smoke skipped\n\n${message}\n\n`,
+      'utf-8'
+    );
   }
 }
 
@@ -124,27 +149,47 @@ async function assertJobDeleted(jobRef, token) {
   }
 }
 
-function assertRunnerAvailable(runtimeDeps) {
+function unavailableRunnerMessage(remote) {
+  return (
+    `Cloud smoke requires the EC2 runner to be running and SSM Online; CI will not start EC2. ` +
+    `runnerState=${remote.runnerState ?? 'unknown'} ssmPingStatus=${remote.ssmPingStatus ?? 'unknown'} reason=${remote.reason ?? 'none'}`
+  );
+}
+
+export function classifyCloudSmokePreflight(runtimeDeps, { warnOnStoppedRunner = false } = {}) {
   const remote = runtimeDeps.remoteExecution;
   if (!remote?.configured) {
     throw new Error('Cloud smoke requires DASHBOARD_EXECUTION_BACKEND=aws_ssm; remote execution is not configured.');
   }
-  if (!remote.available || remote.runnerState !== 'running' || remote.ssmPingStatus !== 'Online') {
-    throw new Error(
-      `Cloud smoke requires the EC2 runner to be running and SSM Online; CI will not start EC2. ` +
-        `runnerState=${remote.runnerState ?? 'unknown'} ssmPingStatus=${remote.ssmPingStatus ?? 'unknown'} reason=${remote.reason ?? 'none'}`
-    );
-  }
   if (!runtimeDeps.modelRunsEnabled) {
     throw new Error(`Cloud smoke requires model runs enabled: ${runtimeDeps.modelRunsDisabledReason ?? 'disabled'}`);
   }
+  if (warnOnStoppedRunner && remote.runnerState === 'stopped') {
+    return {
+      action: 'warn_and_skip',
+      message:
+        `Cloud experiment smoke skipped because the EC2 runner is stopped; CI will not start EC2. ` +
+        `runnerState=${remote.runnerState} ssmPingStatus=${remote.ssmPingStatus ?? 'unknown'} reason=${remote.reason ?? 'none'}`
+    };
+  }
+  if (!remote.available || remote.runnerState !== 'running' || remote.ssmPingStatus !== 'Online') {
+    throw new Error(unavailableRunnerMessage(remote));
+  }
+  return { action: 'proceed' };
 }
 
 async function main() {
+  const runtimeDeps = await requestJson('/api/runtime-deps');
+  const preflight = classifyCloudSmokePreflight(runtimeDeps, {
+    warnOnStoppedRunner: isEnabled(process.env.DASHBOARD_CLOUD_SMOKE_WARN_ON_STOPPED_RUNNER)
+  });
+  if (preflight.action === 'warn_and_skip') {
+    emitCloudSmokeWarning(preflight.message);
+    return;
+  }
+
   requireConfigured(username, 'DASHBOARD_SMOKE_USERNAME');
   requireConfigured(password, 'DASHBOARD_SMOKE_PASSWORD');
-  const runtimeDeps = await requestJson('/api/runtime-deps');
-  assertRunnerAvailable(runtimeDeps);
 
   const login = await requestJson('/api/auth/login', {
     method: 'POST',
@@ -206,7 +251,9 @@ async function main() {
   console.log(`Cloud experiment smoke passed against ${baseUrl} with v0o7.`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}
