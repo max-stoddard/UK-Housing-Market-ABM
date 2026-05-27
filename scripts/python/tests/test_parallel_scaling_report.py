@@ -8,6 +8,7 @@ Tests for parallel scaling report analysis helpers.
 
 from __future__ import annotations
 
+import math
 import tempfile
 import unittest
 from pathlib import Path
@@ -170,23 +171,69 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertEqual([row["workers"] for row in analysis["worker_summaries"]], [1])
         self.assertEqual(len(analysis["successful_batches"]), 1)
 
-    def test_ols_regression_uses_only_workers_up_to_20(self) -> None:
+    def test_saturating_regression_uses_only_workers_up_to_20(self) -> None:
+        core_batches = [
+            _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
+            _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=70),
+            _batch(batch_id="w20-r1", workers=20, wall_clock_seconds=3600.0, completed_runs=100),
+        ]
+        oversubscribed_batches = [
+            _batch(batch_id="w24-r1", workers=24, wall_clock_seconds=3600.0, completed_runs=500),
+            _batch(batch_id="w32-r1", workers=32, wall_clock_seconds=3600.0, completed_runs=800),
+        ]
+        analysis = parallel_scaling_report.analyze_raw_payload({"batches": core_batches + oversubscribed_batches})
+        core_analysis = parallel_scaling_report.analyze_raw_payload({"batches": core_batches})
+
+        regression = analysis["regression"]
+        core_regression = core_analysis["regression"]
+        self.assertTrue(regression["valid"])
+        self.assertEqual(regression["model_name"], "saturating_exponential")
+        self.assertEqual(regression["included_workers"], [1, 8, 20])
+        self.assertEqual(regression["n"], 3)
+        self.assertGreater(regression["asymptote"], 100.0)
+        self.assertGreater(regression["k"], 0.0)
+        self.assertEqual(set(regression["fitted_values"]), {"1", "8", "20", "24", "32"})
+        for workers in (1, 8, 20, 24, 32):
+            fitted_value = regression["fitted_values"][str(workers)]
+            self.assertEqual(fitted_value["workers"], workers)
+            self.assertEqual(fitted_value["extrapolation"], workers > 20)
+            expected = regression["asymptote"] * (1.0 - math.exp(-regression["k"] * workers))
+            self.assertAlmostEqual(fitted_value["fitted_throughput_per_hour"], expected)
+
+        self.assertAlmostEqual(regression["asymptote"], core_regression["asymptote"])
+        self.assertAlmostEqual(regression["k"], core_regression["k"])
+        self.assertAlmostEqual(regression["r_squared"], core_regression["r_squared"])
+
+    def test_saturating_regression_can_report_negative_r_squared(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(
             {
                 "batches": [
-                    _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
-                    _batch(batch_id="w20-r1", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
-                    _batch(batch_id="w24-r1", workers=24, wall_clock_seconds=3600.0, completed_runs=500),
-                    _batch(batch_id="w32-r1", workers=32, wall_clock_seconds=3600.0, completed_runs=800),
+                    _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=100),
+                    _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=20),
+                    _batch(batch_id="w20-r1", workers=20, wall_clock_seconds=3600.0, completed_runs=10),
                 ]
             }
         )
 
         regression = analysis["regression"]
-        self.assertEqual(regression["n"], 2)
-        self.assertEqual(regression["included_workers"], [1, 20])
-        self.assertAlmostEqual(regression["slope"], 2.0)
-        self.assertAlmostEqual(regression["intercept"], 10.0)
+        self.assertTrue(regression["valid"])
+        self.assertIsNotNone(regression["r_squared"])
+        self.assertLess(regression["r_squared"], 0.0)
+
+    def test_saturating_regression_r_squared_is_none_for_zero_variance_inputs(self) -> None:
+        analysis = parallel_scaling_report.analyze_raw_payload(
+            {
+                "batches": [
+                    _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=50),
+                    _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=50),
+                    _batch(batch_id="w20-r1", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+                ]
+            }
+        )
+
+        regression = analysis["regression"]
+        self.assertTrue(regression["valid"])
+        self.assertIsNone(regression["r_squared"])
 
     def test_oversubscription_comparisons_for_24_and_32_against_20(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(

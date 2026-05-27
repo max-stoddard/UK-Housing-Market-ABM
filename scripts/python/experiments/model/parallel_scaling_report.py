@@ -182,7 +182,7 @@ def analyze_raw_payload(payload: Mapping[str, Any] | Sequence[Mapping[str, Any]]
         for workers in sorted(throughputs_by_worker)
     ]
 
-    regression = _fit_ols(successful_batches)
+    regression = _fit_saturating_exponential(successful_batches)
     summary = _build_summary(
         raw_batch_count=len(batch_rows),
         successful_batches=successful_batches,
@@ -510,58 +510,123 @@ def _oversubscription_comparisons(worker_summaries: Sequence[Mapping[str, Any]])
     return comparisons
 
 
-def _fit_ols(successful_batches: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _fit_saturating_exponential(successful_batches: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     points = [
         (float(row["workers"]), float(row["throughput_per_hour"]))
         for row in successful_batches
         if int(row["workers"]) <= 20
     ]
     included_workers = sorted({int(x_value) for x_value, _ in points})
+    measured_workers = sorted({int(row["workers"]) for row in successful_batches})
+
+    invalid_result = {
+        "valid": False,
+        "model_name": "saturating_exponential",
+        "max_workers_included": 20,
+        "n": len(points),
+        "included_workers": included_workers,
+        "included_successful_batch_rows": len(points),
+        "asymptote": None,
+        "k": None,
+        "r_squared": None,
+        "fitted_values": {},
+    }
     if len(points) < 2:
         return {
-            "valid": False,
+            **invalid_result,
             "reason": "Need at least two successful repeat rows with workers <= 20.",
-            "max_workers_included": 20,
-            "n": len(points),
-            "included_workers": included_workers,
-            "slope": None,
-            "intercept": None,
-            "r_squared": None,
         }
 
     x_values = [point[0] for point in points]
     y_values = [point[1] for point in points]
-    x_mean = statistics.fmean(x_values)
     y_mean = statistics.fmean(y_values)
-    ss_xx = sum((x_value - x_mean) ** 2 for x_value in x_values)
-    if ss_xx <= 0.0:
+    if len(set(x_values)) < 2:
         return {
-            "valid": False,
-            "reason": "Need at least two distinct worker counts for OLS regression.",
-            "max_workers_included": 20,
-            "n": len(points),
-            "included_workers": included_workers,
-            "slope": None,
-            "intercept": None,
-            "r_squared": None,
+            **invalid_result,
+            "reason": "Need at least two distinct worker counts for saturating exponential regression.",
         }
 
-    ss_xy = sum((x_value - x_mean) * (y_value - y_mean) for x_value, y_value in points)
-    slope = ss_xy / ss_xx
-    intercept = y_mean - slope * x_mean
-    predictions = [intercept + slope * x_value for x_value in x_values]
-    ss_res = sum((y_value - prediction) ** 2 for y_value, prediction in zip(y_values, predictions))
+    def fit_for_k(k_value: float) -> tuple[float, float] | None:
+        if not math.isfinite(k_value) or k_value <= 0.0:
+            return None
+        g_values = [1.0 - math.exp(-k_value * x_value) for x_value in x_values]
+        denominator = sum(g_value * g_value for g_value in g_values)
+        if not math.isfinite(denominator) or denominator <= 0.0:
+            return None
+        asymptote_value = sum(y_value * g_value for y_value, g_value in zip(y_values, g_values)) / denominator
+        if not math.isfinite(asymptote_value) or asymptote_value <= 0.0:
+            return None
+        predictions = [asymptote_value * g_value for g_value in g_values]
+        sse = sum((y_value - prediction) ** 2 for y_value, prediction in zip(y_values, predictions))
+        if not math.isfinite(sse):
+            return None
+        return sse, asymptote_value
+
+    min_k = 1e-4
+    max_k = 5.0
+    grid_count = 256
+    log_min = math.log(min_k)
+    log_span = math.log(max_k) - log_min
+    grid = [math.exp(log_min + log_span * index / (grid_count - 1)) for index in range(grid_count)]
+    candidates = [
+        (sse, k_value, asymptote)
+        for k_value in grid
+        for fit in [fit_for_k(k_value)]
+        if fit is not None
+        for sse, asymptote in [fit]
+    ]
+    if not candidates:
+        return {**invalid_result, "reason": "Could not find a finite positive saturating exponential fit."}
+
+    _, best_grid_k, _ = min(candidates, key=lambda candidate: candidate[0])
+    best_index = grid.index(best_grid_k)
+    left = grid[max(0, best_index - 1)]
+    right = grid[min(len(grid) - 1, best_index + 1)]
+    if left == right:
+        left = max(min_k, best_grid_k / 2.0)
+        right = min(max_k, best_grid_k * 2.0)
+
+    for _ in range(60):
+        first = left + (right - left) / 3.0
+        second = right - (right - left) / 3.0
+        first_fit = fit_for_k(first)
+        second_fit = fit_for_k(second)
+        first_sse = math.inf if first_fit is None else first_fit[0]
+        second_sse = math.inf if second_fit is None else second_fit[0]
+        if first_sse <= second_sse:
+            right = second
+        else:
+            left = first
+
+    refined_k = (left + right) / 2.0
+    refined_fit = fit_for_k(refined_k)
+    if refined_fit is None:
+        return {**invalid_result, "reason": "Saturating exponential fit produced non-finite or non-positive parameters."}
+    ss_res, asymptote = refined_fit
+    if not math.isfinite(refined_k) or refined_k <= 0.0:
+        return {**invalid_result, "reason": "Saturating exponential fit produced non-finite or non-positive parameters."}
+
     ss_tot = sum((y_value - y_mean) ** 2 for y_value in y_values)
-    r_squared = 1.0 if ss_tot <= 0.0 else max(0.0, 1.0 - ss_res / ss_tot)
+    r_squared = None if ss_tot <= 0.0 else 1.0 - ss_res / ss_tot
 
     return {
         "valid": True,
+        "model_name": "saturating_exponential",
         "max_workers_included": 20,
         "n": len(points),
         "included_workers": included_workers,
-        "slope": slope,
-        "intercept": intercept,
+        "included_successful_batch_rows": len(points),
+        "asymptote": asymptote,
+        "k": refined_k,
         "r_squared": r_squared,
+        "fitted_values": {
+            str(workers): {
+                "workers": workers,
+                "fitted_throughput_per_hour": asymptote * (1.0 - math.exp(-refined_k * workers)),
+                "extrapolation": workers > 20,
+            }
+            for workers in measured_workers
+        },
     }
 
 
@@ -617,20 +682,32 @@ def _write_throughput_plot(path: Path, rows: Sequence[Mapping[str, Any]], regres
     if one_worker is not None and one_worker["mean_throughput_per_hour"] is not None and x_values:
         baseline = float(one_worker["mean_throughput_per_hour"])
         ideal_x = [min(x_values), max(x_values)]
-        axis.plot(ideal_x, [baseline * value for value in ideal_x], linestyle="--", color="#6B7280", label="Ideal linear")
+        axis.plot(
+            ideal_x,
+            [baseline * value for value in ideal_x],
+            linestyle="--",
+            color="#6B7280",
+            alpha=0.25,
+            label="Ideal linear",
+        )
 
     if regression.get("valid") and x_values:
         reg_x = [value for value in x_values if value <= 20]
         if reg_x:
-            line_x = [min(reg_x), max(reg_x)]
-            slope = float(regression["slope"])
-            intercept = float(regression["intercept"])
+            x_min = min(reg_x)
+            x_max = max(reg_x)
+            asymptote = float(regression["asymptote"])
+            k_value = float(regression["k"])
+            line_x = [
+                x_min + (x_max - x_min) * index / 80.0
+                for index in range(81)
+            ]
             axis.plot(
                 line_x,
-                [intercept + slope * value for value in line_x],
+                [asymptote * (1.0 - math.exp(-k_value * value)) for value in line_x],
                 linestyle=":",
                 color="#B45309",
-                label="OLS <=20 workers",
+                label="Saturating fit <=20 workers",
             )
 
     _add_core_marker(axis, y_values)
