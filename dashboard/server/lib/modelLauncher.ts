@@ -11,6 +11,7 @@ export interface ModelLaunchRequest {
   repoRoot: string;
   configPath: string;
   outputPath: string;
+  javaOptions?: string[];
 }
 
 export interface ModelLauncherCommand {
@@ -127,15 +128,18 @@ export function buildMavenModelLaunchCommand(
 ): ModelLauncherCommand {
   const javaExe = preparedRuntime?.javaExe ?? getConfiguredJavaBin();
   const classpath = preparedRuntime?.classpath ?? '<prepared-classpath>';
+  const javaOptions = request.javaOptions ?? [];
 
   return {
     command: javaExe,
-    args: ['-cp', classpath, 'housing.Model', '-configFile', request.configPath, '-outputFolder', request.outputPath, '-dev'],
+    args: [...javaOptions, '-cp', classpath, 'housing.Model', '-configFile', request.configPath, '-outputFolder', request.outputPath, '-dev'],
     options: {
       cwd: request.repoRoot,
       shell: false
     },
-    commandTemplate: `${mavenBin} -q -DskipTests compile && ${javaExe} -cp <prepared-classpath> housing.Model -configFile <path> -outputFolder <path> -dev`
+    commandTemplate: `${mavenBin} -q -DskipTests compile && ${javaExe} ${javaOptions.join(' ')} -cp <prepared-classpath> housing.Model -configFile <path> -outputFolder <path> -dev`
+      .replace(/\s+/g, ' ')
+      .trim()
   };
 }
 
@@ -144,14 +148,18 @@ export function buildPackagedModelLaunchCommand(
   modelJar: string,
   request: ModelLaunchRequest
 ): ModelLauncherCommand {
+  const javaOptions = request.javaOptions ?? [];
+
   return {
     command: javaExe,
-    args: ['-jar', modelJar, '-configFile', request.configPath, '-outputFolder', request.outputPath, '-dev'],
+    args: [...javaOptions, '-jar', modelJar, '-configFile', request.configPath, '-outputFolder', request.outputPath, '-dev'],
     options: {
       cwd: request.repoRoot,
       shell: false
     },
-    commandTemplate: `${javaExe} -jar <modelJar> -configFile <path> -outputFolder <path> -dev`
+    commandTemplate: `${javaExe} ${javaOptions.join(' ')} -jar <modelJar> -configFile <path> -outputFolder <path> -dev`
+      .replace(/\s+/g, ' ')
+      .trim()
   };
 }
 

@@ -1070,6 +1070,26 @@ assert.ok(
 );
 assert.equal(mavenCommand.options.cwd, launcherSmokeRequest.repoRoot, 'Expected Maven launcher to run from repo root');
 
+const apcRequest: ModelLaunchRequest = {
+  ...launcherSmokeRequest,
+  javaOptions: ['-XX:ActiveProcessorCount=1']
+};
+const apcMavenCommand = buildMavenModelLaunchCommand('mvn-fixture', apcRequest, {
+  javaExe: 'java-fixture',
+  classpath: 'prepared-classpath'
+});
+assert.deepEqual(
+  apcMavenCommand.args.slice(0, 4),
+  ['-XX:ActiveProcessorCount=1', '-cp', 'prepared-classpath', 'housing.Model'],
+  'Expected Maven launches to pass JVM options before -cp'
+);
+const apcPackagedCommand = buildPackagedModelLaunchCommand('java-fixture', '/tmp/model.jar', apcRequest);
+assert.deepEqual(
+  apcPackagedCommand.args.slice(0, 3),
+  ['-XX:ActiveProcessorCount=1', '-jar', '/tmp/model.jar'],
+  'Expected packaged launches to pass JVM options before -jar'
+);
+
 const packagedLauncher = createPackagedModelLauncher('/runtime/bin/java', '/app/model.jar');
 const packagedCommand = buildPackagedModelLaunchCommand('/runtime/bin/java', '/app/model.jar', launcherSmokeRequest);
 assert.deepEqual(
