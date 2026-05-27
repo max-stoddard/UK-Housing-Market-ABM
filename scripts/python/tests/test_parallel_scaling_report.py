@@ -41,6 +41,29 @@ def _batch(
     return row
 
 
+def _raw_payload(
+    label: str,
+    batches: list[dict[str, object]],
+    java_options: list[str] | None = None,
+) -> dict[str, object]:
+    return {
+        "runId": f"run-{label.lower()}",
+        "workload": {
+            "policyLabel": label,
+            "javaOptions": java_options or [],
+            "snapshot": "v0",
+            "baseMode": "core-minimal-20k-s1",
+            "targetPopulation": 5000,
+            "nSteps": 2000,
+            "seedCount": 40,
+            "workerCounts": [1, 20],
+            "repeats": 3,
+            "orderingSeed": 20260527,
+        },
+        "batches": batches,
+    }
+
+
 class TestParallelScalingReport(unittest.TestCase):
     def test_throughput_summaries_and_speedup_efficiency(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(
@@ -253,6 +276,184 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertAlmostEqual(comparisons["32"]["throughput_ratio_vs_20"], 0.8)
         self.assertAlmostEqual(comparisons["32"]["throughput_delta_vs_20"], -20.0)
 
+    def test_comparison_headline_metrics(self) -> None:
+        default = _raw_payload(
+            "Default",
+            [
+                _batch(batch_id="d-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+                _batch(batch_id="d-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+            ],
+        )
+        apc1 = _raw_payload(
+            "APC1",
+            [
+                _batch(batch_id="a-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
+                _batch(batch_id="a-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=66),
+            ],
+            ["-XX:ActiveProcessorCount=1"],
+        )
+
+        comparison = parallel_scaling_report.analyze_comparison(default, apc1)
+        headlines = comparison["headline_metrics"]
+        self.assertAlmostEqual(headlines["default_20_worker_speedup"], 5.0)
+        self.assertAlmostEqual(headlines["apc1_20_worker_speedup"], 5.5)
+        self.assertAlmostEqual(headlines["apc1_20_vs_default_20_throughput_ratio"], 1.32)
+        self.assertEqual(headlines["default_best"]["workers"], 20)
+        self.assertEqual(headlines["apc1_best"]["workers"], 20)
+
+    def test_comparison_rejects_mismatched_workload_metadata(self) -> None:
+        batches = [
+            _batch(batch_id="w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+            _batch(batch_id="w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+        ]
+        default = _raw_payload("Default", batches)
+        apc1 = _raw_payload("APC1", batches, ["-XX:ActiveProcessorCount=1"])
+        apc1["workload"]["nSteps"] = 3000
+        apc1["workload"]["orderingSeed"] = 12345
+
+        with self.assertRaisesRegex(ValueError, "n_steps"):
+            parallel_scaling_report.analyze_comparison(default, apc1)
+        with self.assertRaisesRegex(ValueError, "ordering_seed"):
+            parallel_scaling_report.analyze_comparison(default, apc1)
+
+    def test_comparison_rejects_missing_required_workload_metadata(self) -> None:
+        batches = [
+            _batch(batch_id="w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+            _batch(batch_id="w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+        ]
+        default = _raw_payload("Default", batches)
+        apc1 = _raw_payload("APC1", batches, ["-XX:ActiveProcessorCount=1"])
+        del default["workload"]["nSteps"]
+        del apc1["workload"]["nSteps"]
+        del apc1["workload"]["orderingSeed"]
+
+        with self.assertRaisesRegex(ValueError, "missing.*default.*n_steps"):
+            parallel_scaling_report.analyze_comparison(default, apc1)
+        with self.assertRaisesRegex(ValueError, "missing.*comparison.*ordering_seed"):
+            parallel_scaling_report.analyze_comparison(default, apc1)
+
+    def test_comparison_rejects_swapped_policy_roles(self) -> None:
+        batches = [
+            _batch(batch_id="w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+            _batch(batch_id="w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+        ]
+        default = _raw_payload("APC1", batches, ["-XX:ActiveProcessorCount=1"])
+        apc1 = _raw_payload("Default", batches)
+
+        with self.assertRaisesRegex(ValueError, "default.*APC1"):
+            parallel_scaling_report.analyze_comparison(default, apc1)
+
+    def test_comparison_rejects_non_apc1_comparison_policy(self) -> None:
+        batches = [
+            _batch(batch_id="w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+            _batch(batch_id="w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+        ]
+        default = _raw_payload("Default", batches)
+        comparison_payload = _raw_payload("Custom", batches)
+
+        with self.assertRaisesRegex(ValueError, "comparison.*APC1"):
+            parallel_scaling_report.analyze_comparison(default, comparison_payload)
+
+    def test_comparison_rejects_label_only_apc1_without_jvm_option(self) -> None:
+        batches = [
+            _batch(batch_id="w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+            _batch(batch_id="w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+        ]
+        default = _raw_payload("Default", batches)
+        comparison_payload = _raw_payload("APC1", batches)
+
+        with self.assertRaisesRegex(ValueError, "comparison.*APC1"):
+            parallel_scaling_report.analyze_comparison(default, comparison_payload)
+
+    def test_comparison_accepts_zero_ordering_seed_metadata(self) -> None:
+        default = _raw_payload(
+            "Default",
+            [
+                _batch(batch_id="d-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+                _batch(batch_id="d-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+            ],
+        )
+        apc1 = _raw_payload(
+            "APC1",
+            [
+                _batch(batch_id="a-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
+                _batch(batch_id="a-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=66),
+            ],
+            ["-XX:ActiveProcessorCount=1"],
+        )
+        default["workload"]["orderingSeed"] = 0
+        apc1["workload"]["orderingSeed"] = 0
+
+        comparison = parallel_scaling_report.analyze_comparison(default, apc1)
+
+        self.assertEqual(comparison["default"]["metadata"]["ordering_seed"], 0)
+        self.assertEqual(comparison["comparison"]["metadata"]["ordering_seed"], 0)
+
+    def test_comparison_apc1_label_falls_back_to_java_option(self) -> None:
+        default = _raw_payload(
+            "Default",
+            [_batch(batch_id="d-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10)],
+        )
+        comparison_payload = _raw_payload(
+            "",
+            [_batch(batch_id="a-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=12)],
+            ["-XX:ActiveProcessorCount=1"],
+        )
+        del comparison_payload["workload"]["policyLabel"]
+
+        comparison = parallel_scaling_report.analyze_comparison(default, comparison_payload)
+
+        self.assertEqual(comparison["comparison"]["label"], "APC1")
+
+    def test_comparison_fit_line_always_spans_one_to_twenty_workers(self) -> None:
+        class FakeAxis:
+            def __init__(self) -> None:
+                self.x_values: list[float] | None = None
+
+            def plot(self, x_values: list[float], *_args: object, **_kwargs: object) -> None:
+                self.x_values = x_values
+
+        axis = FakeAxis()
+
+        parallel_scaling_report._plot_saturating_fit(
+            axis,
+            regression={"valid": True, "asymptote": 100.0, "k": 0.2},
+            color="#000000",
+            label="fit",
+        )
+
+        self.assertIsNotNone(axis.x_values)
+        self.assertAlmostEqual(axis.x_values[0], 1.0)
+        self.assertAlmostEqual(axis.x_values[-1], 20.0)
+
+    def test_missing_markdown_metric_values_render_as_na(self) -> None:
+        self.assertEqual(parallel_scaling_report._format_multiplier(None), "n/a")
+        self.assertEqual(parallel_scaling_report._format_percent(None), "n/a")
+        self.assertEqual(parallel_scaling_report._format_number(None), "n/a")
+
+    def test_missing_markdown_best_worker_counts_render_as_na(self) -> None:
+        comparison = {
+            "headline_metrics": {
+                "default_20_worker_speedup": None,
+                "apc1_20_worker_speedup": None,
+                "apc1_20_vs_default_20_throughput_uplift_percent": None,
+                "apc1_20_vs_default_20_throughput_ratio": None,
+                "default_best": None,
+                "apc1_best": None,
+            },
+            "default": {"metadata": {}},
+            "comparison": {"metadata": {}},
+        }
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            path = Path(tmp_dir) / "summary.md"
+            parallel_scaling_report._write_comparison_markdown(path, comparison)
+
+            markdown = path.read_text(encoding="utf-8")
+
+        self.assertIn("Default best observed throughput: n/a runs/hour at n/a workers", markdown)
+        self.assertIn("APC1 best observed throughput: n/a runs/hour at n/a workers", markdown)
+
     def test_plot_smoke_output_writes_non_empty_pngs(self) -> None:
         if not parallel_scaling_report.HAS_MATPLOTLIB:
             self.skipTest("matplotlib is unavailable")
@@ -278,6 +479,46 @@ class TestParallelScalingReport(unittest.TestCase):
                 "parallel_scaling_regression.json",
                 "parallel_scaling_throughput.png",
                 "parallel_scaling_batch_time.png",
+            ):
+                path = output_root / filename
+                self.assertTrue(path.exists(), filename)
+                self.assertGreater(path.stat().st_size, 0, filename)
+
+    def test_comparison_smoke_output_writes_expected_artifacts(self) -> None:
+        if not parallel_scaling_report.HAS_MATPLOTLIB:
+            self.skipTest("matplotlib is unavailable")
+
+        default = _raw_payload(
+            "Default",
+            [
+                _batch(batch_id="d-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+                _batch(batch_id="d-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=50),
+                _batch(batch_id="d-w24", workers=24, wall_clock_seconds=3600.0, completed_runs=48),
+                _batch(batch_id="d-w32", workers=32, wall_clock_seconds=3600.0, completed_runs=42),
+            ],
+        )
+        apc1 = _raw_payload(
+            "APC1",
+            [
+                _batch(batch_id="a-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
+                _batch(batch_id="a-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=66),
+                _batch(batch_id="a-w24", workers=24, wall_clock_seconds=3600.0, completed_runs=63),
+                _batch(batch_id="a-w32", workers=32, wall_clock_seconds=3600.0, completed_runs=60),
+            ],
+            ["-XX:ActiveProcessorCount=1"],
+        )
+        comparison = parallel_scaling_report.analyze_comparison(default, apc1)
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            output_root = Path(tmp_dir)
+            parallel_scaling_report.write_comparison_outputs(comparison, output_root)
+
+            for filename in (
+                "parallel_scaling_comparison_results.csv",
+                "parallel_scaling_comparison_summary.json",
+                "parallel_scaling_comparison_regression.json",
+                "parallel_scaling_throughput_comparison.png",
+                "parallel_scaling_apc1_summary.md",
             ):
                 path = output_root / filename
                 self.assertTrue(path.exists(), filename)

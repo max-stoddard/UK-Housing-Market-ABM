@@ -115,6 +115,16 @@ FALLBACK_RUN_COUNT_KEYS = ("runs", "modelRuns", "model_runs", "childCount", "chi
 NESTED_CHILD_KEYS = ("children", "childResults", "child_results", "childRows", "child_rows", "modelRuns", "model_runs", "runs")
 SEPARATE_BATCH_KEYS = ("batchResults", "batch_results", "batches", "batchRows", "batch_rows")
 SEPARATE_CHILD_KEYS = ("childResults", "child_results", "children", "childRows", "child_rows", "modelRuns", "model_runs", "runs")
+COMPARISON_WORKLOAD_METADATA_KEYS = (
+    "snapshot",
+    "base_mode",
+    "target_population",
+    "n_steps",
+    "seed_count",
+    "worker_counts",
+    "repeats",
+    "ordering_seed",
+)
 
 
 def read_raw_results(path: Path) -> Mapping[str, Any] | list[Mapping[str, Any]]:
@@ -198,6 +208,24 @@ def analyze_raw_payload(payload: Mapping[str, Any] | Sequence[Mapping[str, Any]]
     }
 
 
+def analyze_comparison(default_payload: Mapping[str, Any], comparison_payload: Mapping[str, Any]) -> dict[str, Any]:
+    _validate_comparison_workload_compatibility(default_payload, comparison_payload)
+    default_analysis = analyze_raw_payload(default_payload)
+    comparison_analysis = analyze_raw_payload(comparison_payload)
+    default_label = _analysis_label(default_payload, default="Default")
+    comparison_label = _analysis_label(comparison_payload, default="APC1")
+    return {
+        "schema_version": 1,
+        "default": {"label": default_label, "analysis": default_analysis, "metadata": _run_metadata(default_payload)},
+        "comparison": {
+            "label": comparison_label,
+            "analysis": comparison_analysis,
+            "metadata": _run_metadata(comparison_payload),
+        },
+        "headline_metrics": _comparison_headlines(default_analysis, comparison_analysis),
+    }
+
+
 def write_report_outputs(analysis: Mapping[str, Any], output_root: Path) -> dict[str, Path]:
     """Write CSV, JSON, and plot artifacts at the output root."""
 
@@ -222,6 +250,67 @@ def write_report_outputs(analysis: Mapping[str, Any], output_root: Path) -> dict
     return paths
 
 
+def write_comparison_outputs(
+    comparison: Mapping[str, Any],
+    output_root: Path,
+    apc1_command: str | None = None,
+) -> dict[str, Path]:
+    """Write comparison CSV, JSON, Markdown, and plot artifacts at the output root."""
+
+    output_root.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "comparison_results_csv": output_root / "parallel_scaling_comparison_results.csv",
+        "comparison_summary_json": output_root / "parallel_scaling_comparison_summary.json",
+        "comparison_regression_json": output_root / "parallel_scaling_comparison_regression.json",
+        "comparison_throughput_plot": output_root / "parallel_scaling_throughput_comparison.png",
+        "comparison_summary_markdown": output_root / "parallel_scaling_apc1_summary.md",
+    }
+
+    _write_comparison_results_csv(paths["comparison_results_csv"], comparison)
+    paths["comparison_summary_json"].write_text(
+        json.dumps(
+            {
+                "schema_version": comparison["schema_version"],
+                "default": {
+                    "label": comparison["default"]["label"],
+                    "metadata": comparison["default"]["metadata"],
+                    "summary": comparison["default"]["analysis"]["summary"],
+                },
+                "comparison": {
+                    "label": comparison["comparison"]["label"],
+                    "metadata": comparison["comparison"]["metadata"],
+                    "summary": comparison["comparison"]["analysis"]["summary"],
+                },
+                "headline_metrics": comparison["headline_metrics"],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    paths["comparison_regression_json"].write_text(
+        json.dumps(
+            {
+                "schema_version": comparison["schema_version"],
+                "default": {
+                    "label": comparison["default"]["label"],
+                    "regression": comparison["default"]["analysis"]["regression"],
+                },
+                "comparison": {
+                    "label": comparison["comparison"]["label"],
+                    "regression": comparison["comparison"]["analysis"]["regression"],
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_comparison_throughput_plot(paths["comparison_throughput_plot"], comparison)
+    _write_comparison_markdown(paths["comparison_summary_markdown"], comparison, apc1_command=apc1_command)
+    return paths
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Analyze UK housing model parallel scaling raw artifacts.")
     parser.add_argument(
@@ -229,6 +318,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         required=True,
         type=Path,
         help="Raw scaling artifact path. JSON is primary, but CSV is also accepted.",
+    )
+    parser.add_argument(
+        "--comparison-raw-json",
+        type=Path,
+        help="Optional second raw scaling artifact path for comparison mode.",
+    )
+    parser.add_argument(
+        "--apc1-command",
+        help="Optional APC1 command text for the comparison Markdown summary.",
     )
     parser.add_argument(
         "--output-root",
@@ -239,6 +337,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     payload = read_raw_results(args.raw_json)
+    if args.comparison_raw_json is not None:
+        comparison_payload = read_raw_results(args.comparison_raw_json)
+        if not isinstance(payload, Mapping) or not isinstance(comparison_payload, Mapping):
+            raise TypeError("Comparison mode requires mapping-style raw artifacts.")
+        default_payload = _with_cli_metadata(payload, raw_json=args.raw_json)
+        apc1_payload = _with_cli_metadata(
+            comparison_payload,
+            raw_json=args.comparison_raw_json,
+            command=args.apc1_command,
+        )
+        comparison = analyze_comparison(default_payload, apc1_payload)
+        write_comparison_outputs(comparison, args.output_root, apc1_command=args.apc1_command)
+        return 0
+
     analysis = analyze_raw_payload(payload)
     write_report_outputs(analysis, args.output_root)
     return 0
@@ -628,6 +740,319 @@ def _fit_saturating_exponential(successful_batches: Sequence[Mapping[str, Any]])
             for workers in measured_workers
         },
     }
+
+
+def _analysis_label(payload: Mapping[str, Any], default: str) -> str:
+    workload = payload.get("workload", {})
+    workload_mapping = workload if isinstance(workload, Mapping) else {}
+    policy_label = _get_any(workload_mapping, ("policyLabel", "policy_label"))
+    java_options = _java_options(payload)
+    if policy_label:
+        return str(policy_label)
+    if "-XX:ActiveProcessorCount=1" in java_options:
+        return "APC1"
+    return default
+
+
+def _run_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
+    workload_metadata = _workload_identity_metadata(payload)
+    workload = payload.get("workload", {})
+    workload_mapping = workload if isinstance(workload, Mapping) else {}
+    metadata = {
+        "run_id": payload.get("runId") or payload.get("run_id"),
+        "raw_json_path": payload.get("_raw_json_path"),
+        "policy_label": _get_any(workload_mapping, ("policyLabel", "policy_label")),
+        "java_options": _java_options(payload),
+        **workload_metadata,
+        "command": payload.get("_apc1_command") or workload_mapping.get("command"),
+    }
+    return {key: value for key, value in metadata.items() if value is not None}
+
+
+def _workload_identity_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
+    workload = payload.get("workload", {})
+    workload_mapping = workload if isinstance(workload, Mapping) else {}
+    return {
+        "snapshot": _get_any(workload_mapping, ("snapshot",)),
+        "base_mode": _get_any(workload_mapping, ("baseMode", "base_mode")),
+        "target_population": _get_any(workload_mapping, ("targetPopulation", "target_population")),
+        "n_steps": _get_any(workload_mapping, ("nSteps", "n_steps")),
+        "seed_count": _get_any(workload_mapping, ("seedCount", "seed_count")),
+        "worker_counts": _get_any(workload_mapping, ("workerCounts", "worker_counts")),
+        "repeats": _get_any(workload_mapping, ("repeats",)),
+        "ordering_seed": _get_any(workload_mapping, ("orderingSeed", "ordering_seed")),
+    }
+
+
+def _validate_comparison_policy_roles(default_payload: Mapping[str, Any], comparison_payload: Mapping[str, Any]) -> None:
+    if not _is_default_policy(default_payload):
+        raise ValueError("Invalid default policy role: default payload must be Default and must not use APC1.")
+    if not _is_apc1_policy(comparison_payload):
+        raise ValueError("Invalid comparison policy role: comparison payload must be APC1.")
+
+
+def _is_default_policy(payload: Mapping[str, Any]) -> bool:
+    label = _policy_label(payload)
+    return not _has_apc1_java_option(payload) and (label is None or label == "default")
+
+
+def _is_apc1_policy(payload: Mapping[str, Any]) -> bool:
+    label = _policy_label(payload)
+    return _has_apc1_java_option(payload) and (label is None or label == "apc1")
+
+
+def _policy_label(payload: Mapping[str, Any]) -> str | None:
+    workload = payload.get("workload", {})
+    workload_mapping = workload if isinstance(workload, Mapping) else {}
+    value = _get_any(workload_mapping, ("policyLabel", "policy_label"))
+    if value is None:
+        return None
+    text = str(value).strip().lower()
+    return text or None
+
+
+def _has_apc1_java_option(payload: Mapping[str, Any]) -> bool:
+    return "-XX:ActiveProcessorCount=1" in _java_options(payload)
+
+
+def _java_options(payload: Mapping[str, Any]) -> list[str]:
+    workload = payload.get("workload", {})
+    workload_mapping = workload if isinstance(workload, Mapping) else {}
+    value = _get_any(workload_mapping, ("javaOptions", "java_options")) or []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def _validate_comparison_workload_compatibility(
+    default_payload: Mapping[str, Any],
+    comparison_payload: Mapping[str, Any],
+) -> None:
+    _validate_comparison_policy_roles(default_payload, comparison_payload)
+    default_metadata = _workload_identity_metadata(default_payload)
+    comparison_metadata = _workload_identity_metadata(comparison_payload)
+    default_missing = [key for key in COMPARISON_WORKLOAD_METADATA_KEYS if default_metadata.get(key) is None]
+    comparison_missing = [key for key in COMPARISON_WORKLOAD_METADATA_KEYS if comparison_metadata.get(key) is None]
+    if default_missing or comparison_missing:
+        parts = []
+        if default_missing:
+            parts.append("default missing " + ", ".join(default_missing))
+        if comparison_missing:
+            parts.append("comparison missing " + ", ".join(comparison_missing))
+        raise ValueError("Cannot compare parallel scaling payloads with missing workload metadata: " + "; ".join(parts))
+
+    mismatched_fields = [
+        key
+        for key in COMPARISON_WORKLOAD_METADATA_KEYS
+        if default_metadata.get(key) != comparison_metadata.get(key)
+    ]
+    if mismatched_fields:
+        raise ValueError(
+            "Cannot compare parallel scaling payloads with mismatched workload metadata: "
+            + ", ".join(mismatched_fields)
+        )
+
+
+def _with_cli_metadata(
+    payload: Mapping[str, Any],
+    *,
+    raw_json: Path,
+    command: str | None = None,
+) -> dict[str, Any]:
+    enriched = dict(payload)
+    enriched["_raw_json_path"] = str(raw_json)
+    if command:
+        enriched["_apc1_command"] = command
+    return enriched
+
+
+def _comparison_headlines(
+    default_analysis: Mapping[str, Any],
+    comparison_analysis: Mapping[str, Any],
+) -> dict[str, Any]:
+    default_1_mean = _worker_mean_throughput(default_analysis, 1)
+    default_20_mean = _worker_mean_throughput(default_analysis, 20)
+    apc1_1_mean = _worker_mean_throughput(comparison_analysis, 1)
+    apc1_20_mean = _worker_mean_throughput(comparison_analysis, 20)
+    ratio = _safe_divide(apc1_20_mean, default_20_mean)
+    return {
+        "default_20_worker_speedup": _safe_divide(default_20_mean, default_1_mean),
+        "apc1_20_worker_speedup": _safe_divide(apc1_20_mean, apc1_1_mean),
+        "apc1_20_vs_default_20_throughput_ratio": ratio,
+        "apc1_20_vs_default_20_throughput_uplift_percent": None if ratio is None else (ratio - 1.0) * 100.0,
+        "default_best": default_analysis["summary"]["best_mean_throughput"],
+        "apc1_best": comparison_analysis["summary"]["best_mean_throughput"],
+    }
+
+
+def _worker_mean_throughput(analysis: Mapping[str, Any], workers: int) -> float | None:
+    for row in analysis["worker_summaries"]:
+        if int(row["workers"]) == workers:
+            value = row["mean_throughput_per_hour"]
+            return None if value is None else float(value)
+    return None
+
+
+def _write_comparison_results_csv(path: Path, comparison: Mapping[str, Any]) -> None:
+    fieldnames = [
+        "policy",
+        "workers",
+        "successful_repeats",
+        "mean_throughput_per_hour",
+        "median_throughput_per_hour",
+        "throughput_ci95_low",
+        "throughput_ci95_high",
+        "speedup_vs_1_worker",
+        "scaling_efficiency",
+    ]
+    rows: list[dict[str, Any]] = []
+    for section_key in ("default", "comparison"):
+        section = comparison[section_key]
+        label = section["label"]
+        for row in section["analysis"]["worker_summaries"]:
+            rows.append({"policy": label, **row})
+
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in sorted(rows, key=lambda item: (str(item["policy"]), int(item["workers"]))):
+            writer.writerow({field: _csv_cell(row.get(field)) for field in fieldnames})
+
+
+def _write_comparison_throughput_plot(path: Path, comparison: Mapping[str, Any]) -> None:
+    if not HAS_MATPLOTLIB or plt is None:
+        raise RuntimeError("matplotlib is required to write parallel scaling plots.")
+
+    fig, axis = plt.subplots(figsize=(8, 5))
+    colors = {"default": "#2563EB", "comparison": "#DC2626"}
+    all_y_values: list[float] = []
+    all_x_values: list[int] = []
+    for section_key in ("default", "comparison"):
+        section = comparison[section_key]
+        rows = sorted(section["analysis"]["worker_summaries"], key=lambda row: int(row["workers"]))
+        x_values = [int(row["workers"]) for row in rows]
+        y_values = [float(row["mean_throughput_per_hour"]) for row in rows]
+        all_x_values.extend(x_values)
+        all_y_values.extend(y_values)
+        yerr = _error_bars(rows, "mean_throughput_per_hour", "throughput_ci95_low", "throughput_ci95_high")
+        color = colors[section_key]
+        axis.errorbar(
+            x_values,
+            y_values,
+            yerr=yerr,
+            fmt="o-",
+            capsize=4,
+            color=color,
+            label=f"{section['label']} measured mean",
+        )
+        _plot_saturating_fit(
+            axis,
+            regression=section["analysis"]["regression"],
+            color=color,
+            label=f"{section['label']} saturating fit <=20 workers",
+        )
+
+    _add_core_marker(axis, all_y_values)
+    axis.set_xlim(left=1)
+    if all_x_values:
+        axis.set_xlim(left=1, right=max(all_x_values) + 1)
+    axis.grid(True, axis="both", alpha=0.25)
+    axis.set_xlabel("Parallel workers")
+    axis.set_ylabel("Completed model runs per hour")
+    axis.legend()
+    fig.tight_layout()
+    fig.savefig(path, dpi=300)
+    plt.close(fig)
+
+
+def _plot_saturating_fit(
+    axis: Any,
+    *,
+    regression: Mapping[str, Any],
+    color: str,
+    label: str,
+) -> None:
+    if not regression.get("valid"):
+        return
+    x_min = 1
+    x_max = 20
+    asymptote = float(regression["asymptote"])
+    k_value = float(regression["k"])
+    line_x = [x_min + (x_max - x_min) * index / 80.0 for index in range(81)]
+    axis.plot(
+        line_x,
+        [asymptote * (1.0 - math.exp(-k_value * value)) for value in line_x],
+        linestyle=":",
+        color=color,
+        alpha=0.8,
+        label=label,
+    )
+
+
+def _write_comparison_markdown(
+    path: Path,
+    comparison: Mapping[str, Any],
+    *,
+    apc1_command: str | None = None,
+) -> None:
+    headlines = comparison["headline_metrics"]
+    default_best = headlines["default_best"] or {}
+    apc1_best = headlines["apc1_best"] or {}
+    default_metadata = comparison["default"]["metadata"]
+    apc1_metadata = comparison["comparison"]["metadata"]
+    command = apc1_command or apc1_metadata.get("command") or ""
+
+    markdown = "\n".join(
+        [
+            "# Parallel Scaling APC1 Comparison Summary",
+            "Author: Max Stoddard",
+            "",
+            "## Headline Metrics",
+            "",
+            "- Default 20-worker speedup vs Default 1-worker throughput: "
+            f"{_format_multiplier(headlines['default_20_worker_speedup'])}",
+            "- APC1 20-worker speedup vs APC1 1-worker throughput: "
+            f"{_format_multiplier(headlines['apc1_20_worker_speedup'])}",
+            "- APC1 20-worker throughput uplift vs Default 20-worker throughput: "
+            f"{_format_percent(headlines['apc1_20_vs_default_20_throughput_uplift_percent'])} "
+            f"({_format_multiplier(headlines['apc1_20_vs_default_20_throughput_ratio'])})",
+            "- Default best observed throughput: "
+            f"{_format_number(default_best.get('mean_throughput_per_hour'))} runs/hour at "
+            f"{_format_worker_count(default_best.get('workers'))} workers",
+            "- APC1 best observed throughput: "
+            f"{_format_number(apc1_best.get('mean_throughput_per_hour'))} runs/hour at "
+            f"{_format_worker_count(apc1_best.get('workers'))} workers",
+            "",
+            "## Sources",
+            "",
+            f"- Default raw JSON: `{default_metadata.get('raw_json_path', '')}`",
+            f"- APC1 raw JSON: `{apc1_metadata.get('raw_json_path', '')}`",
+            f"- APC1 command: `{command}`",
+            "",
+            "## Interpretation Boundary",
+            "",
+            "This is an execution-policy result only. It does not change Java model behavior, calibration semantics, "
+            "input data, or validation interpretation.",
+            "",
+        ]
+    )
+    path.write_text(markdown, encoding="utf-8")
+
+
+def _format_multiplier(value: Any) -> str:
+    return "n/a" if value is None else f"{float(value):.2f}x"
+
+
+def _format_percent(value: Any) -> str:
+    return "n/a" if value is None else f"{float(value):.1f}%"
+
+
+def _format_number(value: Any) -> str:
+    return "n/a" if value is None else f"{float(value):.2f}"
+
+
+def _format_worker_count(value: Any) -> str:
+    return "n/a" if value is None else str(value)
 
 
 def _write_results_csv(path: Path, worker_summaries: Sequence[Mapping[str, Any]]) -> None:
