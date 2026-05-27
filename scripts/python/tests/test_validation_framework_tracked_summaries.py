@@ -36,7 +36,7 @@ class TestValidationFrameworkTrackedSummaries(unittest.TestCase):
         for version in versions:
             payload = json.loads((validation_dir / f"{version}.json").read_text(encoding="utf-8"))
             self.assertEqual(payload["schemaVersion"], 4, msg=version)
-            if version in {"v0", "v0o6", "v5.0o1", "v5o2"}:
+            if version in {"v0", "v0o6", "v5.0o1", "v5o2", "v5o3"}:
                 self.assertIn(
                     payload["seeds"],
                     ([1, 2, 3, 4, 5, 6, 7, 8], [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]),
