@@ -33,6 +33,8 @@ export interface ParallelScalingExperimentOptions {
   orderingSeed: number;
   phase: 'pilot' | 'full';
   confirmExpensive?: boolean;
+  javaOptions?: string[];
+  policyLabel?: string;
 }
 
 export interface ParallelScalingChildResult {
@@ -109,6 +111,8 @@ export interface ParallelScalingExperimentResult {
     workerCounts: number[];
     orderingSeed: number;
     phase: 'pilot' | 'full';
+    javaOptions: string[];
+    policyLabel: string;
   };
   runOrder: ParallelScalingBatchPlan[];
   batches: ParallelScalingBatchResult[];
@@ -156,6 +160,8 @@ interface NormalizedParallelScalingOptions {
   orderingSeed: string;
   orderingSeedValue: number;
   phase: 'pilot' | 'full';
+  javaOptions: string[];
+  policyLabel: string;
 }
 
 interface ParallelScalingSeedTask {
@@ -363,7 +369,9 @@ export async function runParallelScalingExperiment(
       repeats: normalized.repeats,
       workerCounts: [...normalized.workerCounts],
       orderingSeed: normalized.orderingSeedValue,
-      phase: normalized.phase
+      phase: normalized.phase,
+      javaOptions: [...normalized.javaOptions],
+      policyLabel: normalized.policyLabel
     },
     runOrder,
     batches,
@@ -406,7 +414,21 @@ async function runBatch(input: {
     ),
     progressSink: undefined,
     lastProgressSinkAtMs: 0,
-    launcher: input.launcher,
+    launcher: {
+      mode: input.launcher.mode,
+      metadata: input.launcher.metadata,
+      prepare: input.launcher.prepare?.bind(input.launcher),
+      buildCommand: (request) =>
+        input.launcher.buildCommand({
+          ...request,
+          javaOptions: [...input.normalized.javaOptions]
+        }),
+      launch: (request) =>
+        input.launcher.launch({
+          ...request,
+          javaOptions: [...input.normalized.javaOptions]
+        })
+    },
     activeProcesses: new Set(),
     cancelRequested: false
   };
@@ -578,7 +600,9 @@ function normalizeOptions(options: ParallelScalingExperimentOptions, enforceFull
     repeats: options.repeats,
     orderingSeed: String(options.orderingSeed),
     orderingSeedValue: options.orderingSeed,
-    phase: options.phase
+    phase: options.phase,
+    javaOptions: [...(options.javaOptions ?? [])],
+    policyLabel: options.policyLabel?.trim() || ((options.javaOptions ?? []).length > 0 ? 'custom' : 'default')
   };
 }
 
@@ -719,6 +743,12 @@ function throughputRunsPerHour(completedChildCount: number, wallClockSeconds: nu
 
 function createRunId(createdAt: string, options: NormalizedParallelScalingOptions): string {
   const timestamp = createdAt.replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const policyDimensions = options.javaOptions.length > 0 || options.policyLabel !== 'default'
+    ? {
+        javaOptions: options.javaOptions,
+        policyLabel: options.policyLabel
+      }
+    : {};
   const digest = createHash('sha256')
     .update(JSON.stringify({
       snapshot: options.snapshot,
@@ -729,7 +759,8 @@ function createRunId(createdAt: string, options: NormalizedParallelScalingOption
       repeats: options.repeats,
       workerCounts: options.workerCounts,
       orderingSeed: options.orderingSeedValue,
-      phase: options.phase
+      phase: options.phase,
+      ...policyDimensions
     }))
     .digest('hex')
     .slice(0, 8);

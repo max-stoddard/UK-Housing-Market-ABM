@@ -52,6 +52,8 @@ interface ExpectedParallelScalingExperimentOptions {
   orderingSeed: number;
   phase: 'pilot' | 'full';
   confirmExpensive?: boolean;
+  javaOptions?: string[];
+  policyLabel?: string;
 }
 
 interface ExpectedParallelScalingChildResult {
@@ -357,6 +359,80 @@ await withTempReportRoot(async (outputRoot) => {
     expectedBatchCsvHeader,
     'Expected planned batches CSV header'
   );
+  assert.deepEqual(result.workload.javaOptions, [], 'Expected default runs to record empty JVM options');
+  assert.equal(result.workload.policyLabel, 'default', 'Expected default runs to record the default policy label');
+});
+
+await withTempReportRoot(async (outputRoot) => {
+  const launcher = new FakeLauncher();
+  const apcResult = await runParallelScalingExperiment(
+    makeOptions(outputRoot, {
+      workerCounts: [2],
+      seedCount: 3,
+      javaOptions: ['-XX:ActiveProcessorCount=1'],
+      policyLabel: 'APC1'
+    }),
+    { launcher, now: new Date('2025-01-01T00:00:00.000Z') }
+  );
+  assert.deepEqual(
+    launcher.requests.map((request) => request.javaOptions),
+    [
+      ['-XX:ActiveProcessorCount=1'],
+      ['-XX:ActiveProcessorCount=1'],
+      ['-XX:ActiveProcessorCount=1']
+    ],
+    'Expected APC1 JVM option to propagate to every child launch'
+  );
+  assert.deepEqual(apcResult.workload.javaOptions, ['-XX:ActiveProcessorCount=1']);
+  assert.equal(apcResult.workload.policyLabel, 'APC1');
+  const persistedApcResult = JSON.parse(fs.readFileSync(apcResult.artifacts.rawJsonPath, 'utf-8')) as {
+    workload: { javaOptions: string[]; policyLabel: string };
+  };
+  assert.deepEqual(
+    persistedApcResult.workload.javaOptions,
+    ['-XX:ActiveProcessorCount=1'],
+    'Expected raw JSON artifact to persist APC1 JVM options'
+  );
+  assert.equal(
+    persistedApcResult.workload.policyLabel,
+    'APC1',
+    'Expected raw JSON artifact to persist APC1 policy label'
+  );
+});
+
+await withTempReportRoot(async (outputRoot) => {
+  const now = new Date('2025-01-01T00:00:00.000Z');
+  const sharedOptions = {
+    workerCounts: [1],
+    seedCount: 1,
+    targetPopulation: 1234,
+    nSteps: 7,
+    repeats: 1,
+    orderingSeed: 101,
+    phase: 'pilot' as const
+  };
+  const defaultResult = await runParallelScalingExperiment(makeOptions(outputRoot, sharedOptions), {
+    launcher: new FakeLauncher(),
+    now
+  });
+  const customResult = await runParallelScalingExperiment(
+    makeOptions(outputRoot, {
+      ...sharedOptions,
+      javaOptions: ['--enable-preview']
+    }),
+    {
+      launcher: new FakeLauncher(),
+      now
+    }
+  );
+
+  assert.equal(defaultResult.workload.policyLabel, 'default', 'Expected no JVM options to use default policy label');
+  assert.equal(customResult.workload.policyLabel, 'custom', 'Expected unlabeled JVM options to use custom policy label');
+  assert.notEqual(
+    defaultResult.runId,
+    customResult.runId,
+    'Expected runs with different JVM policy dimensions to have distinct run ids'
+  );
 });
 
 await withTempReportRoot(async (outputRoot) => {
@@ -451,4 +527,71 @@ await withTempReportRoot(async (outputRoot) => {
   assert.equal(fullWithConfirmation.phase, 'full', 'Expected confirmed full CLI args to map to full phase');
   assert.deepEqual(fullWithConfirmation.workerCounts, [1, 2], 'Expected --workers to parse worker counts');
   assert.equal(fullWithConfirmation.confirmExpensive, true, 'Expected confirmed full CLI args to set confirmExpensive');
+
+  const apcOptions = toParallelScalingExperimentOptions(
+    parseParallelScalingCliArgs([
+      '--phase',
+      'full',
+      '--snapshot',
+      'v0',
+      '--base-mode',
+      'core-minimal-20k-s1',
+      '--target-population',
+      '5000',
+      '--n-steps',
+      '2000',
+      '--seed-count',
+      '40',
+      '--workers',
+      '1,2',
+      '--repeats',
+      '3',
+      '--ordering-seed',
+      '20260527',
+      '--output-root',
+      path.join(os.tmpdir(), 'tmp', '_report'),
+      '--java-option',
+      '-XX:ActiveProcessorCount=1',
+      '--policy-label',
+      'APC1',
+      '--confirm-expensive'
+    ])
+  );
+  assert.deepEqual(apcOptions.javaOptions, ['-XX:ActiveProcessorCount=1']);
+  assert.equal(apcOptions.policyLabel, 'APC1');
+
+  const repeatedJavaOptionOptions = toParallelScalingExperimentOptions(
+    parseParallelScalingCliArgs([
+      '--phase',
+      'full',
+      '--snapshot',
+      'v0',
+      '--base-mode',
+      'core-minimal-20k-s1',
+      '--target-population',
+      '5000',
+      '--n-steps',
+      '2000',
+      '--seed-count',
+      '40',
+      '--workers',
+      '1,2',
+      '--repeats',
+      '3',
+      '--ordering-seed',
+      '20260527',
+      '--output-root',
+      path.join(os.tmpdir(), 'tmp', '_report'),
+      '--java-option',
+      '--add-opens=java.base/java.lang=ALL-UNNAMED',
+      '--java-option',
+      '--enable-preview',
+      '--confirm-expensive'
+    ])
+  );
+  assert.deepEqual(
+    repeatedJavaOptionOptions.javaOptions,
+    ['--add-opens=java.base/java.lang=ALL-UNNAMED', '--enable-preview'],
+    'Expected repeated --java-option values to preserve JVM options that start with --'
+  );
 }

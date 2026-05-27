@@ -23,11 +23,14 @@ export interface CliArgs {
   repeats?: number;
   orderingSeed?: number;
   confirmExpensive: boolean;
+  javaOptions: string[];
+  policyLabel?: string;
   pythonAnalyzer?: string;
 }
 
 export function parseArgs(argv: string[]): CliArgs {
   const args = new Map<string, string | true>();
+  const javaOptions: string[] = [];
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
     if (!key.startsWith('--')) {
@@ -38,10 +41,14 @@ export function parseArgs(argv: string[]): CliArgs {
       continue;
     }
     const value = argv[index + 1];
-    if (!value || value.startsWith('--')) {
+    if (!value || (key !== '--java-option' && value.startsWith('--'))) {
       throw new Error(usage());
     }
-    args.set(key, value);
+    if (key === '--java-option') {
+      javaOptions.push(value);
+    } else {
+      args.set(key, value);
+    }
     index += 1;
   }
 
@@ -60,6 +67,8 @@ export function parseArgs(argv: string[]): CliArgs {
     repeats: optionalIntegerArg(args, '--repeats'),
     orderingSeed: optionalAnyIntegerArg(args, '--ordering-seed'),
     confirmExpensive: args.get('--confirm-expensive') === true,
+    javaOptions,
+    policyLabel: stringArg(args, '--policy-label') ?? undefined,
     pythonAnalyzer: stringArg(args, '--python-analyzer') ?? (args.get('--analyze') === true ? defaultAnalyzerPath(repoRoot) : undefined)
   };
 }
@@ -81,7 +90,9 @@ export function toExperimentOptions(args: CliArgs): ParallelScalingExperimentOpt
     repeats: args.repeats ?? (args.phase === 'full' ? 3 : 1),
     orderingSeed: args.orderingSeed ?? 1,
     phase: args.phase,
-    confirmExpensive: args.confirmExpensive
+    confirmExpensive: args.confirmExpensive,
+    javaOptions: [...args.javaOptions],
+    policyLabel: args.policyLabel
   };
 }
 
@@ -100,6 +111,8 @@ export function usage(): string {
     '  --n-steps <positive integer>',
     '  --repeats <positive integer>',
     '  --ordering-seed <seed>',
+    '  --java-option <option>       JVM option passed to every child Java process; repeatable',
+    '  --policy-label <label>       Metadata label for this execution policy, e.g. APC1',
     '  --confirm-expensive',
     '  --analyze | --python-analyzer <path>',
     '',
@@ -127,6 +140,8 @@ export function usage(): string {
     '    --workers 1,2,4,8,12,16,20,24,32 \\',
     '    --repeats 3 \\',
     '    --ordering-seed 20260527 \\',
+    '    --java-option -XX:ActiveProcessorCount=1 \\',
+    '    --policy-label APC1 \\',
     '    --output-root ../tmp/_report \\',
     '    --confirm-expensive'
   ].join('\n');
