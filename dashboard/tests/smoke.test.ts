@@ -1659,7 +1659,7 @@ DATA_INCOME_GIVEN_AGE = "src/main/resources/Income.csv"
 
 function writeModelRunFixtureInputData(inputDataRoot: string): void {
   fs.mkdirSync(inputDataRoot, { recursive: true });
-  const baselines = ['v0', 'v0oo', 'v0o2', 'v1.0', 'v1.1'];
+  const baselines = ['v0', 'v0oo', 'v0o2', 'v0o7', 'v1.0', 'v1.1', 'v5o3'];
   baselines.forEach((baseline, index) => {
     const baselinePath = path.join(inputDataRoot, baseline);
     fs.mkdirSync(baselinePath, { recursive: true });
@@ -2801,13 +2801,23 @@ assert.equal(
 );
 assert.equal(
   formatVersionOptionLabel('v0o2', buildVersionLabelState('v0o2', latestStableVersion, new Set(inProgressVersions))),
+  'v0o2',
+  'Expected v0o2 select labels to remain a raw historical 2011 branch'
+);
+assert.equal(
+  formatVersionOptionLabel('v0o7', buildVersionLabelState('v0o7', latestStableVersion, new Set(inProgressVersions))),
   'Optimised 2011 model',
-  'Expected v0o2 select labels to use the standard optimised model name'
+  'Expected v0o7 select labels to use the standard optimised model name'
 );
 assert.equal(
   formatVersionOptionLabel('v0oo', buildVersionLabelState('v0oo', latestStableVersion, new Set(inProgressVersions))),
-  'Optimised 2011 model',
-  'Expected v0oo select labels to use the standard optimised model name'
+  'v0oo',
+  'Expected v0oo select labels to remain a raw historical 2011 branch'
+);
+assert.equal(
+  formatVersionOptionLabel('v0o6', buildVersionLabelState('v0o6', latestStableVersion, new Set(inProgressVersions))),
+  'v0o6',
+  'Expected v0o6 select labels to remain a raw historical 2011 branch'
 );
 assert.equal(
   formatVersionOptionLabel('v1.0', buildVersionLabelState('v1.0', latestStableVersion, new Set(inProgressVersions))),
@@ -2816,15 +2826,22 @@ assert.equal(
 );
 assert.equal(
   formatVersionOptionLabel('v4.4', buildVersionLabelState('v4.4', latestStableVersion, new Set(inProgressVersions))),
-  'Best 2024 model v4.4',
-  'Expected v4.4 select labels to identify the best 2024 model'
+  '2024 model v4.4',
+  'Expected v4.4 select labels to remain a standard 2024 model'
+);
+assert.equal(
+  formatVersionOptionLabel('v5o3', buildVersionLabelState('v5o3', latestStableVersion, new Set(inProgressVersions))),
+  latestStableVersion === 'v5o3' ? 'Optimised 2024 model v5o3 (Latest)' : 'Optimised 2024 model v5o3',
+  'Expected v5o3 select labels to identify the optimised 2024 model'
 );
 const latestVersionState = buildVersionLabelState(latestStableVersion, latestStableVersion, new Set(inProgressVersions));
 assert.ok(latestVersionState.isLatest, 'Expected latest stable version to be labelled as latest');
 assert.ok(!latestVersionState.isInProgress, 'Expected latest stable version to exclude the in-progress label');
 assert.equal(
   formatVersionOptionLabel(latestStableVersion, latestVersionState),
-  `Latest 2024 model ${latestStableVersion} (Latest)`,
+  latestStableVersion === 'v5o3'
+    ? 'Optimised 2024 model v5o3 (Latest)'
+    : `Latest 2024 model ${latestStableVersion} (Latest)`,
   'Expected latest stable select label to include Latest'
 );
 assert.equal(
@@ -2834,17 +2851,22 @@ assert.equal(
 );
 assert.equal(
   formatCalibrationVersionTitleLabel('v0oo', buildVersionLabelState('v0oo', latestStableVersion, new Set(inProgressVersions))),
-  'Optimised 2011 model',
-  'Expected v0oo calibration titles to use the name without the raw version id'
+  'v0oo',
+  'Expected v0oo calibration titles to remain a raw historical 2011 branch'
 );
 assert.equal(
   formatCalibrationVersionTitleLabel('v4.4', buildVersionLabelState('v4.4', latestStableVersion, new Set(inProgressVersions))),
-  'Best 2024 model',
-  'Expected v4.4 calibration titles to use the name without the raw version id'
+  '2024 model v4.4',
+  'Expected v4.4 calibration titles to remain a standard 2024 model'
+);
+assert.equal(
+  formatCalibrationVersionTitleLabel('v5o3', buildVersionLabelState('v5o3', latestStableVersion, new Set(inProgressVersions))),
+  'Optimised 2024 model',
+  'Expected v5o3 calibration titles to identify the optimised 2024 model'
 );
 assert.equal(
   formatCalibrationVersionTitleLabel(latestStableVersion, latestVersionState),
-  'Latest 2024 model',
+  latestStableVersion === 'v5o3' ? 'Optimised 2024 model' : 'Latest 2024 model',
   'Expected latest calibration titles to use the name without the raw version id'
 );
 const inProgressVersion = inProgressVersions.find((version) => version !== 'v0');
@@ -2859,7 +2881,7 @@ if (inProgressVersion) {
   );
 }
 const latestVersion = versions[versions.length - 1];
-const packagedVersionAllowlist = ['v0o2', 'v0', 'v4.19', 'v4.4'];
+const packagedVersionAllowlist = ['v0o7', 'v0', 'v5o3'];
 const dockerIgnore = fs.readFileSync(path.join(repoRoot, '.dockerignore'), 'utf-8');
 const releaseResourceScript = fs.readFileSync(path.join(repoRoot, 'scripts/windows/assemble-release-resources.mjs'), 'utf-8');
 for (const version of packagedVersionAllowlist) {
@@ -2875,7 +2897,7 @@ const desktopDataFixture = createDesktopRuntimeFixture('dashboard-data-runtime-s
 try {
   assert.deepEqual(
     getVersions(desktopDataFixture.paths),
-    ['v0', 'v0oo', 'v0o2', 'v1.0', 'v1.1'],
+    ['v0', 'v0oo', 'v0o2', 'v0o7', 'v1.0', 'v1.1', 'v5o3'],
     'Expected version discovery to read from the configured runtime data root'
   );
   assert.deepEqual(
@@ -2890,7 +2912,7 @@ try {
   );
   assert.equal(
     getModelRunOptions(desktopDataFixture.paths, undefined, true).defaultBaseline,
-    'v0o2',
+    'v0o7',
     'Expected model-run options to use runtime data root baselines without falling back to repo data'
   );
   assert.equal(
@@ -2999,6 +3021,33 @@ assert.ok(
   validationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
   'Validation overview trend should keep later versions on 2024 targets by default'
 );
+const validationOverviewVersionPattern = /^v\d+(?:\.\d+)*(?:o+|o\d+)?$/i;
+assert.deepEqual(
+  validationOverview.trend.points.map((point) => point.version),
+  validationOverview.availableVersions,
+  'Validation overview trend should use the same filtered versions exposed to the selector'
+);
+assert.ok(
+  validationOverview.availableVersions.every(
+    (version) =>
+      version === 'v0' ||
+      version === 'v0o2' ||
+      version === 'v0o7' ||
+      (validationOverviewVersionPattern.test(version) && compareVersions(version, 'v1.0') >= 0)
+  ),
+  'Validation overview should only expose v0, selected v0-family comparison branches, and v1.0+ versions'
+);
+for (const version of ['v0o', 'v0oo', 'v0o1', 'v0o3', 'v0o6', 'v0o3-hpi-i00-m034']) {
+  assert.ok(
+    !validationOverview.availableVersions.includes(version),
+    `Validation overview should exclude non-promoted pre-v1.0 version ${version}`
+  );
+  assert.throws(
+    () => getValidationOverview(repoRoot, version),
+    /Unknown validation summary version/,
+    `Validation overview should reject removed pre-v1.0 version ${version}`
+  );
+}
 const originalValidationOverview = getValidationOverview(repoRoot, 'v0');
 assert.equal(
   originalValidationOverview.selectedSummary.validationTargetYear,
@@ -3011,19 +3060,19 @@ assert.deepEqual(
   'Original v0 should expose both the 2024 validation and matching 2011 overlay'
 );
 assert.deepEqual(
-  originalValidationOverview.availableValidationTargetYearsByVersion.v0o,
+  originalValidationOverview.availableValidationTargetYearsByVersion.v0o2,
   [2024, 2011],
-  'v0o should expose both the 2024 validation and matching 2011 overlay'
+  'v0o2 should expose both the 2024 validation and matching 2011 overlay'
 );
 assert.deepEqual(
-  originalValidationOverview.availableValidationTargetYearsByVersion.v0oo,
+  originalValidationOverview.availableValidationTargetYearsByVersion.v0o7,
   [2024, 2011],
-  'v0oo should expose both the 2024 validation and matching 2011 overlay'
+  'v0o7 should expose both the 2024 validation and matching 2011 overlay'
 );
 assert.deepEqual(
   validationOverview.availableValidationTargetYearsByVersion['v4.1'],
   [2024],
-  'Non-v0-family validation versions should expose only the 2024 validation'
+  'v1.0+ validation versions should expose only the 2024 validation'
 );
 const referenceValidationOverview = getValidationOverview(repoRoot, 'v0', 2011);
 assert.equal(referenceValidationOverview.selectedVersion, 'v0');
@@ -3038,13 +3087,21 @@ assert.equal(
   2011,
   'Selecting the 2011 validation year should surface the matching overlay table'
 );
-const v0ooReferenceValidationOverview = getValidationOverview(repoRoot, 'v0oo', 2011);
-assert.equal(v0ooReferenceValidationOverview.selectedVersion, 'v0oo');
-assert.equal(v0ooReferenceValidationOverview.selectedSummary.version, 'v0oo');
+const historicalReferenceValidationOverview = getValidationOverview(repoRoot, 'v0o2', 2011);
+assert.equal(historicalReferenceValidationOverview.selectedVersion, 'v0o2');
+assert.equal(historicalReferenceValidationOverview.selectedSummary.version, 'v0o2');
 assert.equal(
-  v0ooReferenceValidationOverview.selectedSummary.validationTargetYear,
+  historicalReferenceValidationOverview.selectedSummary.validationTargetYear,
   2011,
-  'Selecting v0oo with 2011 should return the v0oo-specific 2011 overlay metrics'
+  'Selecting v0o2 with 2011 should return the v0o2-specific 2011 overlay metrics'
+);
+const turboReferenceValidationOverview = getValidationOverview(repoRoot, 'v0o7', 2011);
+assert.equal(turboReferenceValidationOverview.selectedVersion, 'v0o7');
+assert.equal(turboReferenceValidationOverview.selectedSummary.version, 'v0o7');
+assert.equal(
+  turboReferenceValidationOverview.selectedSummary.validationTargetYear,
+  2011,
+  'Selecting v0o7 with 2011 should return the v0o7-specific 2011 overlay metrics'
 );
 const unsupportedReferenceRequestOverview = getValidationOverview(repoRoot, 'v4.1', 2011);
 assert.equal(unsupportedReferenceRequestOverview.selectedVersion, 'v4.1');
@@ -3067,16 +3124,13 @@ assert.ok(
   referenceValidationOverview.trend.points.some((point) => point.version === 'v4.1' && point.validationTargetYear === 2024),
   'Selecting a 2011 validation year should keep the trend chart on the tracked 2024 timeline'
 );
-const v0FamilyReferencePoints = validationOverview.trend.referencePoints.filter((point) =>
-  ['v0', 'v0o', 'v0oo'].includes(point.version)
-);
 assert.deepEqual(
-  v0FamilyReferencePoints.map((point) => point.version),
-  ['v0', 'v0o', 'v0oo'],
-  'Validation overview should expose sparse v0-family 2011 reference points'
+  validationOverview.trend.referencePoints.map((point) => point.version),
+  ['v0', 'v0o2', 'v0o7'],
+  'Validation overview should expose sparse v0, v0o2, and v0o7 2011 reference points'
 );
 assert.ok(
-  v0FamilyReferencePoints.every(
+  validationOverview.trend.referencePoints.every(
     (point) => point.validationTargetYear === 2011 && Number.isFinite(point.overallCompositeLoss)
   ),
   'Validation overview 2011 reference points should expose finite 2011 losses'
@@ -3102,12 +3156,12 @@ const expectedTrendVersions = fs
   .readdirSync(validationSummaryDir, { withFileTypes: true })
   .filter((entry) => entry.isFile() && entry.name.endsWith('.json'))
   .map((entry) => entry.name.replace(/\.json$/u, ''))
-  .filter((version) => versionOrder.has(version))
+  .filter((version) => validationOverview.availableVersions.includes(version))
   .sort((left, right) => (versionOrder.get(left) ?? -1) - (versionOrder.get(right) ?? -1));
 assert.deepEqual(
   validationOverview.trend.points.map((point) => point.version),
   expectedTrendVersions,
-  'Validation overview trend versions should match tracked validation summaries'
+  'Validation overview trend versions should match filtered tracked validation summaries'
 );
 
 assert.ok(
@@ -3134,12 +3188,34 @@ assert.ok(
   'Mortgage approvals should expose an inside-rate summary'
 );
 assert.equal(approvalsMetric?.metricWeight, 1, 'Mortgage approvals should expose the raw metric weight');
+const expectedApprovalsLossDelta =
+  (approvalsMetric?.metricLoss ?? NaN) - (referenceApprovalsMetric?.metricLoss ?? NaN);
+const expectedApprovalsLossDeltaPercent =
+  referenceApprovalsMetric?.metricLoss === 0
+    ? expectedApprovalsLossDelta === 0
+      ? 0
+      : null
+    : (expectedApprovalsLossDelta / (referenceApprovalsMetric?.metricLoss ?? NaN)) * 100;
 assertClose(
   approvalsMetric?.lossDeltaVsReference2011 ?? NaN,
-  (approvalsMetric?.metricLoss ?? NaN) - (referenceApprovalsMetric?.metricLoss ?? NaN),
+  expectedApprovalsLossDelta,
   1e-12,
   'Mortgage approvals should expose the signed loss delta versus the v0-2011 reference'
 );
+if (expectedApprovalsLossDeltaPercent === null) {
+  assert.equal(
+    approvalsMetric?.lossDeltaPercentVsReference2011 ?? null,
+    null,
+    'Mortgage approvals should expose null percent loss delta when the v0-2011 reference loss is zero'
+  );
+} else {
+  assertClose(
+    approvalsMetric?.lossDeltaPercentVsReference2011 ?? NaN,
+    expectedApprovalsLossDeltaPercent,
+    1e-12,
+    'Mortgage approvals should expose the percent loss delta versus the v0-2011 reference'
+  );
+}
 assert.equal(
   Object.prototype.hasOwnProperty.call(approvalsMetric ?? {}, 'familyId'),
   false,
@@ -3158,10 +3234,22 @@ assert.ok(
   'Validation overview should expose a per-metric loss delta versus the v0-2011 reference summary'
 );
 assert.ok(
+  validationOverview.selectedSummary.metrics.every((metric) =>
+    Object.prototype.hasOwnProperty.call(metric, 'lossDeltaPercentVsReference2011')
+  ),
+  'Validation overview should expose a per-metric percent loss delta versus the v0-2011 reference summary'
+);
+assert.ok(
   referenceValidationOverview.selectedSummary.metrics.every(
     (metric) => metric.lossDeltaVsReference2011 === 0 || metric.lossDeltaVsReference2011 === null
   ),
   'Reference validation mode should expose zero loss deltas when the selected table is the v0-2011 baseline'
+);
+assert.ok(
+  referenceValidationOverview.selectedSummary.metrics.every(
+    (metric) => metric.lossDeltaPercentVsReference2011 === 0 || metric.lossDeltaPercentVsReference2011 === null
+  ),
+  'Reference validation mode should expose zero percent loss deltas when the selected table is the v0-2011 baseline'
 );
 
 const validationSummaryFixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'validation-summary-'));
@@ -3421,6 +3509,11 @@ assert.equal(
   'Validation parser should default missing loss deltas to null'
 );
 assert.equal(
+  modernSummary.metrics[0]?.lossDeltaPercentVsReference2011 ?? null,
+  null,
+  'Validation parser should default missing percent loss deltas to null'
+);
+assert.equal(
   Object.prototype.hasOwnProperty.call(modernSummary.metrics[0] ?? {}, 'familyId'),
   false,
   'Validation parser should ignore removed metric family ids'
@@ -3448,6 +3541,11 @@ assert.equal(
   legacySummary.metrics[0]?.lossDeltaVsReference2011 ?? null,
   null,
   'Legacy validation summaries should default missing loss deltas to null'
+);
+assert.equal(
+  legacySummary.metrics[0]?.lossDeltaPercentVsReference2011 ?? null,
+  null,
+  'Legacy validation summaries should default missing percent loss deltas to null'
 );
 const originalFixtureSummary = readValidationSummary(validationSummaryFixtureRoot, 'v0');
 assert.equal(
@@ -3504,10 +3602,23 @@ assert.equal(
   'Tracked validation summaries should expose positive signed loss deltas when they score worse than v0-2011'
 );
 assert.equal(
+  overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_mortgageApprovals')
+    ?.lossDeltaPercentVsReference2011,
+  null,
+  'Tracked validation summaries should expose null percent loss deltas when the v0-2011 reference loss is zero'
+);
+assert.equal(
   overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_housingTransactions')
     ?.lossDeltaVsReference2011,
   -0.3,
   'Tracked validation summaries should expose negative signed loss deltas when they score better than v0-2011'
+);
+assertClose(
+  overviewWithReferenceLine.selectedSummary.metrics.find((metric) => metric.metricId === 'core_housingTransactions')
+    ?.lossDeltaPercentVsReference2011 ?? NaN,
+  -60,
+  1e-12,
+  'Tracked validation summaries should expose percent loss deltas against non-zero v0-2011 reference losses'
 );
 const referenceOverviewWithDeltas = getValidationOverview(validationSummaryFixtureRoot, 'v0', 2011);
 assert.equal(referenceOverviewWithDeltas.selectedVersion, 'v0');
@@ -3515,6 +3626,10 @@ assert.equal(referenceOverviewWithDeltas.selectedValidationTargetYear, 2011);
 assert.ok(
   referenceOverviewWithDeltas.selectedSummary.metrics.every((metric) => metric.lossDeltaVsReference2011 === 0),
   'Selecting the v0 2011 validation year should expose zero deltas for every supported v0-2011 baseline metric'
+);
+assert.ok(
+  referenceOverviewWithDeltas.selectedSummary.metrics.every((metric) => metric.lossDeltaPercentVsReference2011 === 0),
+  'Selecting the v0 2011 validation year should expose zero percent deltas for every supported v0-2011 baseline metric'
 );
 const unsupportedFixtureReferenceRequest = getValidationOverview(validationSummaryFixtureRoot, 'v4.0', 2011);
 assert.equal(
@@ -4637,43 +4752,45 @@ try {
     assert.equal(parameter?.type, 'boolean', `Expected ${key} to be exposed as a boolean run option`);
     assert.equal(parameter?.defaultValue, false, `Expected ${key} to default to false`);
   }
-  assert.equal(runOptions.defaultBaseline, 'v0o2', 'Expected optimised 2011 baseline to be the experiment default');
-  assert.equal(runOptions.requestedBaseline, 'v0o2', 'Expected requested baseline default to optimised 2011 snapshot');
+  assert.equal(runOptions.defaultBaseline, 'v0o7', 'Expected optimised 2011 baseline to be the experiment default');
+  assert.equal(runOptions.requestedBaseline, 'v0o7', 'Expected requested baseline default to optimised 2011 snapshot');
   assert.ok(
     runOptions.snapshots.some((snapshot) => snapshot.version === 'v1.1' && snapshot.status === 'in_progress'),
     'Expected in-progress snapshot status in options payload'
   );
   const orderedExperimentSnapshots = orderExperimentModelOptions(runOptions.snapshots);
-  const promotedExperimentSnapshots = orderExperimentModelOptions([
+ const promotedExperimentSnapshots = orderExperimentModelOptions([
     { version: 'v1.0', status: 'stable' },
+    { version: 'v5o3', status: 'stable' },
+    { version: 'v0o7', status: 'stable' },
     { version: 'v0o2', status: 'stable' },
     { version: 'v0oo', status: 'stable' },
     { version: 'v0', status: 'stable' }
   ]);
   assert.deepEqual(
     promotedExperimentSnapshots.slice(0, 3).map((snapshot) => snapshot.version),
-    ['v0o2', 'v0', 'v1.0'],
-    'Expected experiment model options to prefer v0o2 once the new 2011-only campaign is present'
+    ['v0o7', 'v0', 'v5o3'],
+    'Expected experiment model options to prefer v0o7 and v5o3 as the optimised era snapshots'
   );
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 3).map((snapshot) => snapshot.version),
-    ['v0o2', 'v0', 'v1.0'],
-    'Expected experiment model options to prioritise optimised 2011, 2011, then latest 2024 model'
+    ['v0o7', 'v0', 'v5o3'],
+    'Expected experiment model options to prioritise optimised 2011, 2011, then optimised 2024 model'
   );
   assert.deepEqual(
     orderedExperimentSnapshots.slice(0, 4).map((snapshot) => formatExperimentModelOption(snapshot, orderedExperimentSnapshots)),
     [
-      'Optimised 2011 model (Stable, v0o2)',
+      'Optimised 2011 model (Stable, v0o7)',
       'Original 2011 model (Stable, v0)',
-      'Latest 2024 model (Beta, v1.0)',
+      'Optimised 2024 model (Beta, v5o3)',
       '2024 model v1.1 (Beta, In progress)'
     ],
     'Expected canonical experiment model option labels to include version ids inside lifecycle badges'
   );
   assert.equal(
     formatExperimentModelOption({ version: 'v4.4', status: 'stable' }, [{ version: 'v4.4', status: 'stable' }]),
-    'Best 2024 model (Beta, v4.4)',
-    'Expected the canonical best 2024 experiment label to move the version id into the lifecycle badge'
+    'Latest 2024 model (Beta, v4.4)',
+    'Expected non-optimised 2024 experiment labels to keep latest lifecycle wording when applicable'
   );
 
   assertSettingHelpCopy();
@@ -7532,10 +7649,10 @@ assert.ok(
 );
 assert.ok(
   validationPageSource.includes('tracked 2024 timeline') &&
-    validationPageSource.includes('v0-family 2011') &&
-    validationPageSource.includes('any available 2011 v0-family') &&
+    validationPageSource.includes('historical <code>v0o2</code> and optimised TuRBO <code>v0o7</code>') &&
+    validationPageSource.includes('Other pre-<code>v1.0</code>') &&
     validationPageSource.includes('selected version'),
-  'Validation page should explain that the metric table can switch to available v0-family 2011 validation'
+  'Validation page should explain that validation only promotes v0, selected v0-family branches, and v1.0+ versions'
 );
 assert.ok(
   validationPageSource.includes('core_hpiStd') &&
@@ -7559,7 +7676,11 @@ assert.ok(
 assert.ok(
   validationPageSource.includes('family-aware distance') &&
     validationPageSource.includes('log-ratio for positive levels') &&
-    validationPageSource.includes('bounded low-is-better scoring for JSD'),
+    validationPageSource.includes('bounded-domain-normalized percentage-point distance for tenure shares') &&
+    validationPageSource.includes('bounded low-is-better scoring') &&
+    validationPageSource.includes('for JSD') &&
+    validationPageSource.includes('Target bands still') &&
+    validationPageSource.includes('determine pass, warn, and fail status'),
   'Validation page should explain the family-aware validation loss calculation'
 );
 assert.ok(
@@ -7570,10 +7691,10 @@ assert.ok(
   validationPageSource.includes('referenceLineLabel') &&
     validationPageSource.includes('referencePointsByVersion') &&
     validationPageSource.includes('2024 validation') &&
-    validationPageSource.includes('2011 validation (v0 family)') &&
+    validationPageSource.includes('2011 validation (v0, v0o2, v0o7)') &&
     validationPageSource.includes('Tracked summary:') &&
     !validationPageSource.includes('Dashed comparator:'),
-  'Validation page tooltip should distinguish tracked and v0-family 2011 validation series'
+  'Validation page tooltip should distinguish tracked and selected v0-family 2011 validation series'
 );
 assert.ok(
   !validationPageSource.includes('Click to filter the table'),
@@ -7592,9 +7713,27 @@ assert.ok(
   'Validation page should render metric table sort controls'
 );
 assert.ok(
-  validationPageSource.includes('Loss delta vs v0-2011') &&
+  validationPageSource.includes('Loss delta vs v0 2011') &&
     validationPageSource.includes('lossDeltaVsReference2011'),
-  'Validation page should render the signed loss-delta column versus v0-2011'
+  'Validation page should render the signed loss-delta column versus v0 2011'
+);
+assert.ok(
+  validationPageSource.includes('Loss delta % vs v0 2011') &&
+    validationPageSource.includes('lossDeltaPercentVsReference2011'),
+  'Validation page should render the percent loss-delta column versus v0 2011'
+);
+assert.ok(
+  validationPageSource.includes('Target value') &&
+    validationPageSource.includes('formatTargetValue') &&
+    validationPageSource.includes('Acceptance range') &&
+    validationPageSource.includes('formatAcceptanceRange'),
+  'Validation page should render target value and acceptance range columns'
+);
+assert.ok(
+  !validationPageSource.includes('<th>Status</th>') &&
+    !validationPageSource.includes('Status severity') &&
+    !validationPageSource.includes('Search by metric, status, or source'),
+  'Validation page should remove table status display, sorting, and search copy'
 );
 assert.ok(
   !validationPageSource.includes('Show all categories'),
@@ -7641,12 +7780,16 @@ assert.ok(
   'Validation page should track row-level provenance disclosure state'
 );
 assert.ok(
-  validationPageSource.includes('Seeds inside band'),
+  validationPageSource.includes('Seeds in band'),
   'Validation page should render inside-band uncertainty copy'
 );
 assert.ok(
-  validationPageSource.includes('p25-p75'),
-  'Validation page should render p25-p75 uncertainty labels'
+  validationPageSource.includes('Sim. IQR'),
+  'Validation page should render simulation IQR uncertainty labels'
+);
+assert.ok(
+  validationPageSource.includes('Sim. mean'),
+  'Validation page should render simulation mean labels'
 );
 assert.ok(
   validationPageSource.includes('Weight'),
@@ -7693,7 +7836,7 @@ assert.ok(
     validationPageSource.includes('orderedValidationVersions.map') &&
     validationPageSource.includes("label.startsWith('Optimised 2011 model')") &&
     validationPageSource.includes("label.startsWith('Original 2011 model')") &&
-    validationPageSource.includes("label.startsWith('Best 2024 model')") &&
+    validationPageSource.includes("label.startsWith('Optimised 2024 model')") &&
     validationPageSource.includes("label.startsWith('Latest 2024 model')"),
   'Validation page should pin canonically named versions to the top of the metric-card version selector'
 );
@@ -7725,7 +7868,7 @@ assert.ok(
   validationPageSource.includes('handleChartClick') &&
     validationPageSource.includes('Click a 2024 validation point') &&
     validationPageSource.includes('TRACKED_VALIDATION_SERIES_NAME') &&
-    validationPageSource.includes('V0_FAMILY_REFERENCE_SERIES_NAME') &&
+    validationPageSource.includes('V0_REFERENCE_SERIES_NAME') &&
     validationPageSource.includes('selectVersionAndValidationYear') &&
     validationPageSource.includes('onClick={handleChartClick}'),
   'Validation page should wire chart point clicks to 2024 and 2011 version-year selection'

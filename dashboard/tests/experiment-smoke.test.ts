@@ -74,27 +74,27 @@ try {
   __resetSensitivityRunsForTests();
 
   const manualSubmit = submitModelRun(paths, {
-    baseline: 'v0o2',
+    baseline: 'v0o7',
     basePolicy: '2011',
-    title: 'local experiment smoke manual v0o2',
+    title: 'local experiment smoke manual v0o7',
     overrides: smokeOverrides,
     confirmWarnings: true
   });
-  assert.equal(manualSubmit.accepted, true, 'Expected v0o2 manual smoke submission to be accepted');
+  assert.equal(manualSubmit.accepted, true, 'Expected v0o7 manual smoke submission to be accepted');
   const manualJobId = manualSubmit.job?.jobId ?? '';
-  assert.ok(manualJobId, 'Expected v0o2 manual smoke submission to create a job');
+  assert.ok(manualJobId, 'Expected v0o7 manual smoke submission to create a job');
   await waitForCondition('manual model smoke', () => TERMINAL_STATUSES.has(getModelRunJob(manualJobId).status));
   const manualJob = getModelRunJob(manualJobId);
-  assert.equal(manualJob.status, 'succeeded', `Expected v0o2 manual smoke to succeed; got ${manualJob.status}`);
+  assert.equal(manualJob.status, 'succeeded', `Expected v0o7 manual smoke to succeed; got ${manualJob.status}`);
   assert.ok(
     fs.existsSync(path.join(paths.resultsRoot, manualJob.runId, 'Output-run1.csv')),
-    'Expected v0o2 manual smoke to write Output-run1.csv'
+    'Expected v0o7 manual smoke to write Output-run1.csv'
   );
 
   const sensitivitySubmit = submitSensitivityExperiment(paths, {
-    baseline: 'v0o2',
+    baseline: 'v0o7',
     basePolicy: '2011',
-    title: 'local experiment smoke sensitivity v0o2',
+    title: 'local experiment smoke sensitivity v0o7',
     policyPackageId: 'owner_occupier_lti_soft_max',
     min: 5,
     max: 6,
@@ -103,9 +103,9 @@ try {
     maxWorkers: 2,
     confirmWarnings: true
   });
-  assert.equal(sensitivitySubmit.accepted, true, 'Expected v0o2 sensitivity smoke submission to be accepted');
+  assert.equal(sensitivitySubmit.accepted, true, 'Expected v0o7 sensitivity smoke submission to be accepted');
   const experimentId = sensitivitySubmit.experiment?.experimentId ?? '';
-  assert.ok(experimentId, 'Expected v0o2 sensitivity smoke submission to create an experiment');
+  assert.ok(experimentId, 'Expected v0o7 sensitivity smoke submission to create an experiment');
   await waitForCondition('sensitivity smoke', () => {
     const detail = getSensitivityExperiment(paths, experimentId).experiment;
     return TERMINAL_STATUSES.has(detail.status);
@@ -114,7 +114,7 @@ try {
   assert.equal(
     sensitivityDetail.status,
     'succeeded',
-    `Expected v0o2 sensitivity smoke to succeed; got ${sensitivityDetail.status}: ${sensitivityDetail.failureReason ?? ''}`
+    `Expected v0o7 sensitivity smoke to succeed; got ${sensitivityDetail.status}: ${sensitivityDetail.failureReason ?? ''}`
   );
   assert.equal(sensitivityDetail.maxWorkers, 2, 'Expected sensitivity smoke to record two parallel workers');
   assert.equal(sensitivityDetail.seedsPerPoint, 1, 'Expected sensitivity smoke to use one seed per sampled point');

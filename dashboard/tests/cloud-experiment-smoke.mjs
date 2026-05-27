@@ -159,9 +159,9 @@ async function main() {
     method: 'POST',
     token,
     body: JSON.stringify({
-      baseline: 'v0o2',
+      baseline: 'v0o7',
       basePolicy: '2011',
-      title: `ci cloud smoke manual v0o2 ${runLabel}`,
+      title: `ci cloud smoke manual v0o7 ${runLabel}`,
       overrides: smokeOverrides,
       confirmWarnings: true
     })
@@ -176,9 +176,9 @@ async function main() {
     method: 'POST',
     token,
     body: JSON.stringify({
-      baseline: 'v0o2',
+      baseline: 'v0o7',
       basePolicy: '2011',
-      title: `ci cloud smoke sensitivity v0o2 ${runLabel}`,
+      title: `ci cloud smoke sensitivity v0o7 ${runLabel}`,
       policyPackageId: 'owner_occupier_lti_soft_max',
       min: 5,
       max: 6,
@@ -203,7 +203,7 @@ async function main() {
     console.warn('DASHBOARD_SMOKE_DELETE_KEY is not configured; leaving cloud smoke jobs for manual cleanup.');
   }
 
-  console.log(`Cloud experiment smoke passed against ${baseUrl} with v0o2.`);
+  console.log(`Cloud experiment smoke passed against ${baseUrl} with v0o7.`);
 }
 
 main().catch((error) => {

@@ -12,12 +12,13 @@ import { resolveRuntimePaths, type RuntimePathInput } from './runtimePaths';
 
 const DEFAULT_VALIDATION_TARGET_YEAR = 2024;
 const V0_REFERENCE_OVERLAY_NAME = 'v0-2011';
-const V0_FAMILY_REFERENCE_VERSIONS = ['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2'] as const;
-const V0_FAMILY_REFERENCE_VERSION_SET = new Set<string>(V0_FAMILY_REFERENCE_VERSIONS);
+const VALIDATION_REFERENCE_VERSIONS = ['v0', 'v0o2', 'v0o7'] as const;
+const VALIDATION_REFERENCE_VERSION_SET = new Set<string>(VALIDATION_REFERENCE_VERSIONS);
 const V0_REFERENCE_HPI_STD_BAND_NOTE =
   'Intentionally benchmarked to the same official UK IndexSA population std over 2005-01 through 2024-12 used by the tracked 2024 view; this 2011 reference summary only changes the displayed comparison window.';
 const V0_REFERENCE_HPI_CYCLE_BAND_NOTE =
   'Still 2011-anchored: derived from the tracked official-source UK HPI history through 2011-12 using the locked 12-month moving-average, log-detrend, FFT peak-search method over 60..240 months.';
+const VERSION_ID_PATTERN = /^v\d+(?:\.\d+)*(?:o+|o\d+)?$/i;
 
 function assertObject(value: unknown, message: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -273,6 +274,10 @@ function parseMetricSummary(value: unknown, index: number): ValidationMetricSumm
       objectValue.lossDeltaVsReference2011,
       `metrics[${index}].lossDeltaVsReference2011 must be a number or null`
     ),
+    lossDeltaPercentVsReference2011: assertNumberOrNull(
+      objectValue.lossDeltaPercentVsReference2011,
+      `metrics[${index}].lossDeltaPercentVsReference2011 must be a number or null`
+    ),
     metricWeight: parseMetricWeight(objectValue.metricWeight, index)
   };
 }
@@ -335,6 +340,15 @@ export function listValidationSummaryVersions(pathsInput: RuntimePathInput): str
     .sort(compareVersions);
 }
 
+function isValidationOverviewVersion(version: string): boolean {
+  return (
+    version === 'v0' ||
+    version === 'v0o2' ||
+    version === 'v0o7' ||
+    (VERSION_ID_PATTERN.test(version) && compareVersions(version, 'v1.0') >= 0)
+  );
+}
+
 export function readValidationSummary(pathsInput: RuntimePathInput, version: string): ValidationVersionSummary {
   const paths = resolveRuntimePaths(pathsInput);
   const filePath = path.join(paths.dataRoot, 'validation', `${version}.json`);
@@ -388,7 +402,7 @@ function readValidationReferenceSummary(pathsInput: RuntimePathInput, version = 
 }
 
 function hasValidationReferenceSummary(pathsInput: RuntimePathInput, version: string): boolean {
-  if (!V0_FAMILY_REFERENCE_VERSION_SET.has(version)) {
+  if (!VALIDATION_REFERENCE_VERSION_SET.has(version)) {
     return false;
   }
   const paths = resolveRuntimePaths(pathsInput);
@@ -420,9 +434,9 @@ function resolveRequestedValidationTargetYear(
   return DEFAULT_VALIDATION_TARGET_YEAR;
 }
 
-function readV0FamilyReferencePoints(pathsInput: RuntimePathInput, availableVersions: string[]): ValidationReferenceLine[] {
+function readValidationReferencePoints(pathsInput: RuntimePathInput, availableVersions: string[]): ValidationReferenceLine[] {
   const availableVersionSet = new Set(availableVersions);
-  return V0_FAMILY_REFERENCE_VERSIONS.flatMap((version) => {
+  return VALIDATION_REFERENCE_VERSIONS.flatMap((version) => {
     if (!availableVersionSet.has(version)) {
       return [];
     }
@@ -434,7 +448,7 @@ function readV0FamilyReferencePoints(pathsInput: RuntimePathInput, availableVers
       {
         version: summary.version,
         label: `${summary.version} 2011 validation`,
-        description: `${summary.version} validation loss rescored against the v0-family 2011 reference profile.`,
+        description: `${summary.version} validation loss rescored against the 2011 reference profile.`,
         overallCompositeLoss: summary.overallCompositeLoss,
         validationTargetYear: summary.validationTargetYear
       }
@@ -451,7 +465,8 @@ function addLossDeltaVsReference2011(
       ...summary,
       metrics: summary.metrics.map((metric) => ({
         ...metric,
-        lossDeltaVsReference2011: null
+        lossDeltaVsReference2011: null,
+        lossDeltaPercentVsReference2011: null
       }))
     };
   }
@@ -461,12 +476,22 @@ function addLossDeltaVsReference2011(
     ...summary,
     metrics: summary.metrics.map((metric) => {
       const referenceMetric = referenceMetricsById.get(metric.metricId);
+      const lossDelta =
+        metric.metricLoss === null || referenceMetric?.metricLoss === null || !referenceMetric
+          ? null
+          : metric.metricLoss - referenceMetric.metricLoss;
+      const lossDeltaPercent =
+        lossDelta === null || !referenceMetric || referenceMetric.metricLoss === null
+          ? null
+          : referenceMetric.metricLoss === 0
+            ? lossDelta === 0
+              ? 0
+              : null
+            : (lossDelta / referenceMetric.metricLoss) * 100;
       return {
         ...metric,
-        lossDeltaVsReference2011:
-          metric.metricLoss === null || referenceMetric?.metricLoss === null || !referenceMetric
-            ? null
-            : metric.metricLoss - referenceMetric.metricLoss
+        lossDeltaVsReference2011: lossDelta,
+        lossDeltaPercentVsReference2011: lossDeltaPercent
       };
     })
   };
@@ -478,7 +503,7 @@ export function getValidationOverview(
   requestedValidationTargetYear?: number
 ): ValidationOverviewPayload {
   const paths = resolveRuntimePaths(pathsInput);
-  const availableVersions = listValidationSummaryVersions(paths);
+  const availableVersions = listValidationSummaryVersions(paths).filter(isValidationOverviewVersion);
   if (availableVersions.length === 0) {
     throw new Error('No tracked validation summaries are available');
   }
@@ -521,7 +546,7 @@ export function getValidationOverview(
       overallCompositeLoss: summary.overallCompositeLoss
     })),
     referenceLine,
-    referencePoints: readV0FamilyReferencePoints(paths, availableVersions)
+    referencePoints: readValidationReferencePoints(paths, availableVersions)
   };
   const selectedSummaryForYear =
     selectedValidationTargetYear === 2011

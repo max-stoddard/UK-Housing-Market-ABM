@@ -10,8 +10,9 @@ export interface VersionLabelState {
 }
 
 const RESULTS_RUN_VERSION_PATTERN = /^(v\d+(?:\.\d+)*(?:o+|o\d+)?)-output$/i;
-const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2']);
-const BEST_2024_VERSION = 'v4.4';
+const LEGACY_2011_VERSIONS = new Set(['v0', 'v0o', 'v0oo', 'v0o1', 'v0o2', 'v0o3', 'v0o6', 'v0o7']);
+const OPTIMISED_2011_VERSION = 'v0o7';
+const OPTIMISED_2024_VERSION = 'v5o3';
 const FIRST_2024_VERSION = 'v1.0';
 const LAST_PREFIXED_2024_VERSION = 'v4.18';
 
@@ -118,11 +119,7 @@ export function formatModelVersionBaseLabel(version: string, state?: Pick<Versio
     return 'Original 2011 model';
   }
 
-  if (version === 'v0oo') {
-    return 'Optimised 2011 model';
-  }
-
-  if (version === 'v0o2') {
+  if (version === OPTIMISED_2011_VERSION) {
     return 'Optimised 2011 model';
   }
 
@@ -130,8 +127,8 @@ export function formatModelVersionBaseLabel(version: string, state?: Pick<Versio
     return version;
   }
 
-  if (version === BEST_2024_VERSION) {
-    return `Best 2024 model ${version}`;
+  if (version === OPTIMISED_2024_VERSION) {
+    return `Optimised 2024 model ${version}`;
   }
 
   if (state?.isLatest) {
@@ -150,16 +147,12 @@ export function formatCalibrationVersionTitleLabel(version: string, state?: Pick
     return 'Original 2011 model';
   }
 
-  if (version === 'v0oo') {
+  if (version === OPTIMISED_2011_VERSION) {
     return 'Optimised 2011 model';
   }
 
-  if (version === 'v0o2') {
-    return 'Optimised 2011 model';
-  }
-
-  if (version === BEST_2024_VERSION) {
-    return 'Best 2024 model';
+  if (version === OPTIMISED_2024_VERSION) {
+    return 'Optimised 2024 model';
   }
 
   if (state?.isLatest) {
