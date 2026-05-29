@@ -195,7 +195,7 @@ def analyze_raw_payload(payload: Mapping[str, Any] | Sequence[Mapping[str, Any]]
         for workers in sorted(throughputs_by_worker)
     ]
 
-    regression = _fit_amdahl_scaling(successful_batches)
+    regression = _fit_usl_scaling(successful_batches)
     summary = _build_summary(
         raw_batch_count=len(batch_rows),
         successful_batches=successful_batches,
@@ -669,11 +669,10 @@ def _oversubscription_comparisons(worker_summaries: Sequence[Mapping[str, Any]])
     return comparisons
 
 
-def _fit_amdahl_scaling(successful_batches: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _fit_usl_scaling(successful_batches: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     points = [
         (float(row["workers"]), float(row["throughput_per_hour"]))
         for row in successful_batches
-        if int(row["workers"]) <= 20
     ]
     included_workers = sorted({int(x_value) for x_value, _ in points})
     measured_workers = sorted({int(row["workers"]) for row in successful_batches})
@@ -686,25 +685,26 @@ def _fit_amdahl_scaling(successful_batches: Sequence[Mapping[str, Any]]) -> dict
 
     invalid_result = {
         "valid": False,
-        "model_name": "amdahl",
-        "max_workers_included": 20,
+        "model_name": "usl",
+        "fit_scope": "all_successful_workers",
         "n": len(points),
         "included_workers": included_workers,
         "included_successful_batch_rows": len(points),
         "baseline_throughput_per_hour": baseline_throughput,
-        "parallel_fraction": None,
+        "contention_alpha": None,
+        "coherency_beta": None,
         "r_squared": None,
         "fitted_values": {},
     }
     if len(points) < 2:
         return {
             **invalid_result,
-            "reason": "Need at least two successful repeat rows with workers <= 20.",
+            "reason": "Need at least two successful repeat rows for USL regression.",
         }
     if baseline_throughput is None or baseline_throughput <= 0.0:
         return {
             **invalid_result,
-            "reason": "Need a positive 1-worker baseline throughput for Amdahl regression.",
+            "reason": "Need a positive 1-worker baseline throughput for USL regression.",
         }
 
     x_values = [point[0] for point in points]
@@ -713,56 +713,146 @@ def _fit_amdahl_scaling(successful_batches: Sequence[Mapping[str, Any]]) -> dict
     if len(set(x_values)) < 2:
         return {
             **invalid_result,
-            "reason": "Need at least two distinct worker counts for Amdahl regression.",
+            "reason": "Need at least two distinct worker counts for USL regression.",
         }
 
-    def sse_for_parallel_fraction(parallel_fraction: float) -> float:
-        predictions = [_amdahl_prediction(baseline_throughput, parallel_fraction, x_value) for x_value in x_values]
-        return sum((y_value - prediction) ** 2 for y_value, prediction in zip(y_values, predictions))
-
-    grid_count = 1001
-    grid = [index / (grid_count - 1) for index in range(grid_count)]
-    best_parallel_fraction = min(grid, key=sse_for_parallel_fraction)
-    best_index = grid.index(best_parallel_fraction)
-    left = grid[max(0, best_index - 1)]
-    right = grid[min(len(grid) - 1, best_index + 1)]
-    for _ in range(80):
-        first = left + (right - left) / 3.0
-        second = right - (right - left) / 3.0
-        if sse_for_parallel_fraction(first) <= sse_for_parallel_fraction(second):
-            right = second
-        else:
-            left = first
-
-    parallel_fraction = (left + right) / 2.0
-    ss_res = sse_for_parallel_fraction(parallel_fraction)
+    contention_alpha, coherency_beta, ss_res = _fit_usl_parameters(
+        x_values=x_values,
+        y_values=y_values,
+        baseline_throughput=baseline_throughput,
+    )
 
     ss_tot = sum((y_value - y_mean) ** 2 for y_value in y_values)
     r_squared = None if ss_tot <= 0.0 else 1.0 - ss_res / ss_tot
 
     return {
         "valid": True,
-        "model_name": "amdahl",
-        "max_workers_included": 20,
+        "model_name": "usl",
+        "fit_scope": "all_successful_workers",
         "n": len(points),
         "included_workers": included_workers,
         "included_successful_batch_rows": len(points),
         "baseline_throughput_per_hour": baseline_throughput,
-        "parallel_fraction": parallel_fraction,
+        "contention_alpha": contention_alpha,
+        "coherency_beta": coherency_beta,
         "r_squared": r_squared,
         "fitted_values": {
             str(workers): {
                 "workers": workers,
-                "fitted_throughput_per_hour": _amdahl_prediction(baseline_throughput, parallel_fraction, workers),
-                "extrapolation": workers > 20,
+                "fitted_throughput_per_hour": _usl_prediction(
+                    baseline_throughput,
+                    contention_alpha,
+                    coherency_beta,
+                    workers,
+                ),
+                "extrapolation": workers not in included_workers,
             }
             for workers in measured_workers
         },
     }
 
 
-def _amdahl_prediction(baseline_throughput: float, parallel_fraction: float, workers: float) -> float:
-    return baseline_throughput / (1.0 - parallel_fraction + parallel_fraction / workers)
+def _fit_usl_parameters(
+    *,
+    x_values: Sequence[float],
+    y_values: Sequence[float],
+    baseline_throughput: float,
+) -> tuple[float, float, float]:
+    def sse(alpha: float, beta: float) -> float:
+        if alpha < 0.0 or beta < 0.0:
+            return math.inf
+        predictions = [_usl_prediction(baseline_throughput, alpha, beta, x_value) for x_value in x_values]
+        return sum((y_value - prediction) ** 2 for y_value, prediction in zip(y_values, predictions))
+
+    candidate_parameters = _initial_usl_parameter_candidates(
+        x_values=x_values,
+        y_values=y_values,
+        baseline_throughput=baseline_throughput,
+    )
+    alpha, beta = min(candidate_parameters, key=lambda candidate: sse(candidate[0], candidate[1]))
+    best_sse = sse(alpha, beta)
+
+    step_alpha = max(0.1, alpha)
+    step_beta = max(0.001, beta)
+    for _ in range(240):
+        improved = False
+        for delta_alpha, delta_beta in (
+            (step_alpha, 0.0),
+            (-step_alpha, 0.0),
+            (0.0, step_beta),
+            (0.0, -step_beta),
+            (step_alpha, step_beta),
+            (step_alpha, -step_beta),
+            (-step_alpha, step_beta),
+            (-step_alpha, -step_beta),
+        ):
+            candidate_alpha = max(0.0, alpha + delta_alpha)
+            candidate_beta = max(0.0, beta + delta_beta)
+            candidate_sse = sse(candidate_alpha, candidate_beta)
+            if candidate_sse < best_sse:
+                alpha = candidate_alpha
+                beta = candidate_beta
+                best_sse = candidate_sse
+                improved = True
+        if not improved:
+            step_alpha *= 0.5
+            step_beta *= 0.5
+            if step_alpha < 1e-12 and step_beta < 1e-14:
+                break
+
+    return alpha, beta, best_sse
+
+
+def _initial_usl_parameter_candidates(
+    *,
+    x_values: Sequence[float],
+    y_values: Sequence[float],
+    baseline_throughput: float,
+) -> list[tuple[float, float]]:
+    candidates = [(0.0, 0.0)]
+    linearized = _linearized_usl_parameters(
+        x_values=x_values,
+        y_values=y_values,
+        baseline_throughput=baseline_throughput,
+    )
+    if linearized is not None:
+        candidates.append(linearized)
+    for alpha in (0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.5, 1.0):
+        for beta in (0.0, 0.00025, 0.0005, 0.001, 0.002, 0.005, 0.01):
+            candidates.append((alpha, beta))
+    return candidates
+
+
+def _linearized_usl_parameters(
+    *,
+    x_values: Sequence[float],
+    y_values: Sequence[float],
+    baseline_throughput: float,
+) -> tuple[float, float] | None:
+    s11 = s12 = s22 = t1 = t2 = 0.0
+    for workers, throughput in zip(x_values, y_values):
+        if throughput <= 0.0:
+            continue
+        first = workers - 1.0
+        second = workers * (workers - 1.0)
+        target = baseline_throughput * workers / throughput - 1.0
+        s11 += first * first
+        s12 += first * second
+        s22 += second * second
+        t1 += first * target
+        t2 += second * target
+
+    determinant = s11 * s22 - s12 * s12
+    if abs(determinant) <= 1e-18:
+        return None
+    alpha = (t1 * s22 - t2 * s12) / determinant
+    beta = (s11 * t2 - s12 * t1) / determinant
+    return max(0.0, alpha), max(0.0, beta)
+
+
+def _usl_prediction(baseline_throughput: float, contention_alpha: float, coherency_beta: float, workers: float) -> float:
+    denominator = 1.0 + contention_alpha * (workers - 1.0) + coherency_beta * workers * (workers - 1.0)
+    return baseline_throughput * workers / denominator
 
 
 def _analysis_label(payload: Mapping[str, Any], default: str) -> str:
@@ -1019,11 +1109,11 @@ def _write_comparison_throughput_plot(path: Path, comparison: Mapping[str, Any])
             color=color,
             label=f"{section['label']} measured mean",
         )
-        _plot_amdahl_fit(
+        _plot_usl_fit(
             axis,
             regression=section["analysis"]["regression"],
             color=color,
-            label=f"{section['label']} Amdahl fit <=20 workers",
+            label=f"{section['label']} USL fit",
         )
 
     _add_core_marker(axis, all_y_values)
@@ -1039,23 +1129,27 @@ def _write_comparison_throughput_plot(path: Path, comparison: Mapping[str, Any])
     plt.close(fig)
 
 
-def _plot_amdahl_fit(
+def _plot_usl_fit(
     axis: Any,
     *,
     regression: Mapping[str, Any],
     color: str,
     label: str,
-    x_max: int = 20,
+    x_max: int | None = None,
 ) -> None:
     if not regression.get("valid"):
         return
     x_min = 1
     baseline_throughput = float(regression["baseline_throughput_per_hour"])
-    parallel_fraction = float(regression["parallel_fraction"])
+    contention_alpha = float(regression["contention_alpha"])
+    coherency_beta = float(regression["coherency_beta"])
+    if x_max is None:
+        included_workers = [int(workers) for workers in regression.get("included_workers", [])]
+        x_max = max(included_workers) if included_workers else 20
     line_x = [x_min + (x_max - x_min) * index / 80.0 for index in range(81)]
     axis.plot(
         line_x,
-        [_amdahl_prediction(baseline_throughput, parallel_fraction, value) for value in line_x],
+        [_usl_prediction(baseline_throughput, contention_alpha, coherency_beta, value) for value in line_x],
         linestyle=":",
         color=color,
         alpha=0.8,
@@ -1191,16 +1285,13 @@ def _write_throughput_plot(path: Path, rows: Sequence[Mapping[str, Any]], regres
         )
 
     if regression.get("valid") and x_values:
-        reg_x = [value for value in x_values if value <= 20]
-        if reg_x:
-            x_max = min(32, max(x_values)) if max(x_values) > 20 else max(reg_x)
-            _plot_amdahl_fit(
-                axis,
-                regression=regression,
-                color="#B45309",
-                label="Amdahl fit (≤ 20 workers)",
-                x_max=x_max,
-            )
+        _plot_usl_fit(
+            axis,
+            regression=regression,
+            color="#B45309",
+            label="USL fit (all measured workers)",
+            x_max=max(x_values),
+        )
 
     _add_core_marker(axis, y_values, legend_label="Hardware limit: 20 logical processors")
     _configure_throughput_grid(axis)

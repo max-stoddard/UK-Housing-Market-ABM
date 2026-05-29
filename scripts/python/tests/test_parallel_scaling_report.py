@@ -195,7 +195,7 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertEqual([row["workers"] for row in analysis["worker_summaries"]], [1])
         self.assertEqual(len(analysis["successful_batches"]), 1)
 
-    def test_amdahl_regression_uses_only_workers_up_to_20(self) -> None:
+    def test_usl_regression_uses_all_successful_measured_workers(self) -> None:
         core_batches = [
             _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
             _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=70),
@@ -206,33 +206,29 @@ class TestParallelScalingReport(unittest.TestCase):
             _batch(batch_id="w32-r1", workers=32, wall_clock_seconds=3600.0, completed_runs=800),
         ]
         analysis = parallel_scaling_report.analyze_raw_payload({"batches": core_batches + oversubscribed_batches})
-        core_analysis = parallel_scaling_report.analyze_raw_payload({"batches": core_batches})
 
         regression = analysis["regression"]
-        core_regression = core_analysis["regression"]
         self.assertTrue(regression["valid"])
-        self.assertEqual(regression["model_name"], "amdahl")
-        self.assertEqual(regression["included_workers"], [1, 8, 20])
-        self.assertEqual(regression["n"], 3)
+        self.assertEqual(regression["model_name"], "usl")
+        self.assertEqual(regression["fit_scope"], "all_successful_workers")
+        self.assertEqual(regression["included_workers"], [1, 8, 20, 24, 32])
+        self.assertEqual(regression["n"], 5)
         self.assertEqual(regression["baseline_throughput_per_hour"], 12.0)
-        self.assertGreaterEqual(regression["parallel_fraction"], 0.0)
-        self.assertLessEqual(regression["parallel_fraction"], 1.0)
+        self.assertGreaterEqual(regression["contention_alpha"], 0.0)
+        self.assertGreaterEqual(regression["coherency_beta"], 0.0)
         self.assertEqual(set(regression["fitted_values"]), {"1", "8", "20", "24", "32"})
         for workers in (1, 8, 20, 24, 32):
             fitted_value = regression["fitted_values"][str(workers)]
             self.assertEqual(fitted_value["workers"], workers)
-            self.assertEqual(fitted_value["extrapolation"], workers > 20)
-            parallel_fraction = regression["parallel_fraction"]
-            expected = regression["baseline_throughput_per_hour"] / (
-                1.0 - parallel_fraction + parallel_fraction / workers
+            self.assertFalse(fitted_value["extrapolation"])
+            alpha = regression["contention_alpha"]
+            beta = regression["coherency_beta"]
+            expected = regression["baseline_throughput_per_hour"] * workers / (
+                1.0 + alpha * (workers - 1.0) + beta * workers * (workers - 1.0)
             )
             self.assertAlmostEqual(fitted_value["fitted_throughput_per_hour"], expected)
 
-        self.assertAlmostEqual(regression["baseline_throughput_per_hour"], core_regression["baseline_throughput_per_hour"])
-        self.assertAlmostEqual(regression["parallel_fraction"], core_regression["parallel_fraction"])
-        self.assertAlmostEqual(regression["r_squared"], core_regression["r_squared"])
-
-    def test_cached_default_regression_keeps_twenty_worker_training_cutoff(self) -> None:
+    def test_cached_default_regression_uses_all_measured_workers(self) -> None:
         repo_root = Path(__file__).resolve().parents[3]
         raw_json = (
             repo_root
@@ -247,8 +243,8 @@ class TestParallelScalingReport(unittest.TestCase):
 
         analysis = parallel_scaling_report.analyze_raw_payload(parallel_scaling_report.read_raw_results(raw_json))
 
-        self.assertEqual(analysis["regression"]["model_name"], "amdahl")
-        self.assertEqual(analysis["regression"]["included_workers"], [1, 2, 4, 8, 12, 16, 20])
+        self.assertEqual(analysis["regression"]["model_name"], "usl")
+        self.assertEqual(analysis["regression"]["included_workers"], [1, 2, 4, 8, 12, 16, 20, 24, 32])
 
     def test_extra_raw_json_merge_adds_compatible_default_batches(self) -> None:
         primary = _raw_payload(
@@ -303,13 +299,14 @@ class TestParallelScalingReport(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "mapping-style"):
             parallel_scaling_report.merge_extra_raw_payloads(primary, [[custom_extra]])
 
-    def test_amdahl_regression_can_report_negative_r_squared(self) -> None:
+    def test_usl_regression_can_report_negative_r_squared(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(
             {
                 "batches": [
                     _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=100),
-                    _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=20),
-                    _batch(batch_id="w20-r1", workers=20, wall_clock_seconds=3600.0, completed_runs=10),
+                    _batch(batch_id="w4-r1", workers=4, wall_clock_seconds=3600.0, completed_runs=20),
+                    _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=10),
+                    _batch(batch_id="w16-r1", workers=16, wall_clock_seconds=3600.0, completed_runs=200),
                 ]
             }
         )
@@ -319,7 +316,7 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertIsNotNone(regression["r_squared"])
         self.assertLess(regression["r_squared"], 0.0)
 
-    def test_amdahl_regression_r_squared_is_none_for_zero_variance_inputs(self) -> None:
+    def test_usl_regression_r_squared_is_none_for_zero_variance_inputs(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(
             {
                 "batches": [
@@ -481,7 +478,7 @@ class TestParallelScalingReport(unittest.TestCase):
 
         self.assertEqual(comparison["comparison"]["label"], "APC1")
 
-    def test_comparison_fit_line_always_spans_one_to_twenty_workers(self) -> None:
+    def test_comparison_fit_line_spans_measured_worker_range(self) -> None:
         class FakeAxis:
             def __init__(self) -> None:
                 self.x_values: list[float] | None = None
@@ -491,16 +488,22 @@ class TestParallelScalingReport(unittest.TestCase):
 
         axis = FakeAxis()
 
-        parallel_scaling_report._plot_amdahl_fit(
+        parallel_scaling_report._plot_usl_fit(
             axis,
-            regression={"valid": True, "baseline_throughput_per_hour": 10.0, "parallel_fraction": 0.8},
+            regression={
+                "valid": True,
+                "baseline_throughput_per_hour": 10.0,
+                "contention_alpha": 0.1,
+                "coherency_beta": 0.002,
+                "included_workers": [1, 8, 20, 24, 32],
+            },
             color="#000000",
             label="fit",
         )
 
         self.assertIsNotNone(axis.x_values)
         self.assertAlmostEqual(axis.x_values[0], 1.0)
-        self.assertAlmostEqual(axis.x_values[-1], 20.0)
+        self.assertAlmostEqual(axis.x_values[-1], 32.0)
 
     def test_single_run_throughput_plot_limits_ideal_line_extends_fit_and_sets_grid(self) -> None:
         class FakeLocator:
@@ -611,7 +614,13 @@ class TestParallelScalingReport(unittest.TestCase):
                         "throughput_ci95_high": None,
                     },
                 ],
-                {"valid": True, "baseline_throughput_per_hour": 10.0, "parallel_fraction": 0.8},
+                {
+                    "valid": True,
+                    "baseline_throughput_per_hour": 10.0,
+                    "contention_alpha": 0.1,
+                    "coherency_beta": 0.002,
+                    "included_workers": [1, 20, 24, 32],
+                },
             )
         finally:
             parallel_scaling_report.plt = original_plt
@@ -621,11 +630,11 @@ class TestParallelScalingReport(unittest.TestCase):
                 delattr(parallel_scaling_report, "MultipleLocator")
 
         ideal_line = next(call for call in axis.plot_calls if call["label"] == "Ideal linear")
-        fit_line = next(call for call in axis.plot_calls if str(call["label"]).startswith("Amdahl fit"))
+        fit_line = next(call for call in axis.plot_calls if str(call["label"]).startswith("USL fit"))
         self.assertEqual(ideal_line["x_values"], [1, 20])
         self.assertAlmostEqual(fit_line["x_values"][0], 1.0)
         self.assertAlmostEqual(fit_line["x_values"][-1], 32.0)
-        self.assertEqual(fit_line["label"], "Amdahl fit (≤ 20 workers)")
+        self.assertEqual(fit_line["label"], "USL fit (all measured workers)")
         self.assertEqual(axis.xlim_kwargs, {"left": 0})
         self.assertEqual(axis.axvline_calls[0]["label"], "Hardware limit: 20 logical processors")
         self.assertEqual(axis.text_calls[0]["args"][2], "20 cores")
