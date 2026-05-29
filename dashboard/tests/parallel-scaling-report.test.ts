@@ -330,6 +330,10 @@ await withTempReportRoot(async (outputRoot) => {
     result.batches[0].children.every((child) => !child.outputPath.includes(`${path.sep}Results${path.sep}`)),
     'Expected report output paths not to use Results'
   );
+  assert.ok(
+    result.batches[0].children.every((child) => !fs.existsSync(path.join(child.outputPath, 'Output-run1.csv'))),
+    'Expected parallel scaling seed outputs to remove heavy model Output-run CSV files'
+  );
   assert.equal(
     path.basename(result.artifacts.childrenCsvPath),
     'parallel_scaling_children.csv',

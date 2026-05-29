@@ -212,6 +212,7 @@ const BATCH_CSV_HEADERS = [
   'canceled_child_count',
   'throughput_runs_per_hour'
 ] as const;
+const HEAVY_MODEL_OUTPUT_FILE_PATTERN = /^Output-run\d+\.csv$/;
 
 export function parseWorkerCounts(raw: number[] | string | null | undefined): number[] {
   const values = raw === undefined || raw === null || raw === ''
@@ -534,6 +535,7 @@ async function runSeedTask(input: {
     },
     formatLaunchError: (error) => error.message
   });
+  removeHeavyModelOutputFiles(input.task.outputPath);
 
   finishProgressTask(input.owner, input.task.taskId, executionResult.status, 'running');
   const endedAt = input.now();
@@ -570,6 +572,18 @@ function buildSeedTask(
     outputPath: path.join(childRoot, 'output'),
     logPath: path.join(childRoot, 'logs', 'model.log')
   };
+}
+
+function removeHeavyModelOutputFiles(outputPath: string): void {
+  if (!fs.existsSync(outputPath)) {
+    return;
+  }
+
+  for (const entry of fs.readdirSync(outputPath, { withFileTypes: true })) {
+    if (entry.isFile() && HEAVY_MODEL_OUTPUT_FILE_PATTERN.test(entry.name)) {
+      fs.rmSync(path.join(outputPath, entry.name), { force: true });
+    }
+  }
 }
 
 function normalizeOptions(options: ParallelScalingExperimentOptions, enforceFullConfirmation = false): NormalizedParallelScalingOptions {
