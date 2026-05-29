@@ -1,0 +1,1449 @@
+{
+  "workflow": "five-parameter-esmda",
+  "sourceVersion": "v4.26",
+  "outputVersion": "v5.0o1",
+  "parameters": [
+    "PSYCHOLOGICAL_COST_OF_RENTING",
+    "SENSITIVITY_RENT_OR_PURCHASE",
+    "BTL_PROBABILITY_MULTIPLIER",
+    "BTL_CHOICE_INTENSITY",
+    "MARKET_AVERAGE_PRICE_DECAY"
+  ],
+  "sourceParameters": {
+    "PSYCHOLOGICAL_COST_OF_RENTING": 0.4,
+    "SENSITIVITY_RENT_OR_PURCHASE": 0.001,
+    "BTL_PROBABILITY_MULTIPLIER": 1.76,
+    "BTL_CHOICE_INTENSITY": 100.0,
+    "MARKET_AVERAGE_PRICE_DECAY": 0.5
+  },
+  "validationProfile": {
+    "profileId": "validation-2024",
+    "validationTargetYear": 2024,
+    "wasDataset": "R8",
+    "metricCount": 20,
+    "requiredMetricCount": 20
+  },
+  "validationLossHandling": "Validation metricLoss and overallCompositeLoss values are family-aware and unbounded; values greater than 1.0 are expected for severe misses and must not be clipped or treated as probabilities. ES-MDA can also run the old-compatible target-normalized additive objective for reproducibility.",
+  "validationObjective": "family_aware_metric_loss",
+  "assimilationTransform": "schema4_metric_loss",
+  "rankingObjective": "family_aware_metric_loss",
+  "validationLossErrorStd": 1.0,
+  "guardrailThresholds": {
+    "requiredTotalLossImprovement": "overallCompositeLoss must improve versus iteration 0 member 0",
+    "hpiRegressionTolerance": 1e-12,
+    "hpiConstrainedMetricIds": [
+      "core_hpiStd",
+      "core_hpiCyclePeriod",
+      "core_hpiMean"
+    ],
+    "rankKey": [
+      "not improves_total_loss",
+      "max(0, core_hpiStd_delta)",
+      "max(0, core_hpiCyclePeriod_delta)",
+      "max(0, core_hpiMean_delta)",
+      "overallCompositeLoss",
+      "fail_count",
+      "warn_count",
+      "normalized_source_movement"
+    ],
+    "rankingPrimaryObjective": "lowest overallCompositeLoss among candidates that improve total loss and do not regress constrained HPI metric losses versus iteration 0 member 0",
+    "nonHpiSignals": "fail count, warn count, and normalized source movement are rank tie-breakers, not hard gates"
+  },
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "workers": 20,
+  "candidateParallelism": 2,
+  "ensembleSize": 32,
+  "assimilationSteps": 4,
+  "rngSeed": 20260518,
+  "nSteps": 3500,
+  "validationWindow": {
+    "startIndex": 500,
+    "endIndex": 3500
+  },
+  "deleteCsvAfterMetrics": true,
+  "alphaSchedule": [
+    2.533,
+    3.6185714285714288,
+    5.169387755102041,
+    7.384839650145774
+  ],
+  "alphaScheduleCheckSumInverse": 1.0,
+  "parameterSpecs": [
+    {
+      "name": "PSYCHOLOGICAL_COST_OF_RENTING",
+      "lower": 0.0,
+      "upper": 0.8,
+      "prior_lower": 0.2,
+      "prior_upper": 0.6,
+      "transform": "bounded_logit",
+      "final_snap": 0.05,
+      "final_sigfigs": null
+    },
+    {
+      "name": "SENSITIVITY_RENT_OR_PURCHASE",
+      "lower": 0.0001,
+      "upper": 0.002,
+      "prior_lower": 0.0005,
+      "prior_upper": 0.0015,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": 2
+    },
+    {
+      "name": "BTL_PROBABILITY_MULTIPLIER",
+      "lower": 0.05,
+      "upper": 2.5,
+      "prior_lower": 0.35,
+      "prior_upper": 1.9,
+      "transform": "log10",
+      "final_snap": 0.005,
+      "final_sigfigs": null
+    },
+    {
+      "name": "BTL_CHOICE_INTENSITY",
+      "lower": 25.0,
+      "upper": 250.0,
+      "prior_lower": 50.0,
+      "prior_upper": 150.0,
+      "transform": "log10",
+      "final_snap": 10.0,
+      "final_sigfigs": null
+    },
+    {
+      "name": "MARKET_AVERAGE_PRICE_DECAY",
+      "lower": 0.25,
+      "upper": 0.85,
+      "prior_lower": 0.4,
+      "prior_upper": 0.7,
+      "transform": "bounded_logit",
+      "final_snap": 0.02,
+      "final_sigfigs": null
+    }
+  ],
+  "observations": [
+    {
+      "metric_id": "core_mortgageApprovals",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 57.0,
+      "target_upper": 63.0
+    },
+    {
+      "metric_id": "core_housingTransactions",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 84.2,
+      "target_upper": 100.0
+    },
+    {
+      "metric_id": "core_advancesToFTB",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 23.658,
+      "target_upper": 32.008
+    },
+    {
+      "metric_id": "core_advancesToHM",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 20.4,
+      "target_upper": 27.6
+    },
+    {
+      "metric_id": "core_advancesToBTL",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 4.396,
+      "target_upper": 5.947
+    },
+    {
+      "metric_id": "core_debtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 125.0,
+      "target_upper": 145.0
+    },
+    {
+      "metric_id": "core_priceToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 5.4,
+      "target_upper": 9.0
+    },
+    {
+      "metric_id": "core_housePriceGrowth",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 2.0
+    },
+    {
+      "metric_id": "core_hpiMean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.86673455532926,
+      "target_upper": 1.172640868974881
+    },
+    {
+      "metric_id": "core_hpiStd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.23516966531682607,
+      "target_upper": 0.3181707236639411
+    },
+    {
+      "metric_id": "core_hpiCyclePeriod",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 142.375,
+      "target_upper": 192.62499999999997
+    },
+    {
+      "metric_id": "rpi_mean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 1.0,
+      "target_upper": 1.082058468918
+    },
+    {
+      "metric_id": "household_owning_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 64.5,
+      "target_upper": 65.5
+    },
+    {
+      "metric_id": "household_renting_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 18.5,
+      "target_upper": 19.5
+    },
+    {
+      "metric_id": "core_ooDebtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 77.16710908000836,
+      "target_upper": 80.29246428438624
+    },
+    {
+      "metric_id": "core_rentalYield",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 6.88,
+      "target_upper": 7.0
+    },
+    {
+      "metric_id": "core_interestRateSpread",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.41196363761794147,
+      "target_upper": 0.7203665256287551
+    },
+    {
+      "metric_id": "income_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "housing_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "financial_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    }
+  ],
+  "outputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v5.0o1/five-parameter-esmda",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1",
+  "dryRun": false,
+  "createdOutputVersion": false,
+  "globalBest": {
+    "iteration": 3,
+    "memberId": 7,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.25",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.0014",
+      "BTL_PROBABILITY_MULTIPLIER": "1.825",
+      "BTL_CHOICE_INTENSITY": "100",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+    },
+    "overallCompositeLoss": 0.5073951690442934,
+    "rankingLoss": 0.5073951690442934,
+    "rankingObjective": "family_aware_metric_loss",
+    "statusCounts": {
+      "pass": 7,
+      "warn": 2,
+      "fail": 11,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.14474561514508827,
+    "rankKey": [
+      false,
+      0.0,
+      0.0,
+      0.0,
+      0.5073951690442934,
+      11,
+      2,
+      0.14474561514508827
+    ],
+    "lossImprovementVersusBaseline": 0.06694206063108499,
+    "improvesTotalLoss": true,
+    "hpiConstrainedEligible": true,
+    "hpiMetricLossDeltas": {
+      "core_hpiStd": -0.046577414707801135,
+      "core_hpiCyclePeriod": -0.0818447984939259,
+      "core_hpiMean": -0.08827660090626732
+    },
+    "hpiMetricLossRegressions": []
+  },
+  "unconstrainedLowestLoss": {
+    "iteration": 3,
+    "memberId": 7,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.25",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.0014",
+      "BTL_PROBABILITY_MULTIPLIER": "1.825",
+      "BTL_CHOICE_INTENSITY": "100",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+    },
+    "overallCompositeLoss": 0.5073951690442934,
+    "rankingLoss": 0.5073951690442934,
+    "rankingObjective": "family_aware_metric_loss",
+    "statusCounts": {
+      "pass": 7,
+      "warn": 2,
+      "fail": 11,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.14474561514508827,
+    "rankKey": [
+      false,
+      0.0,
+      0.0,
+      0.0,
+      0.5073951690442934,
+      11,
+      2,
+      0.14474561514508827
+    ],
+    "lossImprovementVersusBaseline": 0.06694206063108499,
+    "improvesTotalLoss": true,
+    "hpiConstrainedEligible": true,
+    "hpiMetricLossDeltas": {
+      "core_hpiStd": -0.046577414707801135,
+      "core_hpiCyclePeriod": -0.0818447984939259,
+      "core_hpiMean": -0.08827660090626732
+    },
+    "hpiMetricLossRegressions": []
+  },
+  "baseline": {
+    "iteration": 0,
+    "memberId": 0,
+    "parameters": {
+      "PSYCHOLOGICAL_COST_OF_RENTING": "0.4",
+      "SENSITIVITY_RENT_OR_PURCHASE": "0.001",
+      "BTL_PROBABILITY_MULTIPLIER": "1.76",
+      "BTL_CHOICE_INTENSITY": "100",
+      "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+    },
+    "overallCompositeLoss": 0.5743372296753784,
+    "rankingLoss": 0.5743372296753784,
+    "rankingObjective": "family_aware_metric_loss",
+    "statusCounts": {
+      "pass": 6,
+      "warn": 0,
+      "fail": 14,
+      "unsupported": 0
+    },
+    "normalizedSourceMovement": 0.0,
+    "rankKey": [
+      true,
+      0.0,
+      0.0,
+      0.0,
+      0.5743372296753784,
+      14,
+      0,
+      0.0
+    ],
+    "lossImprovementVersusBaseline": 0.0,
+    "improvesTotalLoss": false,
+    "hpiConstrainedEligible": false,
+    "hpiMetricLossDeltas": {
+      "core_hpiStd": 0.0,
+      "core_hpiCyclePeriod": 0.0,
+      "core_hpiMean": 0.0
+    },
+    "hpiMetricLossRegressions": []
+  },
+  "localRefinement": {
+    "enabled": true,
+    "seedTopN": 10,
+    "eligibleSeedMemberCount": 1,
+    "seedMembers": [
+      {
+        "iteration": 3,
+        "memberId": 7,
+        "parameters": {
+          "PSYCHOLOGICAL_COST_OF_RENTING": "0.25061702205",
+          "SENSITIVITY_RENT_OR_PURCHASE": "0.001418343866",
+          "BTL_PROBABILITY_MULTIPLIER": "1.826801182261",
+          "BTL_CHOICE_INTENSITY": "100.679826836128",
+          "MARKET_AVERAGE_PRICE_DECAY": "0.506499085843"
+        },
+        "overallCompositeLoss": 0.5073951690442934,
+        "rankingLoss": 0.5073951690442934,
+        "rankingObjective": "family_aware_metric_loss",
+        "statusCounts": {
+          "pass": 7,
+          "warn": 2,
+          "fail": 11,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.14474561514508827,
+        "rankKey": [
+          false,
+          0.0,
+          0.0,
+          0.0,
+          0.5073951690442934,
+          11,
+          2,
+          0.14474561514508827
+        ],
+        "lossImprovementVersusBaseline": 0.06694206063108499,
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": true,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": -0.046577414707801135,
+          "core_hpiCyclePeriod": -0.0818447984939259,
+          "core_hpiMean": -0.08827660090626732
+        },
+        "hpiMetricLossRegressions": []
+      }
+    ],
+    "oneParameterNeighbourRadius": 1,
+    "maxCandidates": 100,
+    "deduplicatedSnappedCandidateCount": 11,
+    "evaluatedCandidateCount": 11,
+    "seedRuns": 110,
+    "guardrailThresholds": {
+      "requiredTotalLossImprovement": "overallCompositeLoss must improve versus iteration 0 member 0",
+      "hpiRegressionTolerance": 1e-12,
+      "hpiConstrainedMetricIds": [
+        "core_hpiStd",
+        "core_hpiCyclePeriod",
+        "core_hpiMean"
+      ],
+      "rankKey": [
+        "not improves_total_loss",
+        "max(0, core_hpiStd_delta)",
+        "max(0, core_hpiCyclePeriod_delta)",
+        "max(0, core_hpiMean_delta)",
+        "overallCompositeLoss",
+        "fail_count",
+        "warn_count",
+        "normalized_source_movement"
+      ],
+      "rankingPrimaryObjective": "lowest overallCompositeLoss among candidates that improve total loss and do not regress constrained HPI metric losses versus iteration 0 member 0",
+      "nonHpiSignals": "fail count, warn count, and normalized source movement are rank tie-breakers, not hard gates"
+    },
+    "promotionAccepted": false,
+    "lowestLossRejected": true,
+    "promoted": {
+      "iteration": 5,
+      "memberId": 1,
+      "parameters": {
+        "PSYCHOLOGICAL_COST_OF_RENTING": "0.2",
+        "SENSITIVITY_RENT_OR_PURCHASE": "0.0014",
+        "BTL_PROBABILITY_MULTIPLIER": "1.825",
+        "BTL_CHOICE_INTENSITY": "100",
+        "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+      },
+      "overallCompositeLoss": 0.5166857350822651,
+      "rankingLoss": 0.5166857350822651,
+      "rankingObjective": "family_aware_metric_loss",
+      "statusCounts": {
+        "pass": 7,
+        "warn": 1,
+        "fail": 12,
+        "unsupported": 0
+      },
+      "normalizedSourceMovement": 0.16554164895973064,
+      "rankKey": [
+        false,
+        0.19618115400845126,
+        0.0,
+        0.07448292583707306,
+        0.5166857350822651,
+        12,
+        1,
+        0.16554164895973064
+      ],
+      "lossImprovementVersusBaseline": 0.05765149459311325,
+      "improvesTotalLoss": true,
+      "hpiConstrainedEligible": false,
+      "hpiMetricLossDeltas": {
+        "core_hpiStd": 0.19618115400845126,
+        "core_hpiCyclePeriod": -0.10180994493696593,
+        "core_hpiMean": 0.07448292583707306
+      },
+      "hpiMetricLossRegressions": [
+        {
+          "metricId": "core_hpiStd",
+          "baselineMetricLoss": 0.34947236755112854,
+          "candidateMetricLoss": 0.5456535215595798,
+          "delta": 0.19618115400845126
+        },
+        {
+          "metricId": "core_hpiMean",
+          "baselineMetricLoss": 0.4390461705223505,
+          "candidateMetricLoss": 0.5135290963594236,
+          "delta": 0.07448292583707306
+        }
+      ]
+    },
+    "lowestLoss": {
+      "iteration": 5,
+      "memberId": 1,
+      "parameters": {
+        "PSYCHOLOGICAL_COST_OF_RENTING": "0.2",
+        "SENSITIVITY_RENT_OR_PURCHASE": "0.0014",
+        "BTL_PROBABILITY_MULTIPLIER": "1.825",
+        "BTL_CHOICE_INTENSITY": "100",
+        "MARKET_AVERAGE_PRICE_DECAY": "0.5"
+      },
+      "overallCompositeLoss": 0.5166857350822651,
+      "rankingLoss": 0.5166857350822651,
+      "rankingObjective": "family_aware_metric_loss",
+      "statusCounts": {
+        "pass": 7,
+        "warn": 1,
+        "fail": 12,
+        "unsupported": 0
+      },
+      "normalizedSourceMovement": 0.16554164895973064,
+      "rankKey": [
+        false,
+        0.19618115400845126,
+        0.0,
+        0.07448292583707306,
+        0.5166857350822651,
+        12,
+        1,
+        0.16554164895973064
+      ],
+      "lossImprovementVersusBaseline": 0.05765149459311325,
+      "improvesTotalLoss": true,
+      "hpiConstrainedEligible": false,
+      "hpiMetricLossDeltas": {
+        "core_hpiStd": 0.19618115400845126,
+        "core_hpiCyclePeriod": -0.10180994493696593,
+        "core_hpiMean": 0.07448292583707306
+      },
+      "hpiMetricLossRegressions": [
+        {
+          "metricId": "core_hpiStd",
+          "baselineMetricLoss": 0.34947236755112854,
+          "candidateMetricLoss": 0.5456535215595798,
+          "delta": 0.19618115400845126
+        },
+        {
+          "metricId": "core_hpiMean",
+          "baselineMetricLoss": 0.4390461705223505,
+          "candidateMetricLoss": 0.5135290963594236,
+          "delta": 0.07448292583707306
+        }
+      ]
+    },
+    "promotedDecision": {
+      "iteration": 5,
+      "memberId": 1,
+      "accepted": false,
+      "rejectionReasons": [
+        "HPI metric loss regressed versus baseline: core_hpiStd (+0.196181154008), core_hpiMean (+0.074482925837)"
+      ],
+      "lossImprovementVersusBaseline": 0.05765149459311325,
+      "baselineRankingLoss": 0.5743372296753784,
+      "candidateRankingLoss": 0.5166857350822651,
+      "baselineOverallCompositeLoss": 0.5743372296753784,
+      "candidateOverallCompositeLoss": 0.5166857350822651,
+      "rankingObjective": "family_aware_metric_loss",
+      "improvesTotalLoss": true,
+      "hpiConstrainedEligible": false,
+      "hpiMetricLossDeltas": {
+        "core_hpiStd": 0.19618115400845126,
+        "core_hpiCyclePeriod": -0.10180994493696593,
+        "core_hpiMean": 0.07448292583707306
+      },
+      "hpiMetricLossRegressions": [
+        {
+          "metricId": "core_hpiStd",
+          "baselineMetricLoss": 0.34947236755112854,
+          "candidateMetricLoss": 0.5456535215595798,
+          "delta": 0.19618115400845126
+        },
+        {
+          "metricId": "core_hpiMean",
+          "baselineMetricLoss": 0.4390461705223505,
+          "candidateMetricLoss": 0.5135290963594236,
+          "delta": 0.07448292583707306
+        }
+      ],
+      "failCountIncrease": -2,
+      "baselineStatusCounts": {
+        "pass": 6,
+        "warn": 0,
+        "fail": 14,
+        "unsupported": 0
+      },
+      "candidateStatusCounts": {
+        "pass": 7,
+        "warn": 1,
+        "fail": 12,
+        "unsupported": 0
+      },
+      "normalizedSourceMovement": 0.16554164895973064,
+      "rankKey": [
+        false,
+        0.19618115400845126,
+        0.0,
+        0.07448292583707306,
+        0.5166857350822651,
+        12,
+        1,
+        0.16554164895973064
+      ]
+    },
+    "lowestLossDecision": {
+      "iteration": 5,
+      "memberId": 1,
+      "accepted": false,
+      "rejectionReasons": [
+        "HPI metric loss regressed versus baseline: core_hpiStd (+0.196181154008), core_hpiMean (+0.074482925837)"
+      ],
+      "lossImprovementVersusBaseline": 0.05765149459311325,
+      "baselineRankingLoss": 0.5743372296753784,
+      "candidateRankingLoss": 0.5166857350822651,
+      "baselineOverallCompositeLoss": 0.5743372296753784,
+      "candidateOverallCompositeLoss": 0.5166857350822651,
+      "rankingObjective": "family_aware_metric_loss",
+      "improvesTotalLoss": true,
+      "hpiConstrainedEligible": false,
+      "hpiMetricLossDeltas": {
+        "core_hpiStd": 0.19618115400845126,
+        "core_hpiCyclePeriod": -0.10180994493696593,
+        "core_hpiMean": 0.07448292583707306
+      },
+      "hpiMetricLossRegressions": [
+        {
+          "metricId": "core_hpiStd",
+          "baselineMetricLoss": 0.34947236755112854,
+          "candidateMetricLoss": 0.5456535215595798,
+          "delta": 0.19618115400845126
+        },
+        {
+          "metricId": "core_hpiMean",
+          "baselineMetricLoss": 0.4390461705223505,
+          "candidateMetricLoss": 0.5135290963594236,
+          "delta": 0.07448292583707306
+        }
+      ],
+      "failCountIncrease": -2,
+      "baselineStatusCounts": {
+        "pass": 6,
+        "warn": 0,
+        "fail": 14,
+        "unsupported": 0
+      },
+      "candidateStatusCounts": {
+        "pass": 7,
+        "warn": 1,
+        "fail": 12,
+        "unsupported": 0
+      },
+      "normalizedSourceMovement": 0.16554164895973064,
+      "rankKey": [
+        false,
+        0.19618115400845126,
+        0.0,
+        0.07448292583707306,
+        0.5166857350822651,
+        12,
+        1,
+        0.16554164895973064
+      ]
+    },
+    "candidateDecisions": [
+      {
+        "iteration": 5,
+        "memberId": 0,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.147159693105), core_hpiMean (+0.082594473168)"
+        ],
+        "lossImprovementVersusBaseline": 0.0524107311418307,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5219264985335477,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5219264985335477,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.14715969310462096,
+          "core_hpiCyclePeriod": -0.09121727651803369,
+          "core_hpiMean": 0.08259447316831037
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.4966320606557495,
+            "delta": 0.14715969310462096
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.5216406436906609,
+            "delta": 0.08259447316831037
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.1373101307523517,
+        "rankKey": [
+          false,
+          0.14715969310462096,
+          0.0,
+          0.08259447316831037,
+          0.5219264985335477,
+          12,
+          1,
+          0.1373101307523517
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 1,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.196181154008), core_hpiMean (+0.074482925837)"
+        ],
+        "lossImprovementVersusBaseline": 0.05765149459311325,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5166857350822651,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5166857350822651,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.19618115400845126,
+          "core_hpiCyclePeriod": -0.10180994493696593,
+          "core_hpiMean": 0.07448292583707306
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.5456535215595798,
+            "delta": 0.19618115400845126
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.5135290963594236,
+            "delta": 0.07448292583707306
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.16554164895973064,
+        "rankKey": [
+          false,
+          0.19618115400845126,
+          0.0,
+          0.07448292583707306,
+          0.5166857350822651,
+          12,
+          1,
+          0.16554164895973064
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 2,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.262856800296), core_hpiMean (+0.224781358258)"
+        ],
+        "lossImprovementVersusBaseline": 0.03378634162239058,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5405508880529878,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5405508880529878,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.26285680029635106,
+          "core_hpiCyclePeriod": -0.07816270390901991,
+          "core_hpiMean": 0.22478135825799028
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.6123291678474796,
+            "delta": 0.26285680029635106
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.6638275287803408,
+            "delta": 0.22478135825799028
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.11203900103152335,
+        "rankKey": [
+          false,
+          0.26285680029635106,
+          0.0,
+          0.22478135825799028,
+          0.5405508880529878,
+          12,
+          1,
+          0.11203900103152335
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 3,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.215616070884), core_hpiMean (+0.156841278573)"
+        ],
+        "lossImprovementVersusBaseline": 0.03436969267793044,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5399675369974479,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5399675369974479,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.21561607088425505,
+          "core_hpiCyclePeriod": -0.09121727651803413,
+          "core_hpiMean": 0.15684127857299002
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.5650884384353836,
+            "delta": 0.21561607088425505
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.5958874490953405,
+            "delta": 0.15684127857299002
+          }
+        ],
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 0,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.12381893410033432,
+        "rankKey": [
+          false,
+          0.21561607088425505,
+          0.0,
+          0.15684127857299002,
+          0.5399675369974479,
+          13,
+          0,
+          0.12381893410033432
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 4,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.217889644220), core_hpiMean (+0.139071454082)"
+        ],
+        "lossImprovementVersusBaseline": 0.04453158204092689,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5298056476344515,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5298056476344515,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.21788964421976564,
+          "core_hpiCyclePeriod": -0.09121727651803369,
+          "core_hpiMean": 0.1390714540817175
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.5673620117708942,
+            "delta": 0.21788964421976564
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.578117624604068,
+            "delta": 0.1390714540817175
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.1498701343493612,
+        "rankKey": [
+          false,
+          0.21788964421976564,
+          0.0,
+          0.1390714540817175,
+          0.5298056476344515,
+          12,
+          1,
+          0.1498701343493612
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 5,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.176116257907), core_hpiMean (+0.090446740729)"
+        ],
+        "lossImprovementVersusBaseline": 0.0530260474972476,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5213111821781308,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5213111821781308,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.17611625790729513,
+          "core_hpiCyclePeriod": -0.0815930217534282,
+          "core_hpiMean": 0.09044674072850845
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.5255886254584237,
+            "delta": 0.17611625790729513
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.529492911250859,
+            "delta": 0.09044674072850845
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.13698577952570487,
+        "rankKey": [
+          false,
+          0.17611625790729513,
+          0.0,
+          0.09044674072850845,
+          0.5213111821781308,
+          12,
+          1,
+          0.13698577952570487
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 6,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.111264036942), core_hpiMean (+0.073906750127)"
+        ],
+        "lossImprovementVersusBaseline": 0.05002738623422032,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.524309843441158,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.524309843441158,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.11126403694220055,
+          "core_hpiCyclePeriod": -0.0833740990570081,
+          "core_hpiMean": 0.07390675012743575
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.4607364044933291,
+            "delta": 0.11126403694220055
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.5129529206497863,
+            "delta": 0.07390675012743575
+          }
+        ],
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 0,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.1376335945600331,
+        "rankKey": [
+          false,
+          0.11126403694220055,
+          0.0,
+          0.07390675012743575,
+          0.524309843441158,
+          13,
+          0,
+          0.1376335945600331
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 7,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.176368642212), core_hpiMean (+0.127567391328)"
+        ],
+        "lossImprovementVersusBaseline": 0.04314055933857808,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5311966703368003,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5311966703368003,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.17636864221201454,
+          "core_hpiCyclePeriod": -0.0815930217534282,
+          "core_hpiMean": 0.12756739132801032
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.5258410097631431,
+            "delta": 0.17636864221201454
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.5666135618503608,
+            "delta": 0.12756739132801032
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.15649078561022867,
+        "rankKey": [
+          false,
+          0.17636864221201454,
+          0.0,
+          0.12756739132801032,
+          0.5311966703368003,
+          12,
+          1,
+          0.15649078561022867
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 8,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.162486222960), core_hpiMean (+0.062970394904)"
+        ],
+        "lossImprovementVersusBaseline": 0.053054782896456376,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.521282446778922,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.521282446778922,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.16248622295962012,
+          "core_hpiCyclePeriod": -0.07972206081492073,
+          "core_hpiMean": 0.06297039490381695
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.5119585905107487,
+            "delta": 0.16248622295962012
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.5020165654261675,
+            "delta": 0.06297039490381695
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.15466114362330236,
+        "rankKey": [
+          false,
+          0.16248622295962012,
+          0.0,
+          0.06297039490381695,
+          0.521282446778922,
+          12,
+          1,
+          0.15466114362330236
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 9,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.106585149943)"
+        ],
+        "lossImprovementVersusBaseline": 0.05297423268817292,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5213629969872055,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5213629969872055,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.10658514994296298,
+          "core_hpiCyclePeriod": -0.08366568675407327,
+          "core_hpiMean": -0.03348841369216482
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.4560575174940915,
+            "delta": 0.10658514994296298
+          }
+        ],
+        "failCountIncrease": -1,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 0,
+          "fail": 13,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.1499580377098024,
+        "rankKey": [
+          false,
+          0.10658514994296298,
+          0.0,
+          0.0,
+          0.5213629969872055,
+          13,
+          0,
+          0.1499580377098024
+        ]
+      },
+      {
+        "iteration": 5,
+        "memberId": 10,
+        "accepted": false,
+        "rejectionReasons": [
+          "HPI metric loss regressed versus baseline: core_hpiStd (+0.184528636178), core_hpiMean (+0.151418104503)"
+        ],
+        "lossImprovementVersusBaseline": 0.04346429949460218,
+        "baselineRankingLoss": 0.5743372296753784,
+        "candidateRankingLoss": 0.5308729301807762,
+        "baselineOverallCompositeLoss": 0.5743372296753784,
+        "candidateOverallCompositeLoss": 0.5308729301807762,
+        "rankingObjective": "family_aware_metric_loss",
+        "improvesTotalLoss": true,
+        "hpiConstrainedEligible": false,
+        "hpiMetricLossDeltas": {
+          "core_hpiStd": 0.18452863617755744,
+          "core_hpiCyclePeriod": -0.08399362131584909,
+          "core_hpiMean": 0.15141810450280146
+        },
+        "hpiMetricLossRegressions": [
+          {
+            "metricId": "core_hpiStd",
+            "baselineMetricLoss": 0.34947236755112854,
+            "candidateMetricLoss": 0.534001003728686,
+            "delta": 0.18452863617755744
+          },
+          {
+            "metricId": "core_hpiMean",
+            "baselineMetricLoss": 0.4390461705223505,
+            "candidateMetricLoss": 0.590464275025152,
+            "delta": 0.15141810450280146
+          }
+        ],
+        "failCountIncrease": -2,
+        "baselineStatusCounts": {
+          "pass": 6,
+          "warn": 0,
+          "fail": 14,
+          "unsupported": 0
+        },
+        "candidateStatusCounts": {
+          "pass": 7,
+          "warn": 1,
+          "fail": 12,
+          "unsupported": 0
+        },
+        "normalizedSourceMovement": 0.14967131973228742,
+        "rankKey": [
+          false,
+          0.18452863617755744,
+          0.0,
+          0.15141810450280146,
+          0.5308729301807762,
+          12,
+          1,
+          0.14967131973228742
+        ]
+      }
+    ]
+  },
+  "warnings": [
+    "Composite validation loss improved, but strategic metrics degraded materially: core_hpiStd",
+    "No snapped local-refinement candidate improved total loss without HPI regression; output version was not created."
+  ],
+  "finalValidationNote": "No output version was promoted because every snapped candidate failed total-loss or HPI constraints."
+}

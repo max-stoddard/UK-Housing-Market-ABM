@@ -1,0 +1,20 @@
+python3 -m scripts.python.calibration.output.output_parameter_esmda \
+  --version v4.26 \
+  --output-version v5.0o1 \
+  --validation-year 2024 \
+  --validation-objective family_aware_metric_loss \
+  --validation-loss-error-std 1.0 \
+  --seeds 1,2,3,4,5,6,7,8,9,10 \
+  --workers 20 \
+  --ensemble-size 32 \
+  --assimilation-steps 4 \
+  --rng-seed 20260518 \
+  --validation-window-start 500 \
+  --validation-window-end 3500 \
+  --output-root tmp/output-calibration \
+  --n-steps 3500 \
+  --evidence-dir input-data-versions/calibration-evidence/output-five-parameter-esmda-v5.0o1 \
+  --delete-csv-after-metrics \
+  --local-refinement-top-n 10 \
+  --local-refinement-radius 1 \
+  --local-refinement-max-candidates 100
