@@ -16,6 +16,7 @@ import os
 import statistics
 import tempfile
 from collections import defaultdict
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -27,10 +28,12 @@ try:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
 
     HAS_MATPLOTLIB = True
 except ImportError:
     plt = None
+    MultipleLocator = None
     HAS_MATPLOTLIB = False
 
 
@@ -192,7 +195,7 @@ def analyze_raw_payload(payload: Mapping[str, Any] | Sequence[Mapping[str, Any]]
         for workers in sorted(throughputs_by_worker)
     ]
 
-    regression = _fit_saturating_exponential(successful_batches)
+    regression = _fit_amdahl_scaling(successful_batches)
     summary = _build_summary(
         raw_batch_count=len(batch_rows),
         successful_batches=successful_batches,
@@ -224,6 +227,33 @@ def analyze_comparison(default_payload: Mapping[str, Any], comparison_payload: M
         },
         "headline_metrics": _comparison_headlines(default_analysis, comparison_analysis),
     }
+
+
+def merge_extra_raw_payloads(
+    primary_payload: Mapping[str, Any],
+    extra_payloads: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return a Default-only raw payload with compatible extra batch rows appended."""
+
+    if not isinstance(primary_payload, Mapping):
+        raise TypeError("Primary raw artifact must be a mapping-style JSON payload.")
+    for extra_payload in extra_payloads:
+        if not isinstance(extra_payload, Mapping):
+            raise TypeError("Extra raw artifacts must be mapping-style JSON payloads.")
+
+    _validate_extra_raw_payload_compatibility(primary_payload, extra_payloads)
+
+    merged = deepcopy(dict(primary_payload))
+    merged_batches: list[Mapping[str, Any]] = [deepcopy(row) for row in _extract_batch_rows(primary_payload)]
+    for extra_payload in extra_payloads:
+        merged_batches.extend(deepcopy(row) for row in _extract_batch_rows(extra_payload))
+
+    for key in SEPARATE_BATCH_KEYS:
+        merged.pop(key, None)
+    for key in SEPARATE_CHILD_KEYS:
+        merged.pop(key, None)
+    merged["batches"] = merged_batches
+    return merged
 
 
 def write_report_outputs(analysis: Mapping[str, Any], output_root: Path) -> dict[str, Path]:
@@ -325,6 +355,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Optional second raw scaling artifact path for comparison mode.",
     )
     parser.add_argument(
+        "--extra-raw-json",
+        action="append",
+        default=[],
+        type=Path,
+        help="Compatible Default raw scaling artifact to merge into single-run analysis; repeatable.",
+    )
+    parser.add_argument(
         "--apc1-command",
         help="Optional APC1 command text for the comparison Markdown summary.",
     )
@@ -338,6 +375,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     payload = read_raw_results(args.raw_json)
     if args.comparison_raw_json is not None:
+        if args.extra_raw_json:
+            raise ValueError("--extra-raw-json is only supported for single-run reports, not comparison mode.")
         comparison_payload = read_raw_results(args.comparison_raw_json)
         if not isinstance(payload, Mapping) or not isinstance(comparison_payload, Mapping):
             raise TypeError("Comparison mode requires mapping-style raw artifacts.")
@@ -350,6 +389,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         comparison = analyze_comparison(default_payload, apc1_payload)
         write_comparison_outputs(comparison, args.output_root, apc1_command=args.apc1_command)
         return 0
+
+    if args.extra_raw_json:
+        if not isinstance(payload, Mapping):
+            raise TypeError("--extra-raw-json requires a mapping-style primary raw JSON artifact.")
+        extra_payloads = [read_raw_results(path) for path in args.extra_raw_json]
+        if not all(isinstance(extra_payload, Mapping) for extra_payload in extra_payloads):
+            raise TypeError("--extra-raw-json requires mapping-style extra raw JSON artifacts.")
+        payload = merge_extra_raw_payloads(payload, extra_payloads)
 
     analysis = analyze_raw_payload(payload)
     write_report_outputs(analysis, args.output_root)
@@ -622,7 +669,7 @@ def _oversubscription_comparisons(worker_summaries: Sequence[Mapping[str, Any]])
     return comparisons
 
 
-def _fit_saturating_exponential(successful_batches: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _fit_amdahl_scaling(successful_batches: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     points = [
         (float(row["workers"]), float(row["throughput_per_hour"]))
         for row in successful_batches
@@ -630,16 +677,22 @@ def _fit_saturating_exponential(successful_batches: Sequence[Mapping[str, Any]])
     ]
     included_workers = sorted({int(x_value) for x_value, _ in points})
     measured_workers = sorted({int(row["workers"]) for row in successful_batches})
+    one_worker_values = [
+        float(row["throughput_per_hour"])
+        for row in successful_batches
+        if int(row["workers"]) == 1
+    ]
+    baseline_throughput = _mean(one_worker_values)
 
     invalid_result = {
         "valid": False,
-        "model_name": "saturating_exponential",
+        "model_name": "amdahl",
         "max_workers_included": 20,
         "n": len(points),
         "included_workers": included_workers,
         "included_successful_batch_rows": len(points),
-        "asymptote": None,
-        "k": None,
+        "baseline_throughput_per_hour": baseline_throughput,
+        "parallel_fraction": None,
         "r_squared": None,
         "fitted_values": {},
     }
@@ -648,6 +701,11 @@ def _fit_saturating_exponential(successful_batches: Sequence[Mapping[str, Any]])
             **invalid_result,
             "reason": "Need at least two successful repeat rows with workers <= 20.",
         }
+    if baseline_throughput is None or baseline_throughput <= 0.0:
+        return {
+            **invalid_result,
+            "reason": "Need a positive 1-worker baseline throughput for Amdahl regression.",
+        }
 
     x_values = [point[0] for point in points]
     y_values = [point[1] for point in points]
@@ -655,91 +713,56 @@ def _fit_saturating_exponential(successful_batches: Sequence[Mapping[str, Any]])
     if len(set(x_values)) < 2:
         return {
             **invalid_result,
-            "reason": "Need at least two distinct worker counts for saturating exponential regression.",
+            "reason": "Need at least two distinct worker counts for Amdahl regression.",
         }
 
-    def fit_for_k(k_value: float) -> tuple[float, float] | None:
-        if not math.isfinite(k_value) or k_value <= 0.0:
-            return None
-        g_values = [1.0 - math.exp(-k_value * x_value) for x_value in x_values]
-        denominator = sum(g_value * g_value for g_value in g_values)
-        if not math.isfinite(denominator) or denominator <= 0.0:
-            return None
-        asymptote_value = sum(y_value * g_value for y_value, g_value in zip(y_values, g_values)) / denominator
-        if not math.isfinite(asymptote_value) or asymptote_value <= 0.0:
-            return None
-        predictions = [asymptote_value * g_value for g_value in g_values]
-        sse = sum((y_value - prediction) ** 2 for y_value, prediction in zip(y_values, predictions))
-        if not math.isfinite(sse):
-            return None
-        return sse, asymptote_value
+    def sse_for_parallel_fraction(parallel_fraction: float) -> float:
+        predictions = [_amdahl_prediction(baseline_throughput, parallel_fraction, x_value) for x_value in x_values]
+        return sum((y_value - prediction) ** 2 for y_value, prediction in zip(y_values, predictions))
 
-    min_k = 1e-4
-    max_k = 5.0
-    grid_count = 256
-    log_min = math.log(min_k)
-    log_span = math.log(max_k) - log_min
-    grid = [math.exp(log_min + log_span * index / (grid_count - 1)) for index in range(grid_count)]
-    candidates = [
-        (sse, k_value, asymptote)
-        for k_value in grid
-        for fit in [fit_for_k(k_value)]
-        if fit is not None
-        for sse, asymptote in [fit]
-    ]
-    if not candidates:
-        return {**invalid_result, "reason": "Could not find a finite positive saturating exponential fit."}
-
-    _, best_grid_k, _ = min(candidates, key=lambda candidate: candidate[0])
-    best_index = grid.index(best_grid_k)
+    grid_count = 1001
+    grid = [index / (grid_count - 1) for index in range(grid_count)]
+    best_parallel_fraction = min(grid, key=sse_for_parallel_fraction)
+    best_index = grid.index(best_parallel_fraction)
     left = grid[max(0, best_index - 1)]
     right = grid[min(len(grid) - 1, best_index + 1)]
-    if left == right:
-        left = max(min_k, best_grid_k / 2.0)
-        right = min(max_k, best_grid_k * 2.0)
-
-    for _ in range(60):
+    for _ in range(80):
         first = left + (right - left) / 3.0
         second = right - (right - left) / 3.0
-        first_fit = fit_for_k(first)
-        second_fit = fit_for_k(second)
-        first_sse = math.inf if first_fit is None else first_fit[0]
-        second_sse = math.inf if second_fit is None else second_fit[0]
-        if first_sse <= second_sse:
+        if sse_for_parallel_fraction(first) <= sse_for_parallel_fraction(second):
             right = second
         else:
             left = first
 
-    refined_k = (left + right) / 2.0
-    refined_fit = fit_for_k(refined_k)
-    if refined_fit is None:
-        return {**invalid_result, "reason": "Saturating exponential fit produced non-finite or non-positive parameters."}
-    ss_res, asymptote = refined_fit
-    if not math.isfinite(refined_k) or refined_k <= 0.0:
-        return {**invalid_result, "reason": "Saturating exponential fit produced non-finite or non-positive parameters."}
+    parallel_fraction = (left + right) / 2.0
+    ss_res = sse_for_parallel_fraction(parallel_fraction)
 
     ss_tot = sum((y_value - y_mean) ** 2 for y_value in y_values)
     r_squared = None if ss_tot <= 0.0 else 1.0 - ss_res / ss_tot
 
     return {
         "valid": True,
-        "model_name": "saturating_exponential",
+        "model_name": "amdahl",
         "max_workers_included": 20,
         "n": len(points),
         "included_workers": included_workers,
         "included_successful_batch_rows": len(points),
-        "asymptote": asymptote,
-        "k": refined_k,
+        "baseline_throughput_per_hour": baseline_throughput,
+        "parallel_fraction": parallel_fraction,
         "r_squared": r_squared,
         "fitted_values": {
             str(workers): {
                 "workers": workers,
-                "fitted_throughput_per_hour": asymptote * (1.0 - math.exp(-refined_k * workers)),
+                "fitted_throughput_per_hour": _amdahl_prediction(baseline_throughput, parallel_fraction, workers),
                 "extrapolation": workers > 20,
             }
             for workers in measured_workers
         },
     }
+
+
+def _amdahl_prediction(baseline_throughput: float, parallel_fraction: float, workers: float) -> float:
+    return baseline_throughput / (1.0 - parallel_fraction + parallel_fraction / workers)
 
 
 def _analysis_label(payload: Mapping[str, Any], default: str) -> str:
@@ -789,6 +812,57 @@ def _validate_comparison_policy_roles(default_payload: Mapping[str, Any], compar
         raise ValueError("Invalid default policy role: default payload must be Default and must not use APC1.")
     if not _is_apc1_policy(comparison_payload):
         raise ValueError("Invalid comparison policy role: comparison payload must be APC1.")
+
+
+def _validate_extra_raw_payload_compatibility(
+    primary_payload: Mapping[str, Any],
+    extra_payloads: Sequence[Mapping[str, Any]],
+) -> None:
+    if not _is_default_policy(primary_payload):
+        raise ValueError("Cannot merge extra raw JSON: primary payload must be Default.")
+    primary_metadata = _extra_raw_merge_metadata(primary_payload)
+    primary_missing = [key for key, value in primary_metadata.items() if value is None]
+    if primary_missing:
+        raise ValueError(
+            "Cannot merge extra raw JSON with missing primary workload metadata: " + ", ".join(primary_missing)
+        )
+
+    for index, extra_payload in enumerate(extra_payloads, start=1):
+        if not _is_default_policy(extra_payload):
+            raise ValueError(f"Cannot merge extra raw JSON #{index}: extra payload must be Default.")
+        extra_metadata = _extra_raw_merge_metadata(extra_payload)
+        extra_missing = [key for key, value in extra_metadata.items() if value is None]
+        if extra_missing:
+            raise ValueError(
+                f"Cannot merge extra raw JSON #{index} with missing workload metadata: "
+                + ", ".join(extra_missing)
+            )
+        mismatched_fields = [
+            key
+            for key in primary_metadata
+            if primary_metadata.get(key) != extra_metadata.get(key)
+        ]
+        if mismatched_fields:
+            raise ValueError(
+                f"Cannot merge extra raw JSON #{index} with mismatched workload metadata: "
+                + ", ".join(mismatched_fields)
+            )
+
+
+def _extra_raw_merge_metadata(payload: Mapping[str, Any]) -> dict[str, Any]:
+    workload = payload.get("workload", {})
+    workload_mapping = workload if isinstance(workload, Mapping) else {}
+    identity_metadata = _workload_identity_metadata(payload)
+    return {
+        "snapshot": identity_metadata["snapshot"],
+        "base_mode": identity_metadata["base_mode"],
+        "target_population": identity_metadata["target_population"],
+        "n_steps": identity_metadata["n_steps"],
+        "seed_count": identity_metadata["seed_count"],
+        "phase": _get_any(workload_mapping, ("phase",)),
+        "java_options": _java_options(payload),
+        "policy_label": _policy_label(payload) or "default",
+    }
 
 
 def _is_default_policy(payload: Mapping[str, Any]) -> bool:
@@ -945,11 +1019,11 @@ def _write_comparison_throughput_plot(path: Path, comparison: Mapping[str, Any])
             color=color,
             label=f"{section['label']} measured mean",
         )
-        _plot_saturating_fit(
+        _plot_amdahl_fit(
             axis,
             regression=section["analysis"]["regression"],
             color=color,
-            label=f"{section['label']} saturating fit <=20 workers",
+            label=f"{section['label']} Amdahl fit <=20 workers",
         )
 
     _add_core_marker(axis, all_y_values)
@@ -965,23 +1039,23 @@ def _write_comparison_throughput_plot(path: Path, comparison: Mapping[str, Any])
     plt.close(fig)
 
 
-def _plot_saturating_fit(
+def _plot_amdahl_fit(
     axis: Any,
     *,
     regression: Mapping[str, Any],
     color: str,
     label: str,
+    x_max: int = 20,
 ) -> None:
     if not regression.get("valid"):
         return
     x_min = 1
-    x_max = 20
-    asymptote = float(regression["asymptote"])
-    k_value = float(regression["k"])
+    baseline_throughput = float(regression["baseline_throughput_per_hour"])
+    parallel_fraction = float(regression["parallel_fraction"])
     line_x = [x_min + (x_max - x_min) * index / 80.0 for index in range(81)]
     axis.plot(
         line_x,
-        [asymptote * (1.0 - math.exp(-k_value * value)) for value in line_x],
+        [_amdahl_prediction(baseline_throughput, parallel_fraction, value) for value in line_x],
         linestyle=":",
         color=color,
         alpha=0.8,
@@ -1106,7 +1180,7 @@ def _write_throughput_plot(path: Path, rows: Sequence[Mapping[str, Any]], regres
     one_worker = next((row for row in rows if int(row["workers"]) == 1), None)
     if one_worker is not None and one_worker["mean_throughput_per_hour"] is not None and x_values:
         baseline = float(one_worker["mean_throughput_per_hour"])
-        ideal_x = [min(x_values), max(x_values)]
+        ideal_x = [1, min(20, max(x_values))]
         axis.plot(
             ideal_x,
             [baseline * value for value in ideal_x],
@@ -1119,29 +1193,34 @@ def _write_throughput_plot(path: Path, rows: Sequence[Mapping[str, Any]], regres
     if regression.get("valid") and x_values:
         reg_x = [value for value in x_values if value <= 20]
         if reg_x:
-            x_min = min(reg_x)
-            x_max = max(reg_x)
-            asymptote = float(regression["asymptote"])
-            k_value = float(regression["k"])
-            line_x = [
-                x_min + (x_max - x_min) * index / 80.0
-                for index in range(81)
-            ]
-            axis.plot(
-                line_x,
-                [asymptote * (1.0 - math.exp(-k_value * value)) for value in line_x],
-                linestyle=":",
+            x_max = min(32, max(x_values)) if max(x_values) > 20 else max(reg_x)
+            _plot_amdahl_fit(
+                axis,
+                regression=regression,
                 color="#B45309",
-                label="Saturating fit <=20 workers",
+                label="Amdahl fit (≤ 20 workers)",
+                x_max=x_max,
             )
 
-    _add_core_marker(axis, y_values)
+    _add_core_marker(axis, y_values, legend_label="Hardware limit: 20 logical processors")
+    _configure_throughput_grid(axis)
     axis.set_xlabel("Parallel workers")
     axis.set_ylabel("Completed model runs per hour")
     axis.legend()
     fig.tight_layout()
     fig.savefig(path, dpi=300)
     plt.close(fig)
+
+
+def _configure_throughput_grid(axis: Any) -> None:
+    axis.set_xlim(left=0)
+    axis.xaxis.set_major_locator(MultipleLocator(5))
+    axis.xaxis.set_minor_locator(MultipleLocator(1))
+    axis.yaxis.set_major_locator(MultipleLocator(2000))
+    axis.yaxis.set_minor_locator(MultipleLocator(400))
+    axis.set_axisbelow(True)
+    axis.grid(True, which="major", color="#D1D5DB", linewidth=0.7, alpha=0.7)
+    axis.grid(True, which="minor", color="#E5E7EB", linewidth=0.4, alpha=0.45)
 
 
 def _write_batch_time_plot(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
@@ -1160,8 +1239,8 @@ def _write_batch_time_plot(path: Path, rows: Sequence[Mapping[str, Any]]) -> Non
     plt.close(fig)
 
 
-def _add_core_marker(axis: Any, y_values: Sequence[float]) -> None:
-    axis.axvline(20, linestyle="--", color="#991B1B", linewidth=1.0, label="20 cores")
+def _add_core_marker(axis: Any, y_values: Sequence[float], *, legend_label: str = "20 cores") -> None:
+    axis.axvline(20, linestyle="--", color="#991B1B", linewidth=1.0, label=legend_label)
     if y_values:
         y_min = min(y_values)
         y_max = max(y_values)

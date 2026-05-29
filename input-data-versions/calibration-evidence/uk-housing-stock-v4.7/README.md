@@ -54,3 +54,5 @@ This bundle retains the official 2024 artifacts used to calibrate `UK_HOUSEHOLDS
   - Source observations, selected totals, and rejected comparators
 - `UkHousingStockTotals2024CalibrationSummary.json`
   - Machine-readable summary written by `scripts/python/calibration/official/uk_housing_stock_totals_2024.py`
+- `uk-housing-stock-v4.7-sources.bib`
+  - Reviewed BibTeX references for the official source artifacts used by this evidence bundle

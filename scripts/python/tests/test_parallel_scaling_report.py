@@ -8,7 +8,7 @@ Tests for parallel scaling report analysis helpers.
 
 from __future__ import annotations
 
-import math
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -59,6 +59,7 @@ def _raw_payload(
             "workerCounts": [1, 20],
             "repeats": 3,
             "orderingSeed": 20260527,
+            "phase": "full",
         },
         "batches": batches,
     }
@@ -194,7 +195,7 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertEqual([row["workers"] for row in analysis["worker_summaries"]], [1])
         self.assertEqual(len(analysis["successful_batches"]), 1)
 
-    def test_saturating_regression_uses_only_workers_up_to_20(self) -> None:
+    def test_amdahl_regression_uses_only_workers_up_to_20(self) -> None:
         core_batches = [
             _batch(batch_id="w1-r1", workers=1, wall_clock_seconds=3600.0, completed_runs=12),
             _batch(batch_id="w8-r1", workers=8, wall_clock_seconds=3600.0, completed_runs=70),
@@ -210,24 +211,99 @@ class TestParallelScalingReport(unittest.TestCase):
         regression = analysis["regression"]
         core_regression = core_analysis["regression"]
         self.assertTrue(regression["valid"])
-        self.assertEqual(regression["model_name"], "saturating_exponential")
+        self.assertEqual(regression["model_name"], "amdahl")
         self.assertEqual(regression["included_workers"], [1, 8, 20])
         self.assertEqual(regression["n"], 3)
-        self.assertGreater(regression["asymptote"], 100.0)
-        self.assertGreater(regression["k"], 0.0)
+        self.assertEqual(regression["baseline_throughput_per_hour"], 12.0)
+        self.assertGreaterEqual(regression["parallel_fraction"], 0.0)
+        self.assertLessEqual(regression["parallel_fraction"], 1.0)
         self.assertEqual(set(regression["fitted_values"]), {"1", "8", "20", "24", "32"})
         for workers in (1, 8, 20, 24, 32):
             fitted_value = regression["fitted_values"][str(workers)]
             self.assertEqual(fitted_value["workers"], workers)
             self.assertEqual(fitted_value["extrapolation"], workers > 20)
-            expected = regression["asymptote"] * (1.0 - math.exp(-regression["k"] * workers))
+            parallel_fraction = regression["parallel_fraction"]
+            expected = regression["baseline_throughput_per_hour"] / (
+                1.0 - parallel_fraction + parallel_fraction / workers
+            )
             self.assertAlmostEqual(fitted_value["fitted_throughput_per_hour"], expected)
 
-        self.assertAlmostEqual(regression["asymptote"], core_regression["asymptote"])
-        self.assertAlmostEqual(regression["k"], core_regression["k"])
+        self.assertAlmostEqual(regression["baseline_throughput_per_hour"], core_regression["baseline_throughput_per_hour"])
+        self.assertAlmostEqual(regression["parallel_fraction"], core_regression["parallel_fraction"])
         self.assertAlmostEqual(regression["r_squared"], core_regression["r_squared"])
 
-    def test_saturating_regression_can_report_negative_r_squared(self) -> None:
+    def test_cached_default_regression_keeps_twenty_worker_training_cutoff(self) -> None:
+        repo_root = Path(__file__).resolve().parents[3]
+        raw_json = (
+            repo_root
+            / "tmp"
+            / "_report"
+            / "parallel-scaling"
+            / "parallel-scaling-20260527T181156Z-765a3a1a"
+            / "parallel_scaling_raw.json"
+        )
+        if not raw_json.exists():
+            self.skipTest(f"cached parallel scaling raw JSON is not available: {raw_json}")
+
+        analysis = parallel_scaling_report.analyze_raw_payload(parallel_scaling_report.read_raw_results(raw_json))
+
+        self.assertEqual(analysis["regression"]["model_name"], "amdahl")
+        self.assertEqual(analysis["regression"]["included_workers"], [1, 2, 4, 8, 12, 16, 20])
+
+    def test_extra_raw_json_merge_adds_compatible_default_batches(self) -> None:
+        primary = _raw_payload(
+            "Default",
+            [
+                _batch(batch_id="base-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+                _batch(batch_id="base-w8", workers=8, wall_clock_seconds=3600.0, completed_runs=70),
+                _batch(batch_id="base-w16", workers=16, wall_clock_seconds=3600.0, completed_runs=90),
+                _batch(batch_id="base-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=100),
+            ],
+        )
+        del primary["workload"]["policyLabel"]
+        del primary["workload"]["javaOptions"]
+        extra = _raw_payload(
+            "default",
+            [
+                _batch(batch_id="extra-w8", workers=8, wall_clock_seconds=3600.0, completed_runs=80),
+                _batch(batch_id="extra-w16", workers=16, wall_clock_seconds=3600.0, completed_runs=95),
+            ],
+        )
+        extra["workload"]["workerCounts"] = [8, 16]
+        extra["workload"]["repeats"] = 3
+        extra["workload"]["orderingSeed"] = 12345
+
+        merged = parallel_scaling_report.merge_extra_raw_payloads(primary, [extra])
+        analysis = parallel_scaling_report.analyze_raw_payload(merged)
+
+        self.assertEqual(analysis["summary"]["raw_batch_count"], 6)
+        self.assertEqual(self._row_for(analysis, 8)["successful_repeats"], 2)
+        self.assertEqual(self._row_for(analysis, 16)["successful_repeats"], 2)
+        self.assertEqual(analysis["regression"]["included_workers"], [1, 8, 16, 20])
+
+    def test_extra_raw_json_merge_rejects_non_default_or_mismatched_payloads(self) -> None:
+        primary = _raw_payload(
+            "Default",
+            [_batch(batch_id="base-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10)],
+        )
+        custom_extra = _raw_payload(
+            "custom",
+            [_batch(batch_id="custom-w8", workers=8, wall_clock_seconds=3600.0, completed_runs=80)],
+        )
+        mismatched_extra = _raw_payload(
+            "default",
+            [_batch(batch_id="extra-w8", workers=8, wall_clock_seconds=3600.0, completed_runs=80)],
+        )
+        mismatched_extra["workload"]["nSteps"] = 3000
+
+        with self.assertRaisesRegex(ValueError, "Default"):
+            parallel_scaling_report.merge_extra_raw_payloads(primary, [custom_extra])
+        with self.assertRaisesRegex(ValueError, "n_steps"):
+            parallel_scaling_report.merge_extra_raw_payloads(primary, [mismatched_extra])
+        with self.assertRaisesRegex(TypeError, "mapping-style"):
+            parallel_scaling_report.merge_extra_raw_payloads(primary, [[custom_extra]])
+
+    def test_amdahl_regression_can_report_negative_r_squared(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(
             {
                 "batches": [
@@ -243,7 +319,7 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertIsNotNone(regression["r_squared"])
         self.assertLess(regression["r_squared"], 0.0)
 
-    def test_saturating_regression_r_squared_is_none_for_zero_variance_inputs(self) -> None:
+    def test_amdahl_regression_r_squared_is_none_for_zero_variance_inputs(self) -> None:
         analysis = parallel_scaling_report.analyze_raw_payload(
             {
                 "batches": [
@@ -415,9 +491,9 @@ class TestParallelScalingReport(unittest.TestCase):
 
         axis = FakeAxis()
 
-        parallel_scaling_report._plot_saturating_fit(
+        parallel_scaling_report._plot_amdahl_fit(
             axis,
-            regression={"valid": True, "asymptote": 100.0, "k": 0.2},
+            regression={"valid": True, "baseline_throughput_per_hour": 10.0, "parallel_fraction": 0.8},
             color="#000000",
             label="fit",
         )
@@ -425,6 +501,187 @@ class TestParallelScalingReport(unittest.TestCase):
         self.assertIsNotNone(axis.x_values)
         self.assertAlmostEqual(axis.x_values[0], 1.0)
         self.assertAlmostEqual(axis.x_values[-1], 20.0)
+
+    def test_single_run_throughput_plot_limits_ideal_line_extends_fit_and_sets_grid(self) -> None:
+        class FakeLocator:
+            def __init__(self, base: float) -> None:
+                self.base = base
+
+        class FakeAxisScale:
+            def __init__(self) -> None:
+                self.major_locator: FakeLocator | None = None
+                self.minor_locator: FakeLocator | None = None
+
+            def set_major_locator(self, locator: FakeLocator) -> None:
+                self.major_locator = locator
+
+            def set_minor_locator(self, locator: FakeLocator) -> None:
+                self.minor_locator = locator
+
+        class FakeFigure:
+            def tight_layout(self) -> None:
+                pass
+
+            def savefig(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+        class FakeAxis:
+            def __init__(self) -> None:
+                self.plot_calls: list[dict[str, object]] = []
+                self.axvline_calls: list[dict[str, object]] = []
+                self.text_calls: list[dict[str, object]] = []
+                self.xaxis = FakeAxisScale()
+                self.yaxis = FakeAxisScale()
+                self.xlim_kwargs: dict[str, object] | None = None
+                self.grid_calls: list[dict[str, object]] = []
+                self.axisbelow: bool | None = None
+
+            def errorbar(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+            def plot(self, x_values: list[float], y_values: list[float], **kwargs: object) -> None:
+                self.plot_calls.append({"x_values": x_values, "y_values": y_values, **kwargs})
+
+            def axvline(self, *args: object, **kwargs: object) -> None:
+                self.axvline_calls.append({"args": args, **kwargs})
+
+            def text(self, *args: object, **kwargs: object) -> None:
+                self.text_calls.append({"args": args, **kwargs})
+
+            def set_xlabel(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+            def set_ylabel(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+            def set_xlim(self, **kwargs: object) -> None:
+                self.xlim_kwargs = kwargs
+
+            def grid(self, *_args: object, **kwargs: object) -> None:
+                self.grid_calls.append(kwargs)
+
+            def set_axisbelow(self, value: bool) -> None:
+                self.axisbelow = value
+
+            def legend(self) -> None:
+                pass
+
+        class FakePlot:
+            def __init__(self, axis: FakeAxis) -> None:
+                self.axis = axis
+
+            def subplots(self, *_args: object, **_kwargs: object) -> tuple[FakeFigure, FakeAxis]:
+                return FakeFigure(), self.axis
+
+            def close(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+        axis = FakeAxis()
+        original_plt = parallel_scaling_report.plt
+        had_locator = hasattr(parallel_scaling_report, "MultipleLocator")
+        original_locator = getattr(parallel_scaling_report, "MultipleLocator", None)
+        parallel_scaling_report.plt = FakePlot(axis)
+        parallel_scaling_report.MultipleLocator = FakeLocator
+        try:
+            parallel_scaling_report._write_throughput_plot(
+                Path("unused.png"),
+                [
+                    {
+                        "workers": 1,
+                        "mean_throughput_per_hour": 10.0,
+                        "throughput_ci95_low": None,
+                        "throughput_ci95_high": None,
+                    },
+                    {
+                        "workers": 20,
+                        "mean_throughput_per_hour": 50.0,
+                        "throughput_ci95_low": None,
+                        "throughput_ci95_high": None,
+                    },
+                    {
+                        "workers": 24,
+                        "mean_throughput_per_hour": 48.0,
+                        "throughput_ci95_low": None,
+                        "throughput_ci95_high": None,
+                    },
+                    {
+                        "workers": 32,
+                        "mean_throughput_per_hour": 45.0,
+                        "throughput_ci95_low": None,
+                        "throughput_ci95_high": None,
+                    },
+                ],
+                {"valid": True, "baseline_throughput_per_hour": 10.0, "parallel_fraction": 0.8},
+            )
+        finally:
+            parallel_scaling_report.plt = original_plt
+            if had_locator:
+                parallel_scaling_report.MultipleLocator = original_locator
+            else:
+                delattr(parallel_scaling_report, "MultipleLocator")
+
+        ideal_line = next(call for call in axis.plot_calls if call["label"] == "Ideal linear")
+        fit_line = next(call for call in axis.plot_calls if str(call["label"]).startswith("Amdahl fit"))
+        self.assertEqual(ideal_line["x_values"], [1, 20])
+        self.assertAlmostEqual(fit_line["x_values"][0], 1.0)
+        self.assertAlmostEqual(fit_line["x_values"][-1], 32.0)
+        self.assertEqual(fit_line["label"], "Amdahl fit (≤ 20 workers)")
+        self.assertEqual(axis.xlim_kwargs, {"left": 0})
+        self.assertEqual(axis.axvline_calls[0]["label"], "Hardware limit: 20 logical processors")
+        self.assertEqual(axis.text_calls[0]["args"][2], "20 cores")
+        self.assertEqual(axis.xaxis.major_locator.base if axis.xaxis.major_locator else None, 5)
+        self.assertEqual(axis.xaxis.minor_locator.base if axis.xaxis.minor_locator else None, 1)
+        self.assertEqual(axis.yaxis.major_locator.base if axis.yaxis.major_locator else None, 2000)
+        self.assertEqual(axis.yaxis.minor_locator.base if axis.yaxis.minor_locator else None, 400)
+        self.assertEqual(axis.axisbelow, True)
+        self.assertTrue(any(call.get("which") == "major" for call in axis.grid_calls))
+        self.assertTrue(any(call.get("which") == "minor" for call in axis.grid_calls))
+
+    def test_main_merges_extra_raw_json_for_single_run_reports(self) -> None:
+        if not parallel_scaling_report.HAS_MATPLOTLIB:
+            self.skipTest("matplotlib is unavailable")
+
+        primary = _raw_payload(
+            "Default",
+            [
+                _batch(batch_id="base-w1", workers=1, wall_clock_seconds=3600.0, completed_runs=10),
+                _batch(batch_id="base-w8", workers=8, wall_clock_seconds=3600.0, completed_runs=70),
+                _batch(batch_id="base-w16", workers=16, wall_clock_seconds=3600.0, completed_runs=90),
+                _batch(batch_id="base-w20", workers=20, wall_clock_seconds=3600.0, completed_runs=100),
+            ],
+        )
+        extra = _raw_payload(
+            "default",
+            [
+                _batch(batch_id="extra-w8", workers=8, wall_clock_seconds=3600.0, completed_runs=80),
+                _batch(batch_id="extra-w16", workers=16, wall_clock_seconds=3600.0, completed_runs=95),
+            ],
+        )
+        extra["workload"]["workerCounts"] = [8, 16]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            primary_path = root / "primary.json"
+            extra_path = root / "extra.json"
+            output_root = root / "report"
+            primary_path.write_text(json.dumps(primary), encoding="utf-8")
+            extra_path.write_text(json.dumps(extra), encoding="utf-8")
+
+            exit_code = parallel_scaling_report.main(
+                [
+                    "--raw-json",
+                    str(primary_path),
+                    "--extra-raw-json",
+                    str(extra_path),
+                    "--output-root",
+                    str(output_root),
+                ]
+            )
+
+            summary = json.loads((output_root / "parallel_scaling_summary.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(summary["raw_batch_count"], 6)
 
     def test_missing_markdown_metric_values_render_as_na(self) -> None:
         self.assertEqual(parallel_scaling_report._format_multiplier(None), "n/a")
