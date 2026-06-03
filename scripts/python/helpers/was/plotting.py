@@ -9,7 +9,29 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import TwoSlopeNorm
-from matplotlib.ticker import FuncFormatter, LogLocator, NullFormatter
+from matplotlib.ticker import FixedLocator, FuncFormatter, LogLocator, NullFormatter
+
+
+COMPACT_CURRENCY_LOG_TICK_CANDIDATES = (
+    500.0,
+    1_000.0,
+    5_000.0,
+    10_000.0,
+    50_000.0,
+    100_000.0,
+    500_000.0,
+    1_000_000.0,
+    5_000_000.0,
+    10_000_000.0,
+)
+
+MAJOR_CURRENCY_LOG_TICK_CANDIDATES = (
+    1_000.0,
+    10_000.0,
+    100_000.0,
+    1_000_000.0,
+    10_000_000.0,
+)
 
 
 def set_log_x_axis(ax: plt.Axes | None = None) -> None:
@@ -104,6 +126,76 @@ def format_currency_axis(
     axis_obj.offsetText.set_visible(False)
 
 
+def format_compact_currency_value(value: float, symbol: str = "£") -> str:
+    """Format currency ticks compactly for log-scale wealth axes."""
+    sign = "-" if value < 0.0 else ""
+    magnitude = abs(value)
+    if magnitude >= 1_000_000.0:
+        scaled_value = magnitude / 1_000_000.0
+        suffix = "m"
+    elif magnitude >= 1_000.0:
+        scaled_value = magnitude / 1_000.0
+        suffix = "k"
+    else:
+        scaled_value = magnitude
+        suffix = ""
+    if float(scaled_value).is_integer():
+        formatted_value = f"{int(scaled_value)}"
+    else:
+        formatted_value = f"{scaled_value:g}"
+    return f"{sign}{symbol}{formatted_value}{suffix}"
+
+
+def compact_currency_log_ticks(
+    min_value: float,
+    max_value: float,
+    include_half_decades: bool = True,
+) -> list[float]:
+    """Return readable currency ticks inside a positive log-scale range."""
+    lower = min(min_value, max_value)
+    upper = max(min_value, max_value)
+    candidates = (
+        COMPACT_CURRENCY_LOG_TICK_CANDIDATES
+        if include_half_decades
+        else MAJOR_CURRENCY_LOG_TICK_CANDIDATES
+    )
+    return [
+        tick
+        for tick in candidates
+        if lower <= tick <= upper
+    ]
+
+
+def set_compact_currency_log_ticks(
+    ax: plt.Axes,
+    axis: str = "x",
+    symbol: str = "£",
+    include_half_decades: bool = True,
+) -> None:
+    """Apply compact fixed currency ticks to a log-scaled axis."""
+    if axis == "x":
+        axis_obj = ax.xaxis
+        lower, upper = ax.get_xlim()
+    elif axis == "y":
+        axis_obj = ax.yaxis
+        lower, upper = ax.get_ylim()
+    else:
+        raise ValueError("axis must be 'x' or 'y'.")
+    ticks = compact_currency_log_ticks(
+        lower,
+        upper,
+        include_half_decades=include_half_decades,
+    )
+    if ticks:
+        axis_obj.set_major_locator(FixedLocator(ticks))
+    formatter = FuncFormatter(
+        lambda value, _: format_compact_currency_value(value, symbol)
+    )
+    axis_obj.set_major_formatter(formatter)
+    axis_obj.set_minor_formatter(NullFormatter())
+    axis_obj.offsetText.set_visible(False)
+
+
 def reduce_log_ticks(
     ax: plt.Axes,
     axis: str = "x",
@@ -133,9 +225,32 @@ def format_age_axis(ax: plt.Axes, axis: str = "x") -> None:
         raise ValueError("axis must be 'x' or 'y'.")
 
 
-def apply_axis_grid(ax: plt.Axes, axis: str = "both", alpha: float = 0.3) -> None:
+def apply_axis_grid(
+    ax: plt.Axes,
+    axis: str = "both",
+    alpha: float = 0.3,
+    which: str = "major",
+    major_alpha: float | None = None,
+    minor_alpha: float | None = None,
+) -> None:
     """Add faint gridlines to the requested axis."""
-    ax.grid(True, axis=axis, alpha=alpha)
+    if which not in {"major", "minor", "both"}:
+        raise ValueError("which must be 'major', 'minor', or 'both'.")
+    if which in {"major", "both"}:
+        ax.grid(
+            True,
+            axis=axis,
+            which="major",
+            alpha=alpha if major_alpha is None else major_alpha,
+        )
+    if which in {"minor", "both"}:
+        ax.grid(
+            True,
+            axis=axis,
+            which="minor",
+            alpha=alpha if minor_alpha is None else minor_alpha,
+            linewidth=0.6,
+        )
 
 
 def plot_joint_difference(
