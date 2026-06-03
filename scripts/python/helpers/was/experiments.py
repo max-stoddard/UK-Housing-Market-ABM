@@ -35,6 +35,16 @@ def get_project_root(script_file: str) -> str:
     )
 
 
+def get_input_version_file(script_file: str, version: str, filename: str) -> str:
+    """Return a checked-in input-data-version file path from an experiment script."""
+    return os.path.join(
+        get_project_root(script_file),
+        "input-data-versions",
+        version,
+        filename,
+    )
+
+
 def get_dataset_label(dataset: str) -> tuple[str, str]:
     """Return (label, period) for a WAS dataset identifier."""
     try:

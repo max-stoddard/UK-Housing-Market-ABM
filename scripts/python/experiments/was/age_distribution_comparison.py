@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Compare WAS Wave 3 and Round 8 age distributions using generated calibration CSVs.
+Compare v0 and v5o3 age distributions using checked-in input-data CSVs.
 
-Creates distributions by running AgeDist for each dataset, then plots the resulting
-age bin histograms and prints mean/standard-deviation/skew statistics.
+Plots the age bin histograms and prints mean/standard-deviation/skew statistics.
 
 @author: Max Stoddard
 """
@@ -16,8 +15,8 @@ import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from scripts.python.helpers.was.config import WAVE_3_DATA, ROUND_8_DATA
 from scripts.python.helpers.was.comparison_stats import (
+    build_latex_stats_rows,
     compute_percent_stats,
     print_distribution_summary,
     print_percent_comparison,
@@ -25,13 +24,21 @@ from scripts.python.helpers.was.comparison_stats import (
 )
 from scripts.python.helpers.was.distributions import read_binned_distribution
 from scripts.python.helpers.was.experiments import (
-    build_was_comparison_rows,
-    get_dataset_label,
+    get_input_version_file,
     get_output_dir,
 )
 from scripts.python.helpers.was.plotting import apply_axis_grid, format_age_axis
-from scripts.python.helpers.was.statistics import mean_variance_skew, normalize_distribution
-from scripts.python.calibration.was import age_dist
+
+BASE_VERSION = "v0"
+TARGET_VERSION = "v5o3"
+BASE_AGE_DISTRIBUTION_FILENAME = "Age9-Weighted.csv"
+TARGET_AGE_DISTRIBUTION_FILENAME = "Age15-FRS-2023-24-Weighted.csv"
+BASE_LABEL = "WAS Wave 3"
+TARGET_LABEL = "FRS 2023-24"
+BASE_PLOT_LABEL = "WAS Wave 3"
+TARGET_PLOT_LABEL = "FRS 2023-24"
+BASE_PERIOD = "2011 target year"
+TARGET_PERIOD = "2024 target year"
 
 
 def _split_final_bin_uniform(distribution: pd.DataFrame) -> pd.DataFrame:
@@ -67,6 +74,48 @@ def _split_final_bin_uniform(distribution: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([trimmed, split_rows], ignore_index=True)
 
 
+def _age_bin_widths(distribution: pd.DataFrame) -> pd.Series:
+    """Return positive age-bin widths."""
+    widths = distribution["upper_edge"] - distribution["lower_edge"]
+    if (widths <= 0.0).any():
+        raise ValueError("Age bin widths must be positive.")
+    return widths
+
+
+def _age_density_integral(distribution: pd.DataFrame) -> float:
+    """Return the integral of an age-density distribution."""
+    return float((distribution["probability"] * _age_bin_widths(distribution)).sum())
+
+
+def _normalized_age_density(distribution: pd.DataFrame) -> pd.Series:
+    """Return age density normalized so density times bin width integrates to 1."""
+    density = distribution["probability"].astype(float)
+    integral = _age_density_integral(distribution)
+    if integral == 0.0:
+        return density
+    return density / integral
+
+
+def _density_weighted_mean_variance_skew(
+    distribution: pd.DataFrame,
+) -> tuple[float, float, float]:
+    """Compute moments from an age-density distribution."""
+    density = _normalized_age_density(distribution)
+    masses = density * _age_bin_widths(distribution)
+    total_mass = float(masses.sum())
+    if total_mass == 0.0:
+        return float("nan"), float("nan"), float("nan")
+    probabilities = masses / total_mass
+    midpoints = (distribution["lower_edge"] + distribution["upper_edge"]) / 2.0
+    mean = float((midpoints * probabilities).sum())
+    variance = float((probabilities * (midpoints - mean) ** 2).sum())
+    if variance == 0.0:
+        return mean, variance, 0.0
+    third_moment = float((probabilities * (midpoints - mean) ** 3).sum())
+    skew = third_moment / (variance ** 1.5)
+    return mean, variance, skew
+
+
 def _plot_overlay(
     wave_3: pd.DataFrame,
     round_8: pd.DataFrame,
@@ -77,15 +126,15 @@ def _plot_overlay(
     """Plot overlayed age distributions with shared styling."""
     fig, ax = plt.subplots(figsize=(10, 6))
 
-    wave_3_prob = normalize_distribution(wave_3["probability"])
-    round_8_prob = normalize_distribution(round_8["probability"])
+    wave_3_density = _normalized_age_density(wave_3)
+    round_8_density = _normalized_age_density(round_8)
 
     wave_3_widths = wave_3["upper_edge"] - wave_3["lower_edge"]
     round_8_widths = round_8["upper_edge"] - round_8["lower_edge"]
 
     ax.bar(
         wave_3["lower_edge"],
-        height=wave_3_prob,
+        height=wave_3_density,
         width=wave_3_widths,
         align="edge",
         alpha=0.5,
@@ -94,7 +143,7 @@ def _plot_overlay(
     )
     ax.bar(
         round_8["lower_edge"],
-        height=round_8_prob,
+        height=round_8_density,
         width=round_8_widths,
         align="edge",
         alpha=0.5,
@@ -103,7 +152,7 @@ def _plot_overlay(
     )
 
     ax.set_xlabel("Age (lower edge)")
-    ax.set_ylabel("Frequency (fraction of cases)")
+    ax.set_ylabel("Household share density")
     ax.legend()
     apply_axis_grid(ax, axis="both")
     format_age_axis(ax, axis="x")
@@ -114,17 +163,25 @@ def _plot_overlay(
     plt.show()
 
 
-def _pick_primary_age_csv(output_files: dict[str, str]) -> str:
-    """Pick the most comparable age band output for plotting."""
-    for preferred in ("Age8", "Age9", "Age15"):
-        if preferred in output_files:
-            return output_files[preferred]
-    return next(iter(output_files.values()))
+def _build_version_comparison_rows(
+    base_stats: dict[str, float],
+    target_stats: dict[str, float],
+) -> list[dict[str, str]]:
+    """Build LaTeX-friendly rows for the v0/v5o3 age comparison."""
+    return build_latex_stats_rows(
+        BASE_LABEL,
+        BASE_PERIOD,
+        base_stats,
+        TARGET_LABEL,
+        TARGET_PERIOD,
+        target_stats,
+        "Percent diff. (2024 vs 2011)",
+    )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Compare WAS Wave 3 and Round 8 age distributions."
+        description="Compare v0 and v5o3 input-data age distributions."
     )
     parser.add_argument(
         "--output-dir",
@@ -135,23 +192,32 @@ def main() -> None:
 
     output_dir = args.output_dir or get_output_dir(__file__)
 
-    wave_label, wave_period = get_dataset_label(WAVE_3_DATA)
-    round_label, round_period = get_dataset_label(ROUND_8_DATA)
-    wave_title = f"{wave_label} ({wave_period})"
-    round_title = f"{round_label} ({round_period})"
+    wave_title = f"{BASE_LABEL} ({BASE_PERIOD})"
+    round_title = f"{TARGET_LABEL} ({TARGET_PERIOD})"
+    wave_plot_title = f"{BASE_PLOT_LABEL} ({BASE_PERIOD})"
+    round_plot_title = f"{TARGET_PLOT_LABEL} ({TARGET_PERIOD})"
 
-    wave_3_outputs = age_dist.run_age_distribution(WAVE_3_DATA)
-    round_8_outputs = age_dist.run_age_distribution(ROUND_8_DATA)
+    wave_3_dist = read_binned_distribution(
+        get_input_version_file(
+            __file__,
+            BASE_VERSION,
+            BASE_AGE_DISTRIBUTION_FILENAME,
+        )
+    )
+    round_8_dist = read_binned_distribution(
+        get_input_version_file(
+            __file__,
+            TARGET_VERSION,
+            TARGET_AGE_DISTRIBUTION_FILENAME,
+        )
+    )
 
-    wave_3_csv = _pick_primary_age_csv(wave_3_outputs["output_files"])
-    round_8_csv = _pick_primary_age_csv(round_8_outputs["output_files"])
-
-    wave_3_dist = read_binned_distribution(wave_3_csv)
-    round_8_dist = read_binned_distribution(round_8_csv)
-    round_8_dist = _split_final_bin_uniform(round_8_dist)
-
-    wave_3_mean, wave_3_variance, wave_3_skew = mean_variance_skew(wave_3_dist)
-    round_8_mean, round_8_variance, round_8_skew = mean_variance_skew(round_8_dist)
+    wave_3_mean, wave_3_variance, wave_3_skew = _density_weighted_mean_variance_skew(
+        wave_3_dist
+    )
+    round_8_mean, round_8_variance, round_8_skew = _density_weighted_mean_variance_skew(
+        round_8_dist
+    )
 
     wave_3_stats = to_std_dev_stats(
         {
@@ -168,7 +234,7 @@ def main() -> None:
         }
     )
     percent_stats = compute_percent_stats(wave_3_stats, round_8_stats)
-    stats_rows = build_was_comparison_rows(wave_3_stats, round_8_stats)
+    stats_rows = _build_version_comparison_rows(wave_3_stats, round_8_stats)
 
     stats_path = os.path.join(output_dir, "AgeDistributionStats.csv")
     stats_df = pd.DataFrame(stats_rows)
@@ -177,15 +243,15 @@ def main() -> None:
     print_distribution_summary(f"{wave_title} age distribution", wave_3_stats)
     print_distribution_summary(f"{round_title} age distribution", round_8_stats)
     print_percent_comparison(
-        "Comparison (Round 8 % vs Wave 3)",
+        "Comparison (v5o3 % vs v0)",
         percent_stats,
     )
 
     _plot_overlay(
         wave_3_dist,
         round_8_dist,
-        wave_title,
-        round_title,
+        wave_plot_title,
+        round_plot_title,
         output_path=os.path.join(output_dir, "AgeDistributionComparison.png"),
     )
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Compare WAS Wave 3 and Round 8 age-by-gross-income joint distributions.
+Compare v0 and v5o3 age-by-gross-income input-data distributions.
 """
 
 from __future__ import annotations, division
@@ -10,9 +10,10 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
-from scripts.python.helpers.was.config import WAVE_3_DATA, ROUND_8_DATA
 from scripts.python.helpers.was.comparison_stats import (
+    build_latex_stats_rows,
     compute_percent_stats,
     format_currency,
     print_distribution_summary,
@@ -20,45 +21,104 @@ from scripts.python.helpers.was.comparison_stats import (
     to_std_dev_stats,
 )
 from scripts.python.helpers.was.distributions import (
-    align_edges_by_duplication,
     conditional_mean_variance_by_x,
+    read_binned_distribution,
     read_joint_distribution_grid,
 )
 from scripts.python.helpers.was.experiments import (
-    build_was_comparison_rows,
-    get_dataset_label,
+    get_input_version_file,
     get_output_dir,
     write_stats_csv,
 )
-from scripts.python.helpers.was.plotting import apply_axis_grid, format_age_axis, format_currency_axis
-from scripts.python.calibration.was import income_age_joint_prob_dist
+from scripts.python.helpers.was.plotting import (
+    apply_axis_grid,
+    format_age_axis,
+    format_currency_axis,
+)
+
+BASE_VERSION = "v0"
+TARGET_VERSION = "v5o3"
+BASE_AGE_DISTRIBUTION_FILENAME = "Age9-Weighted.csv"
+TARGET_AGE_DISTRIBUTION_FILENAME = "Age15-FRS-2023-24-Weighted.csv"
+AGE_GROSS_INCOME_FILENAME = "AgeGrossIncomeJointDist.csv"
+BASE_LABEL = "WAS Wave 3"
+TARGET_LABEL = "FRS 2023-24"
+BASE_PLOT_LABEL = "WAS Wave 3"
+TARGET_PLOT_LABEL = "FRS 2023-24"
+BASE_PERIOD = "2011 target year"
+TARGET_PERIOD = "2024 target year"
 
 
-def _align_age_bins(
-    wave_edges: np.ndarray,
-    wave_grid: np.ndarray,
-    round_edges: np.ndarray,
-    round_grid: np.ndarray,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Align age bins by duplicating the final row for the shorter set."""
-    if len(wave_edges) >= len(round_edges):
-        round_edges, round_grid = align_edges_by_duplication(
-            wave_edges,
-            round_edges,
-            round_grid,
-        )
-        return wave_edges, wave_grid, round_edges, round_grid
-    wave_edges, wave_grid = align_edges_by_duplication(
-        round_edges,
-        wave_edges,
-        wave_grid,
+def _build_version_comparison_rows(
+    base_stats: dict[str, float],
+    target_stats: dict[str, float],
+) -> list[dict[str, str]]:
+    """Build formatted rows for the v0/v5o3 gross-income comparison."""
+    return build_latex_stats_rows(
+        BASE_LABEL,
+        BASE_PERIOD,
+        base_stats,
+        TARGET_LABEL,
+        TARGET_PERIOD,
+        target_stats,
+        "Percent diff. (2024 vs 2011)",
+        value_formatters={
+            "mean": format_currency,
+            "stddev": format_currency,
+        },
     )
-    return wave_edges, wave_grid, round_edges, round_grid
+
+
+def _gross_income_stats_from_age_conditional(
+    age_distribution: pd.DataFrame,
+    income_edges: np.ndarray,
+    conditional_grid: np.ndarray,
+) -> dict[str, float]:
+    """Compute gross-income moments from P(income|age) and age-bin probabilities."""
+    age_widths = (
+        age_distribution["upper_edge"] - age_distribution["lower_edge"]
+    ).to_numpy()
+    if np.any(age_widths <= 0.0):
+        raise ValueError("Age bin widths must be positive.")
+    age_masses = age_distribution["probability"].astype(float).to_numpy() * age_widths
+    if len(age_masses) != conditional_grid.shape[0]:
+        raise ValueError("Age distribution and joint distribution age bins do not align.")
+
+    age_total = float(age_masses.sum())
+    if age_total == 0.0:
+        return {"mean": float("nan"), "variance": float("nan"), "skew": float("nan")}
+    age_probabilities = age_masses / age_total
+
+    income_midpoints = np.exp((income_edges[:-1] + income_edges[1:]) / 2.0)
+    if conditional_grid.shape[1] != len(income_midpoints):
+        raise ValueError("Income bin edges and joint distribution income bins do not align.")
+
+    row_sums = conditional_grid.sum(axis=1, keepdims=True)
+    conditional_probabilities = np.divide(
+        conditional_grid,
+        row_sums,
+        out=np.zeros_like(conditional_grid, dtype=float),
+        where=row_sums > 0.0,
+    )
+    joint_probabilities = conditional_probabilities * age_probabilities[:, None]
+    total_probability = float(joint_probabilities.sum())
+    if total_probability == 0.0:
+        return {"mean": float("nan"), "variance": float("nan"), "skew": float("nan")}
+
+    probabilities = (joint_probabilities / total_probability).ravel()
+    values = np.tile(income_midpoints, conditional_grid.shape[0])
+    mean = float(probabilities @ values)
+    variance = float(probabilities @ (values - mean) ** 2)
+    if variance == 0.0:
+        return {"mean": mean, "variance": variance, "skew": 0.0}
+    third_moment = float(probabilities @ (values - mean) ** 3)
+    skew = third_moment / (variance ** 1.5)
+    return {"mean": mean, "variance": variance, "skew": skew}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Compare WAS age-by-gross-income joint distributions."
+        description="Compare v0 and v5o3 age-by-gross-income input-data distributions."
     )
     parser.add_argument(
         "--output-dir",
@@ -68,60 +128,56 @@ def main() -> None:
     args = parser.parse_args()
 
     output_dir = args.output_dir or get_output_dir(__file__)
-    wave_label, wave_period = get_dataset_label(WAVE_3_DATA)
-    round_label, round_period = get_dataset_label(ROUND_8_DATA)
-    wave_title = f"{wave_label} ({wave_period})"
-    round_title = f"{round_label} ({round_period})"
+    wave_title = f"{BASE_LABEL} ({BASE_PERIOD})"
+    round_title = f"{TARGET_LABEL} ({TARGET_PERIOD})"
+    wave_plot_title = f"{BASE_PLOT_LABEL} ({BASE_PERIOD})"
+    round_plot_title = f"{TARGET_PLOT_LABEL} ({TARGET_PERIOD})"
 
-    wave_min_net, wave_max_gross = income_age_joint_prob_dist.compute_income_bounds(
-        WAVE_3_DATA
+    wave_age_dist = read_binned_distribution(
+        get_input_version_file(
+            __file__,
+            BASE_VERSION,
+            BASE_AGE_DISTRIBUTION_FILENAME,
+        )
     )
-    round_min_net, round_max_gross = income_age_joint_prob_dist.compute_income_bounds(
-        ROUND_8_DATA
-    )
-    # Use shared log-income bins so differences are comparable across datasets.
-    shared_income_edges = np.linspace(
-        np.log(min(wave_min_net, round_min_net)),
-        np.log(max(wave_max_gross, round_max_gross)),
-        26,
-    )
-
-    wave_outputs = income_age_joint_prob_dist.run_income_age_joint_prob_dist(
-        WAVE_3_DATA,
-        income_bin_edges=shared_income_edges,
+    round_age_dist = read_binned_distribution(
+        get_input_version_file(
+            __file__,
+            TARGET_VERSION,
+            TARGET_AGE_DISTRIBUTION_FILENAME,
+        )
     )
     wave_age_edges, wave_income_edges, wave_gross = read_joint_distribution_grid(
-        wave_outputs["output_files"]["gross"]
-    )
-
-    round_outputs = income_age_joint_prob_dist.run_income_age_joint_prob_dist(
-        ROUND_8_DATA,
-        income_bin_edges=shared_income_edges,
+        get_input_version_file(
+            __file__,
+            BASE_VERSION,
+            AGE_GROSS_INCOME_FILENAME,
+        )
     )
     round_age_edges, round_income_edges, round_gross = read_joint_distribution_grid(
-        round_outputs["output_files"]["gross"]
+        get_input_version_file(
+            __file__,
+            TARGET_VERSION,
+            AGE_GROSS_INCOME_FILENAME,
+        )
     )
 
-    wave_age_edges, wave_gross, round_age_edges, round_gross = _align_age_bins(
-        wave_age_edges,
-        wave_gross,
-        round_age_edges,
-        round_gross,
+    wave_stats = to_std_dev_stats(
+        _gross_income_stats_from_age_conditional(
+            wave_age_dist,
+            wave_income_edges,
+            wave_gross,
+        )
     )
-    if not np.allclose(wave_income_edges, round_income_edges):
-        raise ValueError("Income bin edges are not aligned between datasets.")
-
-    wave_stats = to_std_dev_stats(wave_outputs["gross_stats"])
-    round_stats = to_std_dev_stats(round_outputs["gross_stats"])
+    round_stats = to_std_dev_stats(
+        _gross_income_stats_from_age_conditional(
+            round_age_dist,
+            round_income_edges,
+            round_gross,
+        )
+    )
     percent_stats = compute_percent_stats(wave_stats, round_stats)
-    stats_rows = build_was_comparison_rows(
-        wave_stats,
-        round_stats,
-        value_formatters={
-            "mean": format_currency,
-            "stddev": format_currency,
-        },
-    )
+    stats_rows = _build_version_comparison_rows(wave_stats, round_stats)
     stats_path = os.path.join(output_dir, "AgeGrossIncomeJointDistStats.csv")
     write_stats_csv(stats_path, stats_rows, separator=";")
 
@@ -134,7 +190,7 @@ def main() -> None:
         round_stats,
     )
     print_percent_comparison(
-        "Comparison (Round 8 % vs Wave 3)",
+        "Comparison (v5o3 % vs v0)",
         percent_stats,
     )
 
@@ -161,17 +217,18 @@ def main() -> None:
         wave_age_mid,
         wave_mean,
         marker="o",
-        label=wave_title,
+        label=wave_plot_title,
     )
     axes[0].plot(
         round_age_mid,
         round_mean,
         marker="s",
-        label=round_title,
+        label=round_plot_title,
     )
     axes[0].set_ylabel("Mean gross income (GBP, log scale)")
     axes[0].set_yscale("log")
-    apply_axis_grid(axes[0], axis="both")
+    apply_axis_grid(axes[0], axis="x")
+    apply_axis_grid(axes[0], axis="y")
     format_currency_axis(axes[0], axis="y")
     axes[0].legend()
 
@@ -179,18 +236,19 @@ def main() -> None:
         wave_age_mid,
         wave_std_dev,
         marker="o",
-        label=wave_title,
+        label=wave_plot_title,
     )
     axes[1].plot(
         round_age_mid,
         round_std_dev,
         marker="s",
-        label=round_title,
+        label=round_plot_title,
     )
     axes[1].set_xlabel("Age (midpoint)")
     axes[1].set_ylabel("Gross income standard deviation (GBP, log scale)")
     axes[1].set_yscale("log")
-    apply_axis_grid(axes[1], axis="both")
+    apply_axis_grid(axes[1], axis="x")
+    apply_axis_grid(axes[1], axis="y")
     format_age_axis(axes[1], axis="x")
     format_currency_axis(axes[1], axis="y")
 
