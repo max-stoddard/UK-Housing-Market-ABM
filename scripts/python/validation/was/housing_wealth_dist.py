@@ -8,6 +8,7 @@ data.
 
 from __future__ import division
 import os
+from pathlib import Path
 
 import pandas as pd
 import numpy as np
@@ -25,13 +26,17 @@ from scripts.python.helpers.was.config import (
     WAS_VALIDATION_PLOTS,
 )
 from scripts.python.helpers.was.plotting import (
-    format_currency_axis,
+    apply_axis_grid,
     plot_hist_overlay,
     print_hist_percent_diff,
-    reduce_log_ticks,
+    set_compact_currency_log_ticks,
 )
 from scripts.python.helpers.was.row_filters import filter_positive_values
-from scripts.python.helpers.was.io import read_results, read_was_data
+from scripts.python.helpers.was.io import read_was_data
+from scripts.python.helpers.was.model_histograms import (
+    averaged_model_histogram,
+    resolve_model_result_files,
+)
 from scripts.python.helpers.was.constants import (
     WAS_WEIGHT,
     WAS_TOTAL_PROPERTY_WEALTH,
@@ -58,6 +63,29 @@ rootData = WAS_DATA_ROOT
 rootResults = WAS_RESULTS_ROOT
 results_run_dir = os.path.join(rootResults, WAS_RESULTS_RUN_SUBDIR)
 timer_start = start_timer(os.path.basename(__file__), "validation")
+
+
+def _env_text(name: str, default: str | None) -> str | None:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value or None
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"{name} must be a boolean value, got {value!r}")
+
+
+def _positive_values(results: list[float]) -> list[float]:
+    return [value for value in results if value > 0.0]
 
 # Read Wealth and Assets Survey data for households
 use_column_constants = [
@@ -121,17 +149,17 @@ if printResults:
         )
 
 # Build model/data histograms and print percentage-point differences regardless of plotting mode.
-# Read model results
-results = read_results(
-    os.path.join(results_run_dir, "HousingWealth-run1.csv"),
-    start_time,
-    end_time,
+model_results_file = os.path.join(results_run_dir, "HousingWealth-run1.csv")
+model_result_files = resolve_model_result_files(model_results_file)
+model_hist = averaged_model_histogram(
+    model_result_files,
+    bin_edges,
+    start_time=start_time,
+    end_time=end_time,
+    value_transform=_positive_values,
+    value_label="positive housing wealth",
 )
-# Histogram model results
-model_hist = np.histogram(
-    [x for x in results if x > 0.0], bins=bin_edges, density=False
-)[0]
-model_hist = model_hist / sum(model_hist)
+
 # Histogram data from WAS
 # Keep positive values for log-scale histogram.
 positive_chunk = filter_positive_values(chunk, [variableToPlot])
@@ -154,20 +182,50 @@ print_hist_percent_diff(
 # If plotting data and results is required, plot model and validation distributions.
 if plotResults:
     # Plot model vs WAS housing wealth distributions for validation.
+    plot_title = _env_text(
+        "WAS_PLOT_TITLE",
+        "Distribution of Mark-to-market Net Housing Wealth ({})".format(variableToPlot),
+    )
+    figure, axes = plt.subplots(figsize=(10.0, 6.5))
     axes = plot_hist_overlay(
         bin_edges,
         model_hist,
         WAS_hist,
-        xlabel="{}".format(variableToPlot),
+        xlabel=_env_text("WAS_PLOT_XLABEL", "Net housing wealth (log scale)"),
         ylabel="Frequency (fraction of cases)",
-        title="Distribution of Mark-to-market Net Housing Wealth ({})".format(
-            variableToPlot
-        ),
+        title=plot_title,
         log_x=True,
-        data_label="Validation data (WAS)",
+        model_label=_env_text("WAS_MODEL_LABEL", "Model results"),
+        data_label=_env_text("WAS_DATA_LABEL", "Validation data (WAS)"),
+        ax=axes,
     )
-    format_currency_axis(axes, axis="x")
-    reduce_log_ticks(axes, axis="x", num_ticks=6)
-    plt.show()
+    legend_location = os.getenv("WAS_LEGEND_LOCATION")
+    if legend_location:
+        axes.legend(loc=legend_location)
+    if _env_bool("WAS_PLOT_GRID", False):
+        apply_axis_grid(
+            axes,
+            axis="both",
+            which="both",
+            major_alpha=0.28,
+            minor_alpha=0.14,
+        )
+    set_compact_currency_log_ticks(
+        axes,
+        axis="x",
+        include_half_decades=_env_bool(
+            "WAS_INCLUDE_HALF_DECADE_CURRENCY_TICKS",
+            True,
+        ),
+    )
+    figure.tight_layout()
+    plot_output_path = os.getenv("WAS_PLOT_OUTPUT_PATH")
+    if plot_output_path:
+        output_path = Path(plot_output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        figure.savefig(output_path, dpi=300, bbox_inches="tight")
+        print(f"Wrote plot to {output_path}")
+    else:
+        plt.show()
 
 end_timer(timer_start)

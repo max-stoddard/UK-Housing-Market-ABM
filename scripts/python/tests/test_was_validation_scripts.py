@@ -183,6 +183,7 @@ class TestWasValidationScripts(unittest.TestCase):
         dataset: str,
         root: Path,
         results_subdir: str,
+        extra_env: dict[str, str] | None = None,
     ) -> subprocess.CompletedProcess[str]:
         env = os.environ.copy()
         env.update(
@@ -195,6 +196,8 @@ class TestWasValidationScripts(unittest.TestCase):
                 "MPLBACKEND": "Agg",
             }
         )
+        if extra_env is not None:
+            env.update(extra_env)
         return subprocess.run(
             ["python3", "-m", module_name],
             cwd=self.repo_root,
@@ -335,6 +338,132 @@ class TestWasValidationScripts(unittest.TestCase):
             combined = result.stdout + result.stderr
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("WAS_DATASET must be", combined)
+
+    def test_housing_wealth_plot_exports_multiseed_average(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._write_was_data_file(
+                root,
+                "R8",
+                [
+                    self._build_data_row(3000.0, 120000.0, 5000.0),
+                    self._build_data_row(3500.0, 250000.0, 20000.0),
+                    self._build_data_row(4000.0, 400000.0, 80000.0),
+                ],
+            )
+            results_root = root / "Results" / "multiseed"
+            self._write_results_file(
+                results_root / "seed-1" / "HousingWealth-run1.csv",
+                [120000.0, 250000.0, 400000.0],
+            )
+            self._write_results_file(
+                results_root / "seed-2" / "HousingWealth-run1.csv",
+                [150000.0, 300000.0, 500000.0],
+            )
+            output_path = root / "plot.png"
+
+            result = self._run_validation_module(
+                "scripts.python.validation.was.housing_wealth_dist",
+                "R8",
+                root,
+                "Results/multiseed/seed-1",
+                extra_env={
+                    "WAS_VALIDATION_PLOTS": "1",
+                    "WAS_RESULTS_FILE_GLOB": str(
+                        results_root / "seed-*" / "HousingWealth-run1.csv"
+                    ),
+                    "WAS_PLOT_OUTPUT_PATH": str(output_path),
+                    "WAS_MODEL_LABEL": "2024 Model Output (10-seed average)",
+                    "WAS_DATA_LABEL": "Validation data (WAS Round 8)",
+                },
+            )
+            combined = result.stdout + result.stderr
+
+            self.assertEqual(
+                result.returncode,
+                0,
+                msg=f"Module failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
+            )
+            self.assertIn("Averaged 2 model result files", combined)
+            self.assertTrue(output_path.exists())
+            self.assertGreater(output_path.stat().st_size, 0)
+
+    def test_income_plot_exports_v0_v5o3_multiseed_comparison(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            self._write_was_data_file(
+                root,
+                "R8",
+                [
+                    self._build_data_row(3000.0, 120000.0, 5000.0),
+                    self._build_data_row(6000.0, 250000.0, 20000.0),
+                    self._build_data_row(12000.0, 400000.0, 80000.0),
+                ],
+            )
+            results_root = root / "Results" / "income-comparison"
+            self._write_results_file(
+                results_root
+                / "v0"
+                / "seed-1"
+                / "MonthlyGrossEmploymentIncome-run1.csv",
+                [250.0, 500.0, 1000.0],
+            )
+            self._write_results_file(
+                results_root
+                / "v0"
+                / "seed-2"
+                / "MonthlyGrossEmploymentIncome-run1.csv",
+                [300.0, 550.0, 1100.0],
+            )
+            self._write_results_file(
+                results_root
+                / "v5o3"
+                / "seed-1"
+                / "MonthlyGrossEmploymentIncome-run1.csv",
+                [350.0, 650.0, 1200.0],
+            )
+            self._write_results_file(
+                results_root
+                / "v5o3"
+                / "seed-2"
+                / "MonthlyGrossEmploymentIncome-run1.csv",
+                [400.0, 700.0, 1300.0],
+            )
+            output_path = root / "income-comparison.png"
+
+            result = self._run_validation_module(
+                "scripts.python.validation.was.income_dist",
+                "R8",
+                root,
+                "Results/income-comparison/v0/seed-1",
+                extra_env={
+                    "WAS_VALIDATION_PLOTS": "1",
+                    "WAS_2011_RESULTS_FILE_GLOB": str(
+                        results_root
+                        / "v0"
+                        / "seed-*"
+                        / "MonthlyGrossEmploymentIncome-run1.csv"
+                    ),
+                    "WAS_2024_RESULTS_FILE_GLOB": str(
+                        results_root
+                        / "v5o3"
+                        / "seed-*"
+                        / "MonthlyGrossEmploymentIncome-run1.csv"
+                    ),
+                    "WAS_PLOT_OUTPUT_PATH": str(output_path),
+                },
+            )
+            combined = result.stdout + result.stderr
+
+            self.assertEqual(
+                result.returncode,
+                0,
+                msg=f"Module failed\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}",
+            )
+            self.assertIn("Averaged 2 2011 model result files", combined)
+            self.assertIn("Averaged 2 2024 model result files", combined)
+            self.assertTrue(output_path.exists())
+            self.assertGreater(output_path.stat().st_size, 0)
 
 
 if __name__ == "__main__":
