@@ -47,6 +47,7 @@ interface ExpectedParallelScalingExperimentOptions {
   targetPopulation: number;
   nSteps: number;
   seedCount: number;
+  seeds?: number[];
   workerCounts: number[];
   repeats: number;
   orderingSeed: number;
@@ -237,6 +238,29 @@ assert.throws(() => parseWorkerCounts('1,0,2'), /positive integer/i);
       [32, 3]
     ],
     'Expected effective workers to be capped by seedCount'
+  );
+}
+
+{
+  const plan = buildBatchPlan(makeOptions('/tmp/report', { seedCount: 1, seeds: [17], workerCounts: [1] }));
+  assert.equal(plan.length, 1, 'Expected one batch for one worker count and one repeat');
+  assert.deepEqual(plan[0]?.seeds, [17], 'Expected explicit seed list to be preserved in the batch plan');
+  assert.equal(plan[0]?.seedCount, 1, 'Expected batch seedCount to reflect explicit seed-list length');
+  assert.equal(plan[0]?.effectiveWorkerCount, 1, 'Expected effective workers to be capped by explicit seed count');
+}
+
+{
+  const plan = buildBatchPlan(makeOptions('/tmp/report', { seedCount: 2, seeds: [7, 13], workerCounts: [1, 4] }));
+  const sorted = plan
+    .map((batch) => ({ workerCount: batch.workerCount, effectiveWorkerCount: batch.effectiveWorkerCount, seeds: batch.seeds }))
+    .sort((left, right) => left.workerCount - right.workerCount);
+  assert.deepEqual(
+    sorted,
+    [
+      { workerCount: 1, effectiveWorkerCount: 1, seeds: [7, 13] },
+      { workerCount: 4, effectiveWorkerCount: 2, seeds: [7, 13] }
+    ],
+    'Expected each worker-count batch to use the same explicit common-random-number seed list'
   );
 }
 
@@ -468,6 +492,7 @@ await withTempReportRoot(async (outputRoot) => {
   const help = parallelScalingCliUsage();
   assert.match(help, /--phase <pilot\|full>/, 'Expected CLI help to document pilot/full phases');
   assert.match(help, /--workers <comma-separated counts>/, 'Expected CLI help to document --workers');
+  assert.match(help, /--seeds <comma-separated seeds>/, 'Expected CLI help to document explicit seed lists');
   assert.match(help, /Pilot example:/, 'Expected CLI help to include a pilot example');
   assert.match(help, /Full example:/, 'Expected CLI help to include a full example');
 }
@@ -531,6 +556,34 @@ await withTempReportRoot(async (outputRoot) => {
   assert.equal(fullWithConfirmation.phase, 'full', 'Expected confirmed full CLI args to map to full phase');
   assert.deepEqual(fullWithConfirmation.workerCounts, [1, 2], 'Expected --workers to parse worker counts');
   assert.equal(fullWithConfirmation.confirmExpensive, true, 'Expected confirmed full CLI args to set confirmExpensive');
+
+  const explicitSeedOptions = toParallelScalingExperimentOptions(
+    parseParallelScalingCliArgs([
+      '--phase',
+      'full',
+      '--snapshot',
+      'v0',
+      '--base-mode',
+      'core-minimal-20k-s1',
+      '--target-population',
+      '5000',
+      '--n-steps',
+      '2000',
+      '--seeds',
+      '7,13',
+      '--workers',
+      '1',
+      '--repeats',
+      '1',
+      '--ordering-seed',
+      '20260604',
+      '--output-root',
+      path.join(os.tmpdir(), 'tmp', '_report'),
+      '--confirm-expensive'
+    ])
+  );
+  assert.deepEqual(explicitSeedOptions.seeds, [7, 13], 'Expected --seeds to parse explicit seed list');
+  assert.equal(explicitSeedOptions.seedCount, 2, 'Expected seedCount to match explicit seed-list length');
 
   const apcOptions = toParallelScalingExperimentOptions(
     parseParallelScalingCliArgs([
@@ -597,5 +650,39 @@ await withTempReportRoot(async (outputRoot) => {
     repeatedJavaOptionOptions.javaOptions,
     ['--add-opens=java.base/java.lang=ALL-UNNAMED', '--enable-preview'],
     'Expected repeated --java-option values to preserve JVM options that start with --'
+  );
+
+  assert.throws(
+    () =>
+      toParallelScalingExperimentOptions(
+        parseParallelScalingCliArgs([
+          '--phase',
+          'pilot',
+          '--seeds',
+          '1,1',
+          '--workers',
+          '1'
+        ])
+      ),
+    /Duplicate seed/,
+    'Expected duplicate explicit seeds to be rejected'
+  );
+
+  assert.throws(
+    () =>
+      toParallelScalingExperimentOptions(
+        parseParallelScalingCliArgs([
+          '--phase',
+          'pilot',
+          '--seed-count',
+          '3',
+          '--seeds',
+          '4,5',
+          '--workers',
+          '1'
+        ])
+      ),
+    /--seed-count must match --seeds length/,
+    'Expected mismatched --seed-count and --seeds to be rejected'
   );
 }

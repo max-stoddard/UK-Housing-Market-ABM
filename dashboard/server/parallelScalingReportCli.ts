@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  parseSeeds,
   parseWorkerCounts,
   runParallelScalingExperiment,
   type ParallelScalingExperimentOptions
@@ -18,6 +19,7 @@ export interface CliArgs {
   baseMode: string;
   workerCounts?: string;
   seedCount?: number;
+  seeds?: string;
   targetPopulation?: number;
   nSteps?: number;
   repeats?: number;
@@ -62,6 +64,7 @@ export function parseArgs(argv: string[]): CliArgs {
     baseMode: stringArg(args, '--base-mode') ?? 'core-minimal-20k-s1',
     workerCounts: stringArg(args, '--workers') ?? stringArg(args, '--worker-counts') ?? undefined,
     seedCount: optionalIntegerArg(args, '--seed-count'),
+    seeds: stringArg(args, '--seeds') ?? undefined,
     targetPopulation: optionalIntegerArg(args, '--target-population'),
     nSteps: optionalIntegerArg(args, '--n-steps'),
     repeats: optionalIntegerArg(args, '--repeats'),
@@ -78,6 +81,13 @@ export function toExperimentOptions(args: CliArgs): ParallelScalingExperimentOpt
     throw new Error('Full parallel scaling phase is expensive; pass --confirm-expensive to run it.');
   }
 
+  const explicitSeeds = parseSeeds(args.seeds);
+  const defaultSeedCount = args.phase === 'full' ? 32 : 3;
+  const seedCount = args.seedCount ?? explicitSeeds?.length ?? defaultSeedCount;
+  if (explicitSeeds !== undefined && explicitSeeds.length !== seedCount) {
+    throw new Error('--seed-count must match --seeds length when both are provided.');
+  }
+
   return {
     repoRoot: args.repoRoot,
     snapshot: args.snapshot,
@@ -85,7 +95,8 @@ export function toExperimentOptions(args: CliArgs): ParallelScalingExperimentOpt
     outputRoot: args.outputRoot,
     targetPopulation: args.targetPopulation ?? 20_000,
     nSteps: args.nSteps ?? 2_000,
-    seedCount: args.seedCount ?? (args.phase === 'full' ? 32 : 3),
+    seedCount,
+    seeds: explicitSeeds,
     workerCounts: args.workerCounts ? parseWorkerCounts(args.workerCounts) : args.phase === 'full' ? parseWorkerCounts(undefined) : [1, 2],
     repeats: args.repeats ?? (args.phase === 'full' ? 3 : 1),
     orderingSeed: args.orderingSeed ?? 1,
@@ -107,6 +118,7 @@ export function usage(): string {
     '  --workers <comma-separated counts>',
     '  --worker-counts <comma-separated counts>',
     '  --seed-count <positive integer>',
+    '  --seeds <comma-separated seeds>  Explicit seeds to run instead of 1..seed-count',
     '  --target-population <positive integer>',
     '  --n-steps <positive integer>',
     '  --repeats <positive integer>',

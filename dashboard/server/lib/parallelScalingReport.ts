@@ -28,6 +28,7 @@ export interface ParallelScalingExperimentOptions {
   targetPopulation: number;
   nSteps: number;
   seedCount: number;
+  seeds?: number[];
   workerCounts: number[];
   repeats: number;
   orderingSeed: number;
@@ -76,6 +77,7 @@ export interface ParallelScalingBatchPlan {
   workerCount: number;
   effectiveWorkerCount: number;
   repeatIndex: number;
+  seedCount: number;
   seeds: number[];
 }
 
@@ -154,6 +156,7 @@ interface NormalizedParallelScalingOptions {
   baseMode: string;
   workerCounts: number[];
   seedCount: number;
+  seeds: number[];
   targetPopulation: number;
   nSteps: number;
   repeats: number;
@@ -237,9 +240,41 @@ export function parseWorkerCounts(raw: number[] | string | null | undefined): nu
   return [...values];
 }
 
-export function buildSeedList(seedCount: number): number[] {
+export function parseSeeds(rawSeeds: string | undefined): number[] | undefined {
+  if (rawSeeds === undefined || rawSeeds.trim() === '') {
+    return undefined;
+  }
+  const values = rawSeeds.split(',').map((value) => Number.parseInt(value.trim(), 10));
+  if (values.length === 0 || values.some((value) => !Number.isInteger(value) || value <= 0)) {
+    throw new Error('seeds must contain only positive integers.');
+  }
+  const seen = new Set<number>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      throw new Error(`Duplicate seed: ${value}`);
+    }
+    seen.add(value);
+  }
+  return values;
+}
+
+export function buildSeedList(seedCount: number, explicitSeeds?: number[]): number[] {
   assertPositiveInteger(seedCount, 'seedCount');
-  return Array.from({ length: seedCount }, (_unused, index) => index + 1);
+  if (explicitSeeds === undefined) {
+    return Array.from({ length: seedCount }, (_unused, index) => index + 1);
+  }
+  const seen = new Set<number>();
+  for (const seed of explicitSeeds) {
+    assertPositiveInteger(seed, 'seed');
+    if (seen.has(seed)) {
+      throw new Error(`Duplicate seed: ${seed}`);
+    }
+    seen.add(seed);
+  }
+  if (explicitSeeds.length !== seedCount) {
+    throw new Error('--seed-count must match --seeds length when both are provided.');
+  }
+  return [...explicitSeeds];
 }
 
 export function buildBatchPlan(options: ParallelScalingExperimentOptions): ParallelScalingBatchPlan[] {
@@ -247,15 +282,16 @@ export function buildBatchPlan(options: ParallelScalingExperimentOptions): Paral
 }
 
 function buildBatchPlanFromNormalized(normalized: NormalizedParallelScalingOptions): ParallelScalingBatchPlan[] {
-  const seeds = buildSeedList(normalized.seedCount);
+  const seeds = [...normalized.seeds];
   const batches: Omit<ParallelScalingBatchPlan, 'runOrderIndex'>[] = [];
   for (let repeatIndex = 1; repeatIndex <= normalized.repeats; repeatIndex += 1) {
     for (const workerCount of normalized.workerCounts) {
       batches.push({
         batchId: `r${repeatIndex}-w${workerCount}`,
         workerCount,
-        effectiveWorkerCount: Math.min(workerCount, normalized.seedCount),
+        effectiveWorkerCount: Math.min(workerCount, seeds.length),
         repeatIndex,
+        seedCount: seeds.length,
         seeds
       });
     }
@@ -590,6 +626,7 @@ function normalizeOptions(options: ParallelScalingExperimentOptions, enforceFull
   const repoRoot = path.resolve(options.repoRoot);
   const outputRoot = path.resolve(options.outputRoot);
   assertPositiveInteger(options.seedCount, 'seedCount');
+  const seeds = buildSeedList(options.seedCount, options.seeds);
   assertPositiveInteger(options.targetPopulation, 'targetPopulation');
   assertPositiveInteger(options.nSteps, 'nSteps');
   assertPositiveInteger(options.repeats, 'repeats');
@@ -608,7 +645,8 @@ function normalizeOptions(options: ParallelScalingExperimentOptions, enforceFull
     snapshot: requireNonEmpty(options.snapshot, 'snapshot'),
     baseMode: requireNonEmpty(options.baseMode, 'baseMode'),
     workerCounts: parseWorkerCounts(options.workerCounts),
-    seedCount: options.seedCount,
+    seedCount: seeds.length,
+    seeds,
     targetPopulation: options.targetPopulation,
     nSteps: options.nSteps,
     repeats: options.repeats,
