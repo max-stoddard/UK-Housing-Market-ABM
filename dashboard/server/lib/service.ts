@@ -7,6 +7,7 @@ import type {
   CompareResult,
   CompareResponse,
   CurvePoint,
+  DerivedScalarMeta,
   HomePreviewItem,
   HomePreviewPayload,
   JointCell,
@@ -100,6 +101,46 @@ function scalarRows(keys: string[], leftConfig: Map<string, string>, rightConfig
       delta: deltaStat(left, right)
     };
   });
+}
+
+function derivedScalarValue(derived: DerivedScalarMeta, config: Map<string, string>): number {
+  switch (derived.expression) {
+    case 'btl_mixed_probability': {
+      if (derived.sourceConfigKeys.length !== 2) {
+        throw new Error(`Derived scalar ${derived.key} expects exactly two source config keys`);
+      }
+      const [incomeDrivenKey, capitalDrivenKey] = derived.sourceConfigKeys;
+      return 1 - getNumericConfigValue(config, incomeDrivenKey) - getNumericConfigValue(config, capitalDrivenKey);
+    }
+  }
+}
+
+function derivedScalarRows(
+  derivedScalars: DerivedScalarMeta[] | undefined,
+  leftConfig: Map<string, string>,
+  rightConfig: Map<string, string>
+): ScalarDatum[] {
+  return (derivedScalars ?? []).map((derived) => {
+    const left = derivedScalarValue(derived, leftConfig);
+    const right = derivedScalarValue(derived, rightConfig);
+    return {
+      key: derived.key,
+      left,
+      right,
+      delta: deltaStat(left, right)
+    };
+  });
+}
+
+function scalarRowsForMeta(
+  meta: ParameterCardMeta,
+  leftConfig: Map<string, string>,
+  rightConfig: Map<string, string>
+): ScalarDatum[] {
+  return [
+    ...scalarRows(meta.configKeys, leftConfig, rightConfig),
+    ...derivedScalarRows(meta.derivedScalars, leftConfig, rightConfig)
+  ];
 }
 
 function intersects(left: string[], right: string[]): boolean {
@@ -826,7 +867,7 @@ function buildVisualComparison(
 ): { unchanged: boolean; visualPayload: VisualPayload } {
   switch (meta.format) {
     case 'scalar': {
-      const values = scalarRows(meta.configKeys, context.leftConfig, context.rightConfig);
+      const values = scalarRowsForMeta(meta, context.leftConfig, context.rightConfig);
       return {
         unchanged: values.every((value) => isNearlyZero(value.delta.absolute)),
         visualPayload: {
@@ -837,7 +878,7 @@ function buildVisualComparison(
     }
 
     case 'scalar_pair': {
-      const values = scalarRows(meta.configKeys, context.leftConfig, context.rightConfig);
+      const values = scalarRowsForMeta(meta, context.leftConfig, context.rightConfig);
       return {
         unchanged: values.every((value) => isNearlyZero(value.delta.absolute)),
         visualPayload: {

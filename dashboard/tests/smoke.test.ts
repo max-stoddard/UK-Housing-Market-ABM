@@ -1286,13 +1286,16 @@ const expectedIds = [
   'uk_housing_stock_totals',
   'household_consumption_fractions',
   'btl_probability_bins',
+  'btl_probability_multiplier',
   'national_insurance_rates',
   'income_tax_rates',
   'government_allowance_support',
   'house_price_lognormal',
   'rental_price_lognormal',
   'desired_rent_power',
+  'rent_purchase_choice',
   'hpa_expectation_params',
+  'hpa_lookback_years',
   'hold_period_years',
   'initial_sale_markup_distribution',
   'price_reduction_probabilities',
@@ -1300,19 +1303,27 @@ const expectedIds = [
   'tenancy_length_range',
   'initial_rent_markup_distribution',
   'rent_reduction_gaussian',
+  'days_under_offer',
   'bidup_multiplier',
   'rent_gross_yield',
   'market_average_price_decay',
   'mortgage_duration_years',
   'downpayment_ftb_lognormal',
   'downpayment_oo_lognormal',
+  'downpayment_btl_lognormal',
   'downpayment_btl_profile',
   'buy_quad',
   'bank_rate_credit_response',
+  'central_bank_base_rate',
   'bank_ltv_limits',
+  'central_bank_ltv_limits',
   'bank_lti_limits',
+  'central_bank_lti_soft_limits',
   'bank_affordability_icr_limits',
-  'btl_strategy_split'
+  'central_bank_affordability_icr_limits',
+  'bank_age_limit',
+  'btl_strategy_split',
+  'btl_choice_intensity'
 ];
 
 const unchangedNewlyAddedIds = [
@@ -4173,6 +4184,151 @@ if (buyQuad && buyQuad.visualPayload.type === 'buy_quad') {
     'Expected compare buy_quad medianMultiplier.right to be positive and finite'
   );
 }
+
+const btlStrategySplit = compareParameters(repoRoot, 'v0', latestVersion, ['btl_strategy_split'], 'range').items[0];
+assert.ok(btlStrategySplit, 'Expected btl_strategy_split card');
+assert.ok(
+  btlStrategySplit.visualPayload.type === 'scalar',
+  'Expected btl_strategy_split to use scalar visual payload'
+);
+if (btlStrategySplit.visualPayload.type === 'scalar') {
+  const strategyRows = btlStrategySplit.visualPayload.values;
+  assert.deepEqual(
+    strategyRows.map((row) => row.key),
+    ['BTL_P_INCOME_DRIVEN', 'BTL_P_CAPITAL_DRIVEN', 'BTL_P_MIXED'],
+    'Expected BTL strategy split to include configured strategy shares plus derived mixed share'
+  );
+
+  const incomeDriven = strategyRows.find((row) => row.key === 'BTL_P_INCOME_DRIVEN');
+  const capitalDriven = strategyRows.find((row) => row.key === 'BTL_P_CAPITAL_DRIVEN');
+  const mixedDriven = strategyRows.find((row) => row.key === 'BTL_P_MIXED');
+  assert.ok(incomeDriven, 'Expected BTL income-driven row');
+  assert.ok(capitalDriven, 'Expected BTL capital-driven row');
+  assert.ok(mixedDriven, 'Expected derived BTL mixed row');
+  assertClose(
+    mixedDriven?.left ?? Number.NaN,
+    1 - (incomeDriven?.left ?? Number.NaN) - (capitalDriven?.left ?? Number.NaN),
+    1e-12,
+    'BTL_P_MIXED left value should be residual strategy probability'
+  );
+  assertClose(
+    mixedDriven?.right ?? Number.NaN,
+    1 - (incomeDriven?.right ?? Number.NaN) - (capitalDriven?.right ?? Number.NaN),
+    1e-12,
+    'BTL_P_MIXED right value should be residual strategy probability'
+  );
+  assert.equal(
+    btlStrategySplit.sourceInfo.configKeys.includes('BTL_P_MIXED'),
+    false,
+    'Derived BTL_P_MIXED should not be reported as a physical config key'
+  );
+}
+
+const newlyCoveredCalibrationIds = [
+  'central_bank_base_rate',
+  'central_bank_ltv_limits',
+  'central_bank_lti_soft_limits',
+  'central_bank_affordability_icr_limits',
+  'bank_age_limit',
+  'hpa_lookback_years',
+  'days_under_offer',
+  'downpayment_btl_lognormal',
+  'rent_purchase_choice',
+  'btl_probability_multiplier',
+  'btl_choice_intensity'
+] as const;
+
+const newlyCoveredCalibration = compareParameters(
+  repoRoot,
+  'v0',
+  latestVersion,
+  [...newlyCoveredCalibrationIds],
+  'range'
+);
+assert.equal(
+  newlyCoveredCalibration.items.length,
+  newlyCoveredCalibrationIds.length,
+  'Expected all newly covered calibration cards in compare payload'
+);
+
+for (const item of newlyCoveredCalibration.items) {
+  if (item.id === 'downpayment_btl_lognormal') {
+    assert.equal(item.visualPayload.type, 'lognormal_pair', 'Expected BTL down-payment scale/shape to use lognormal payload');
+  } else {
+    assert.equal(item.visualPayload.type, 'scalar', `Expected ${item.id} to use scalar payload`);
+  }
+}
+
+const centralBankBaseRate = newlyCoveredCalibration.items.find((item) => item.id === 'central_bank_base_rate');
+assert.ok(
+  centralBankBaseRate?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.3'),
+  'Expected central_bank_base_rate provenance to include BoE base-rate calibration'
+);
+
+const centralBankLtv = newlyCoveredCalibration.items.find((item) => item.id === 'central_bank_ltv_limits');
+assert.ok(
+  centralBankLtv?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.1'),
+  'Expected central_bank_ltv_limits provenance to include v4.1 policy alignment'
+);
+
+const centralBankLtiSoft = newlyCoveredCalibration.items.find((item) => item.id === 'central_bank_lti_soft_limits');
+assert.ok(
+  centralBankLtiSoft?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.16'),
+  'Expected central_bank_lti_soft_limits provenance to include v4.16 BoE LTI source alignment'
+);
+
+const centralBankAffordabilityIcr = newlyCoveredCalibration.items.find(
+  (item) => item.id === 'central_bank_affordability_icr_limits'
+);
+assert.ok(
+  centralBankAffordabilityIcr?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.17'),
+  'Expected central_bank_affordability_icr_limits provenance to include v4.17 affordability alignment'
+);
+assert.ok(
+  centralBankAffordabilityIcr?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.18'),
+  'Expected central_bank_affordability_icr_limits provenance to include v4.18 ICR alignment'
+);
+
+const bankAgeLimit = newlyCoveredCalibration.items.find((item) => item.id === 'bank_age_limit');
+assert.ok(
+  bankAgeLimit?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.9'),
+  'Expected bank_age_limit provenance to include v4.9 lender-age calibration'
+);
+
+const hpaLookback = newlyCoveredCalibration.items.find((item) => item.id === 'hpa_lookback_years');
+assert.ok(
+  hpaLookback?.changeOriginsInRange.some((origin) => origin.versionId === 'v4.14oo'),
+  'Expected hpa_lookback_years provenance to include v4.14oo status confirmation'
+);
+
+const noHistoryCards = ['days_under_offer', 'downpayment_btl_lognormal'] as const;
+for (const id of noHistoryCards) {
+  const item = newlyCoveredCalibration.items.find((candidate) => candidate.id === id);
+  assert.ok(item, `Expected ${id} compare item`);
+  assert.equal(
+    item?.changeOriginsInRange.length,
+    0,
+    `Expected ${id} to be valid but have no tracked update metadata in selected scope`
+  );
+}
+
+const rentPurchaseChoice = newlyCoveredCalibration.items.find((item) => item.id === 'rent_purchase_choice');
+assert.ok(
+  rentPurchaseChoice?.changeOriginsInRange.some((origin) => origin.versionId === 'v5o3'),
+  'Expected rent_purchase_choice provenance to include latest output calibration'
+);
+
+const btlProbabilityMultiplier = newlyCoveredCalibration.items.find((item) => item.id === 'btl_probability_multiplier');
+assert.ok(
+  btlProbabilityMultiplier?.changeOriginsInRange.some((origin) => origin.versionId === 'v5o3'),
+  'Expected btl_probability_multiplier provenance to include latest output calibration'
+);
+
+const btlChoiceIntensity = newlyCoveredCalibration.items.find((item) => item.id === 'btl_choice_intensity');
+assert.ok(
+  btlChoiceIntensity?.changeOriginsInRange.some((origin) => origin.versionId === 'v5o3'),
+  'Expected btl_choice_intensity provenance to include latest output calibration'
+);
 
 const unchangedSingleSource = compareParameters(repoRoot, latestVersion, latestVersion, ['uk_housing_stock_totals'], 'through_right')
   .items[0];

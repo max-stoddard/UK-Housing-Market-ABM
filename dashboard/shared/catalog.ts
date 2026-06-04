@@ -60,6 +60,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'This binned series sets the baseline probability of a household being a buy-to-let investor by income percentile. Higher probabilities in upper percentiles increase investor participation and potential competition with owner-occupiers. Lower values reduce investor-driven demand in the housing market.'
   },
   {
+    id: 'btl_probability_multiplier',
+    title: 'Buy-to-Let Investor Probability Multiplier',
+    group: 'BTL & Investor Behavior',
+    format: 'scalar',
+    configKeys: ['BTL_PROBABILITY_MULTIPLIER'],
+    explanation:
+      'This multiplier scales the baseline probability of being a BTL investor after income-percentile probabilities are read. Higher values increase investor prevalence and can raise investor-driven demand pressure.'
+  },
+  {
     id: 'national_insurance_rates',
     title: 'National Insurance Rates Across Income Thresholds',
     group: 'Government & Tax',
@@ -120,6 +129,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'Desired rent is modeled as a power function of income. Increasing scale lifts rent willingness at all income levels, while increasing exponent steepens the response for higher incomes. This affects bid intensity in the rental market and competitive pressure on rental prices.'
   },
   {
+    id: 'rent_purchase_choice',
+    title: 'Rent vs Purchase Decision Sensitivity',
+    group: 'Housing & Rental Market',
+    format: 'scalar_pair',
+    configKeys: ['PSYCHOLOGICAL_COST_OF_RENTING', 'SENSITIVITY_RENT_OR_PURCHASE'],
+    explanation:
+      'These output-calibrated parameters shape the rent-versus-purchase decision. Psychological renting cost shifts the relative burden of renting, while sensitivity controls how strongly households respond to utility differences.'
+  },
+  {
     id: 'hpa_expectation_params',
     title: 'Expected House Price Change vs Market Trend',
     group: 'Housing & Rental Market',
@@ -127,6 +145,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
     configKeys: ['HPA_EXPECTATION_FACTOR', 'HPA_EXPECTATION_CONST'],
     explanation:
       'This equation view plots expected annual house-price change as trend sensitivity times observed trend plus an intercept. Higher factor steepens trend response, while const shifts the line up or down at every trend level.'
+  },
+  {
+    id: 'hpa_lookback_years',
+    title: 'House Price Appreciation Lookback Window',
+    group: 'Housing & Rental Market',
+    format: 'scalar',
+    configKeys: ['HPA_YEARS_TO_CHECK'],
+    explanation:
+      'This lookback window controls how many years of recent house-price history households use when forming annual HPA expectations. Longer windows smooth trend signals, while shorter windows make expectations more responsive.'
   },
   {
     id: 'hold_period_years',
@@ -194,6 +221,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'These parameters define the normal distribution for log rental-price reduction magnitudes. The chart shows both log-reduction density and the implied percent-reduction density.'
   },
   {
+    id: 'days_under_offer',
+    title: 'Days Under Offer Before Bid-Up Resolution',
+    group: 'Housing & Rental Market',
+    format: 'scalar',
+    configKeys: ['DAYS_UNDER_OFFER'],
+    explanation:
+      'This duration controls how long a sale remains under offer while the seller can consider additional bids. Longer windows can increase the opportunity for bid-up events, while shorter windows resolve transactions faster.'
+  },
+  {
     id: 'bidup_multiplier',
     title: 'Bid-Up Multiplier Under Competition',
     group: 'Housing & Rental Market',
@@ -248,6 +284,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'These parameters define down-payment behavior for owner-occupiers beyond first-time buyers. Higher scale increases typical equity contribution at purchase, while higher shape broadens variation between households. This influences leverage, mortgage demand, and transaction pacing.'
   },
   {
+    id: 'downpayment_btl_lognormal',
+    title: 'Buy-to-Let Down-Payment Distribution Shape',
+    group: 'Purchase & Mortgage',
+    format: 'lognormal_pair',
+    configKeys: ['DOWNPAYMENT_BTL_SCALE', 'DOWNPAYMENT_BTL_SHAPE'],
+    explanation:
+      'These parameters define the lognormal down-payment distribution for BTL investors. Higher scale increases typical investor equity contributions, while higher shape broadens deposit dispersion across investors.'
+  },
+  {
     id: 'downpayment_btl_profile',
     title: 'Buy-to-Let Down-Payment Mean and Volatility',
     group: 'Purchase & Mortgage',
@@ -275,6 +320,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'These parameters define initial mortgage pricing and the sensitivity of lending rates to credit-demand pressure. They directly shape borrowing costs and credit availability feedback in the model.'
   },
   {
+    id: 'central_bank_base_rate',
+    title: 'Central Bank Initial Base Rate',
+    group: 'Bank & Credit Policy',
+    format: 'scalar',
+    configKeys: ['CENTRAL_BANK_INITIAL_BASE_RATE'],
+    explanation:
+      'This policy rate seeds the central-bank rate environment used by the credit system. Higher base rates raise the monetary-policy backdrop that feeds into mortgage-rate calibration and affordability pressure.'
+  },
+  {
     id: 'bank_ltv_limits',
     title: 'Bank Hard LTV Limits by Borrower Type',
     group: 'Bank & Credit Policy',
@@ -282,6 +336,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
     configKeys: ['BANK_LTV_HARD_MAX_FTB', 'BANK_LTV_HARD_MAX_HM', 'BANK_LTV_HARD_MAX_BTL'],
     explanation:
       'These internal bank caps bound maximum loan-to-value by segment. Tighter caps require larger deposits and can suppress leveraged purchase demand.'
+  },
+  {
+    id: 'central_bank_ltv_limits',
+    title: 'Central Bank Hard LTV Limits by Borrower Type',
+    group: 'Bank & Credit Policy',
+    format: 'scalar',
+    configKeys: ['CENTRAL_BANK_LTV_HARD_MAX_FTB', 'CENTRAL_BANK_LTV_HARD_MAX_HM', 'CENTRAL_BANK_LTV_HARD_MAX_BTL'],
+    explanation:
+      'These central-bank caps bound maximum loan-to-value ratios for first-time buyers, home movers, and BTL investors. Lower caps require larger equity buffers and can reduce leveraged purchase demand.'
   },
   {
     id: 'bank_lti_limits',
@@ -293,6 +356,15 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'These hard loan-to-income limits cap borrowing relative to gross income for first-time buyers and home movers. Lower limits tighten affordability constraints and moderate debt-fueled demand.'
   },
   {
+    id: 'central_bank_lti_soft_limits',
+    title: 'Central Bank Soft LTI Limits by Borrower Type',
+    group: 'Bank & Credit Policy',
+    format: 'scalar_pair',
+    configKeys: ['CENTRAL_BANK_LTI_SOFT_MAX_FTB', 'CENTRAL_BANK_LTI_SOFT_MAX_HM'],
+    explanation:
+      'These soft loan-to-income thresholds represent the central-bank flow-limit policy for first-time buyers and home movers. Lower thresholds tighten the share of high-LTI lending allowed through the policy channel.'
+  },
+  {
     id: 'bank_affordability_icr_limits',
     title: 'Bank Affordability and ICR Hard Limits',
     group: 'Bank & Credit Policy',
@@ -302,13 +374,47 @@ export const PARAMETER_CATALOG: ParameterCardMeta[] = [
       'These constraints cap repayment burden for owner-occupier mortgages and minimum rental-cover for BTL loans. Together they regulate debt service risk tolerance across lending channels.'
   },
   {
+    id: 'central_bank_affordability_icr_limits',
+    title: 'Central Bank Affordability and ICR Constraints',
+    group: 'Bank & Credit Policy',
+    format: 'scalar_pair',
+    configKeys: ['CENTRAL_BANK_AFFORDABILITY_HARD_MAX', 'CENTRAL_BANK_ICR_HARD_MIN'],
+    explanation:
+      'These central-bank constraints represent the separate policy affordability cap and BTL interest-cover floor. Non-binding sentinel values distinguish inactive central-bank limits from representative-bank underwriting constraints.'
+  },
+  {
+    id: 'bank_age_limit',
+    title: 'Mortgage Origination and Repayment Age Limit',
+    group: 'Bank & Credit Policy',
+    format: 'scalar',
+    configKeys: ['BANK_AGE_LIMIT'],
+    explanation:
+      'This lender-side age limit controls eligibility for obtaining and finishing repayment of non-BTL mortgages. Higher values expand mortgage eligibility for older households, while lower values tighten access.'
+  },
+  {
     id: 'btl_strategy_split',
-    title: 'Buy-to-Let Strategy Mix: Income Yield vs Capital Growth',
+    title: 'Buy-to-Let Strategy Mix: Income Yield, Capital Growth, and Mixed',
     group: 'BTL & Investor Behavior',
     format: 'scalar_pair',
     configKeys: ['BTL_P_INCOME_DRIVEN', 'BTL_P_CAPITAL_DRIVEN'],
+    derivedScalars: [
+      {
+        key: 'BTL_P_MIXED',
+        expression: 'btl_mixed_probability',
+        sourceConfigKeys: ['BTL_P_INCOME_DRIVEN', 'BTL_P_CAPITAL_DRIVEN']
+      }
+    ],
     explanation:
-      'These probabilities set how many BTL investors primarily target rental income versus capital gains. A higher capital-driven share can increase sensitivity to expected price appreciation. A higher income-driven share emphasizes yield and may stabilize behavior toward rental cash flow.'
+      'These probabilities set how many BTL investors primarily target rental income, capital gains, or a mixed strategy. The mixed share is derived as the residual probability after income-driven and capital-driven shares are assigned, matching the Java model strategy-selection order.'
+  },
+  {
+    id: 'btl_choice_intensity',
+    title: 'Buy-to-Let Choice Intensity',
+    group: 'BTL & Investor Behavior',
+    format: 'scalar',
+    configKeys: ['BTL_CHOICE_INTENSITY'],
+    explanation:
+      'This intensity parameter controls how strongly BTL investors respond to effective-yield differences when deciding whether to buy or sell. Higher values make choices more sharply concentrated around the highest-yield option.'
   }
 ];
 

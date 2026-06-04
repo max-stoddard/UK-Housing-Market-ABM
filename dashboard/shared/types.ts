@@ -19,6 +19,14 @@ export type ParameterFormat =
   | 'hpa_expectation_line'
   | 'buy_quad';
 
+export type DerivedScalarExpression = 'btl_mixed_probability';
+
+export interface DerivedScalarMeta {
+  key: string;
+  expression: DerivedScalarExpression;
+  sourceConfigKeys: string[];
+}
+
 export interface ParameterCardMeta {
   id: string;
   title: string;
@@ -26,6 +34,7 @@ export interface ParameterCardMeta {
   format: ParameterFormat;
   configKeys: string[];
   dataFileConfigKeys?: string[];
+  derivedScalars?: DerivedScalarMeta[];
   explanation: string;
 }
 
