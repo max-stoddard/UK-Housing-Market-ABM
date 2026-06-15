@@ -34,9 +34,11 @@ try:
 
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
 
     HAS_MATPLOTLIB = True
 except ImportError:
+    MultipleLocator = None
     plt = None
     HAS_MATPLOTLIB = False
 
@@ -856,11 +858,33 @@ def _write_sequential_plots(runtime_path: Path, speedup_path: Path, population_s
     plt.close(fig)
 
     fig, axis = plt.subplots(figsize=(7.2, 4.3))
-    axis.errorbar(populations, speedups, yerr=[lower, upper], marker="o", color="#2F7F6F", capsize=4)
-    axis.axhline(1.0, color="#595959", linestyle="--", linewidth=1)
+    speedup_handle = axis.errorbar(
+        populations,
+        speedups,
+        yerr=[lower, upper],
+        marker="o",
+        color="#2F7F6F",
+        capsize=4,
+        label="Geometric mean speedup (95% CI)",
+    )
+    baseline_handle = axis.axhline(1.0, color="#595959", linestyle="--", linewidth=1, label="No speedup (1.0)")
     axis.set_xlabel("Target population")
-    axis.set_ylabel("Geometric mean speedup: cache-off / cache-on")
+    axis.set_ylabel("Geometric mean cache optimisation speedup")
+    axis.set_xlim(left=0)
+    axis.xaxis.set_minor_locator(MultipleLocator(5_000))
+    axis.yaxis.set_minor_locator(MultipleLocator(0.004))
     axis.grid(True, axis="both", color="#B8B8B8", linewidth=0.7, alpha=0.45)
+    axis.grid(True, which="minor", axis="both", color="#D0D0D0", linewidth=0.45, alpha=0.28)
+    axis.legend(
+        handles=[speedup_handle, baseline_handle],
+        loc="upper left",
+        fontsize="x-small",
+        frameon=True,
+        handlelength=1.6,
+        borderpad=0.3,
+        labelspacing=0.25,
+        borderaxespad=0.35,
+    )
     fig.tight_layout()
     fig.savefig(speedup_path, dpi=300)
     plt.close(fig)

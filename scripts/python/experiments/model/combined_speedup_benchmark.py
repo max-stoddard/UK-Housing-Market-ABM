@@ -17,11 +17,17 @@ import os
 import random
 import re
 import statistics
-import subprocess
+import sys
 import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.python.experiments.model import speed_experiment_common as common
 
 os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "uk-housing-matplotlib"))
 
@@ -37,12 +43,12 @@ except ImportError:
     HAS_MATPLOTLIB = False
 
 
-DEFAULT_SNAPSHOT = "v0"
-DEFAULT_BASE_MODE = "core-minimal-20k-s1"
+DEFAULT_SNAPSHOT = common.DEFAULT_SNAPSHOT
+DEFAULT_BASE_MODE = common.DEFAULT_BASE_MODE
 DEFAULT_TARGET_POPULATION = 5000
-DEFAULT_N_STEPS = 2000
-DEFAULT_SEED_COUNT = 40
-DEFAULT_PARALLEL_WORKERS = 20
+DEFAULT_N_STEPS = common.DEFAULT_N_STEPS
+DEFAULT_SEED_COUNT = common.DEFAULT_SEED_COUNT
+DEFAULT_PARALLEL_WORKERS = common.DEFAULT_PARALLEL_WORKERS
 DEFAULT_ORDERING_SEED = 20260529
 DEFAULT_JAVA_OPTIONS = ("-XX:ActiveProcessorCount=1",)
 HEAVY_OUTPUT_PATTERN = re.compile(r"^Output-run\d+\.csv$")
@@ -75,40 +81,6 @@ CELL_DEFINITIONS = {
         "workers": DEFAULT_PARALLEL_WORKERS,
     },
 }
-
-T_CRITICAL_975 = {
-    1: 12.706,
-    2: 4.303,
-    3: 3.182,
-    4: 2.776,
-    5: 2.571,
-    6: 2.447,
-    7: 2.365,
-    8: 2.306,
-    9: 2.262,
-    10: 2.228,
-    11: 2.201,
-    12: 2.179,
-    13: 2.160,
-    14: 2.145,
-    15: 2.131,
-    16: 2.120,
-    17: 2.110,
-    18: 2.101,
-    19: 2.093,
-    20: 2.086,
-    21: 2.080,
-    22: 2.074,
-    23: 2.069,
-    24: 2.064,
-    25: 2.060,
-    26: 2.056,
-    27: 2.052,
-    28: 2.048,
-    29: 2.045,
-    30: 2.042,
-}
-
 
 @dataclass(frozen=True)
 class BenchmarkPlanEntry:
@@ -166,42 +138,21 @@ def build_dashboard_command(
     java_options: Sequence[str] = DEFAULT_JAVA_OPTIONS,
     confirm_expensive: bool = True,
 ) -> list[str]:
-    policy_label = policy_label_for(entry)
-    command = [
-        "node",
-        "--import",
-        "tsx/esm",
-        "server/parallelScalingReportCli.ts",
-        "--phase",
-        phase,
-        "--repo-root",
-        str(repo_root),
-        "--snapshot",
-        snapshot,
-        "--base-mode",
-        base_mode,
-        "--target-population",
-        str(target_population),
-        "--n-steps",
-        str(n_steps),
-        "--seed-count",
-        str(seed_count),
-        "--workers",
-        str(entry.workers),
-        "--repeats",
-        "1",
-        "--ordering-seed",
-        str(ordering_seed),
-        "--policy-label",
-        policy_label,
-        "--output-root",
-        str(output_root),
-    ]
-    for java_option in java_options:
-        command.extend(["--java-option", java_option])
-    if phase == "full" and confirm_expensive:
-        command.append("--confirm-expensive")
-    return command
+    return common.build_parallel_scaling_command(
+        repo_root=repo_root,
+        output_root=output_root,
+        target_population=target_population,
+        workers=entry.workers,
+        seed_count=seed_count,
+        n_steps=n_steps,
+        snapshot=snapshot,
+        base_mode=base_mode,
+        phase=phase,
+        ordering_seed=ordering_seed,
+        policy_label=policy_label_for(entry),
+        java_options=java_options,
+        confirm_expensive=confirm_expensive,
+    )
 
 
 def policy_label_for(entry: BenchmarkPlanEntry) -> str:
@@ -347,13 +298,7 @@ def write_run_order(plan: Sequence[BenchmarkPlanEntry], output_root: Path) -> di
 
 
 def load_parallel_scaling_record(entry: BenchmarkPlanEntry, raw_json_path: Path) -> dict[str, Any]:
-    payload = json.loads(raw_json_path.read_text(encoding="utf-8"))
-    batches = payload.get("batches", [])
-    if not batches:
-        raise ValueError(f"No batches in raw artifact: {raw_json_path}")
-    if len(batches) != 1:
-        raise ValueError(f"Expected one batch for {entry.cell}, found {len(batches)} in {raw_json_path}")
-    batch = batches[0]
+    batch = common.load_single_parallel_scaling_batch(raw_json_path)
     return {
         "block_index": entry.block_index,
         "run_order_index": entry.run_order_index,
@@ -362,13 +307,13 @@ def load_parallel_scaling_record(entry: BenchmarkPlanEntry, raw_json_path: Path)
         "parallel_enabled": entry.parallel_enabled,
         "source_variant": entry.source_variant,
         "workers": entry.workers,
-        "status": batch.get("status"),
-        "completed_child_count": batch.get("completedChildCount"),
-        "failed_child_count": batch.get("failedChildCount"),
-        "canceled_child_count": batch.get("canceledChildCount"),
-        "wall_clock_seconds": batch.get("wallClockSeconds"),
-        "throughput_runs_per_hour": batch.get("throughputRunsPerHour"),
-        "children": batch.get("children", []),
+        "status": batch.status,
+        "completed_child_count": batch.completed_child_count,
+        "failed_child_count": batch.failed_child_count,
+        "canceled_child_count": batch.canceled_child_count,
+        "wall_clock_seconds": batch.wall_clock_seconds,
+        "throughput_runs_per_hour": batch.throughput_runs_per_hour,
+        "children": batch.children,
         "raw_json_path": str(raw_json_path),
     }
 
@@ -523,26 +468,7 @@ def _cell_summaries(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _effect_summary(log_values: Sequence[float]) -> dict[str, Any]:
-    if not log_values:
-        return {"estimate": None, "lower_95_ci": None, "upper_95_ci": None, "n": 0}
-
-    mean_log = statistics.mean(log_values)
-    estimate = math.exp(mean_log)
-    if len(log_values) == 1:
-        return {"estimate": estimate, "lower_95_ci": None, "upper_95_ci": None, "n": 1}
-
-    sd = statistics.stdev(log_values)
-    if sd == 0.0:
-        return {"estimate": estimate, "lower_95_ci": estimate, "upper_95_ci": estimate, "n": len(log_values)}
-
-    t_critical = T_CRITICAL_975.get(len(log_values) - 1, 1.96)
-    half_width = t_critical * sd / math.sqrt(len(log_values))
-    return {
-        "estimate": estimate,
-        "lower_95_ci": math.exp(mean_log - half_width),
-        "upper_95_ci": math.exp(mean_log + half_width),
-        "n": len(log_values),
-    }
+    return common.effect_summary_from_logs(log_values)
 
 
 def _log_ratio(numerator: float, denominator: float) -> float:
@@ -561,7 +487,7 @@ def _is_successful_batch(row: Mapping[str, Any]) -> bool:
 
 
 def _is_success_status(status: str) -> bool:
-    return status.strip().lower() in {"success", "successful", "succeeded", "complete", "completed", "ok", "passed"}
+    return common.is_success_status(status)
 
 
 def _normalize_batch_row(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -657,39 +583,19 @@ def _write_throughput_plot(
 
 
 def _latest_raw_json(output_root: Path) -> Path:
-    candidates = sorted(output_root.glob("parallel-scaling/*/parallel_scaling_raw.json"), key=lambda path: path.stat().st_mtime)
-    if not candidates:
-        raise FileNotFoundError(f"No parallel_scaling_raw.json found under {output_root}")
-    return candidates[-1]
+    return common.latest_parallel_scaling_raw_json(output_root)
 
 
 def _run_checked(command: Sequence[str], *, cwd: Path) -> None:
-    subprocess.run(list(command), cwd=cwd, check=True)
+    common.run_checked(command, cwd=cwd)
 
 
 def _coerce_csv_value(value: str) -> Any:
-    text = value.strip()
-    if text == "":
-        return None
-    lower = text.lower()
-    if lower in {"true", "false"}:
-        return lower == "true"
-    try:
-        return int(text)
-    except ValueError:
-        pass
-    try:
-        return float(text)
-    except ValueError:
-        return text
+    return common.coerce_csv_value(value)
 
 
 def _coerce_bool(value: Any) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.strip().lower() in {"1", "true", "yes", "y"}
-    return bool(value)
+    return common.coerce_bool(value)
 
 
 def _require_positive_int(value: int, label: str) -> None:

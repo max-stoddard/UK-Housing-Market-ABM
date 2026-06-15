@@ -108,6 +108,9 @@ class TestSpeedExperimentCommon(unittest.TestCase):
         self.assertLess(summary["lower_95_ci"], summary["estimate"])
         self.assertGreater(summary["upper_95_ci"], summary["estimate"])
 
+    def test_t_critical_table_includes_df_27_for_28_sample_ci(self) -> None:
+        self.assertEqual(speed_experiment_common.T_CRITICAL_975[27], 2.052)
+
 
 if __name__ == "__main__":
     unittest.main()
