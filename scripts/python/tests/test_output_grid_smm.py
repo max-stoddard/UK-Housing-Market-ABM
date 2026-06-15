@@ -25,7 +25,9 @@ from scripts.python.calibration.output.esmda import (
 from scripts.python.calibration.output.grid_smm import (
     WORKFLOW_SLUG,
     build_arg_parser,
+    build_carro_full_candidates,
     build_carro_three_level_candidates,
+    order_grid_candidates,
     build_reproduce_command,
     run_grid_smm,
 )
@@ -82,6 +84,47 @@ class TestOutputGridSmm(unittest.TestCase):
         self.assertEqual(sum(1 for distance in distances if distance == 1), 10)
         self.assertEqual([candidate.member_id for candidate in candidates], list(range(243)))
 
+    def test_carro_full_grid_matches_original_smm_parameter_space(self) -> None:
+        candidates = build_carro_full_candidates()
+
+        self.assertEqual(len(candidates), 26730)
+        first = candidates[0]
+        self.assertEqual(first.member_id, 0)
+        self.assertEqual(
+            first.parameters,
+            {
+                PSYCHOLOGICAL_COST_OF_RENTING: 0.0,
+                SENSITIVITY_RENT_OR_PURCHASE: 0.00001,
+                BTL_PROBABILITY_MULTIPLIER: 1.6,
+                BTL_CHOICE_INTENSITY: 0.1,
+                MARKET_AVERAGE_PRICE_DECAY: 0.1,
+            },
+        )
+        self.assertIn(
+            {
+                PSYCHOLOGICAL_COST_OF_RENTING: 0.4,
+                SENSITIVITY_RENT_OR_PURCHASE: 0.001,
+                BTL_PROBABILITY_MULTIPLIER: 1.76,
+                BTL_CHOICE_INTENSITY: 100.0,
+                MARKET_AVERAGE_PRICE_DECAY: 0.5,
+            },
+            [candidate.parameters for candidate in candidates],
+        )
+
+    def test_random_grid_order_is_reproducible_and_preserves_original_member_ids(self) -> None:
+        candidates = build_carro_full_candidates()
+
+        first_order = order_grid_candidates(candidates, grid_order="random", grid_rng_seed=17)
+        second_order = order_grid_candidates(candidates, grid_order="random", grid_rng_seed=17)
+        different_order = order_grid_candidates(candidates, grid_order="random", grid_rng_seed=18)
+
+        self.assertEqual([candidate.member_id for candidate in first_order[:20]], [candidate.member_id for candidate in second_order[:20]])
+        self.assertNotEqual(
+            [candidate.member_id for candidate in first_order[:20]],
+            [candidate.member_id for candidate in different_order[:20]],
+        )
+        self.assertEqual(sorted(candidate.member_id for candidate in first_order), list(range(26730)))
+
     def test_parser_defaults_to_restartable_2011_smm_grid(self) -> None:
         args = build_arg_parser().parse_args(["--version", "v0", "--run-id", "v0-smm-grid"])
 
@@ -90,6 +133,8 @@ class TestOutputGridSmm(unittest.TestCase):
         self.assertEqual(args.seeds, "1,2,3,4,5,6,7,8,9,10")
         self.assertEqual(args.workers, 20)
         self.assertEqual(args.grid_profile, "carro-three-level")
+        self.assertEqual(args.grid_order, "center-out")
+        self.assertEqual(args.grid_rng_seed, 20260607)
         self.assertFalse(args.force_rerun)
         self.assertFalse(args.delete_csv_after_metrics)
 
@@ -168,6 +213,38 @@ class TestOutputGridSmm(unittest.TestCase):
             self.assertTrue(metadata["restartable"])
             self.assertEqual(metadata["candidateCount"], 243)
             self.assertFalse((repo_root / "input-data-versions" / "v0-smm-grid").exists())
+
+    def test_full_grid_dry_run_metadata_reports_original_parameter_specs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            self._write_source_config(repo_root)
+            args = build_arg_parser().parse_args(
+                [
+                    "--version",
+                    "v0",
+                    "--run-id",
+                    "v0-smm-grid-full",
+                    "--grid-profile",
+                    "carro-full",
+                    "--max-candidates",
+                    "1",
+                    "--output-root",
+                    "tmp/output-calibration",
+                    "--dry-run",
+                ]
+            )
+
+            run_grid_smm(args, repo_root=repo_root)
+
+            output_root = repo_root / "tmp" / "output-calibration" / "v0-smm-grid-full" / WORKFLOW_SLUG
+            metadata = json.loads((output_root / "OutputGridSmmMetadata.json").read_text(encoding="utf-8"))
+            specs = {spec["name"]: spec for spec in metadata["parameterSpecs"]}
+            self.assertEqual(specs[PSYCHOLOGICAL_COST_OF_RENTING]["prior_lower"], 0.0)
+            self.assertEqual(specs[PSYCHOLOGICAL_COST_OF_RENTING]["prior_upper"], 0.5)
+            self.assertEqual(specs[SENSITIVITY_RENT_OR_PURCHASE]["prior_lower"], 0.00001)
+            self.assertEqual(specs[SENSITIVITY_RENT_OR_PURCHASE]["prior_upper"], 0.1)
+            self.assertEqual(specs[BTL_CHOICE_INTENSITY]["prior_lower"], 0.1)
+            self.assertEqual(specs[BTL_CHOICE_INTENSITY]["prior_upper"], 1000.0)
 
     def test_mocked_run_evaluates_grid_once_and_reports_cache_counts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

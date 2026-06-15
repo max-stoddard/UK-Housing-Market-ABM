@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import random
 import re
 import time
 from dataclasses import asdict, dataclass
@@ -34,6 +35,14 @@ from scripts.python.calibration.output.esmda import (
     TRANSFORM_LOG10,
     ParameterSpec,
 )
+from scripts.python.calibration.output.parameter_space import (
+    ORIGINAL_SMM_GRID_VALUES,
+    ORIGINAL_SMM_PARAMETER_SPECS,
+    grid_center_distance,
+    original_smm_grid_index_tuples,
+    original_smm_parameter_set,
+    parameter_values_payload,
+)
 from scripts.python.calibration.output.validation_bridge import (
     DEFAULT_VALIDATION_LOSS_ERROR_STD,
     FAMILY_AWARE_METRIC_LOSS_OBJECTIVE,
@@ -59,6 +68,11 @@ from scripts.python.validation.model.schema import VALIDATION_WINDOW_END, VALIDA
 WORKFLOW_NAME = "grid-smm"
 WORKFLOW_SLUG = "grid-smm"
 GRID_PROFILE_CARRO_THREE_LEVEL = "carro-three-level"
+GRID_PROFILE_CARRO_FULL = "carro-full"
+GRID_ORDER_CENTER_OUT = "center-out"
+GRID_ORDER_LEXICOGRAPHIC = "lexicographic"
+GRID_ORDER_RANDOM = "random"
+DEFAULT_GRID_RNG_SEED = 20260607
 DEFAULT_SEEDS = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 DEFAULT_WORKERS = 20
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
@@ -68,8 +82,8 @@ CANDIDATE_GRID_FILENAME = "GridCandidates.csv"
 EVALUATED_MEMBERS_FILENAME = "SmmEvaluatedMembers.csv"
 EVIDENCE_DIR_TEMPLATE = "input-data-versions/calibration-evidence/output-grid-smm-{run_id}"
 LOSS_HANDLING_NOTE = (
-    "Grid SMM evaluates a deterministic three-level sub-grid of the original Carro et al. "
-    "five-parameter grid against the same family-aware validation loss used by the v0o7 TuRBO campaign. "
+    "Grid SMM evaluates either the original full Carro et al. five-parameter grid or an explicitly "
+    "named local sub-grid against the same family-aware validation loss used by the v0o7 TuRBO campaign. "
     "No output version is promoted by this workflow; the evidence is method-comparison only."
 )
 
@@ -170,9 +184,21 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS, help="Maximum parallel seed workers.")
     parser.add_argument(
         "--grid-profile",
-        choices=(GRID_PROFILE_CARRO_THREE_LEVEL,),
+        choices=(GRID_PROFILE_CARRO_THREE_LEVEL, GRID_PROFILE_CARRO_FULL),
         default=GRID_PROFILE_CARRO_THREE_LEVEL,
         help="Deterministic grid profile to evaluate.",
+    )
+    parser.add_argument(
+        "--grid-order",
+        choices=(GRID_ORDER_CENTER_OUT, GRID_ORDER_LEXICOGRAPHIC, GRID_ORDER_RANDOM),
+        default=GRID_ORDER_CENTER_OUT,
+        help="Candidate ordering before applying --max-candidates.",
+    )
+    parser.add_argument(
+        "--grid-rng-seed",
+        type=int,
+        default=DEFAULT_GRID_RNG_SEED,
+        help=f"Seed for --grid-order random (default: {DEFAULT_GRID_RNG_SEED}).",
     )
     parser.add_argument(
         "--max-candidates",
@@ -253,6 +279,45 @@ def build_carro_three_level_candidates() -> list[GridCandidate]:
     return candidates
 
 
+def build_carro_full_candidates() -> list[GridCandidate]:
+    """Return the full 26,730-candidate original Carro SMM grid in lexicographic order."""
+
+    candidates: list[GridCandidate] = []
+    for member_id, indices in enumerate(original_smm_grid_index_tuples()):
+        candidates.append(
+            GridCandidate(
+                member_id=member_id,
+                level_indices=tuple(indices),
+                center_distance=grid_center_distance(indices),
+                parameters=original_smm_parameter_set(indices),
+            )
+        )
+    return candidates
+
+
+def order_grid_candidates(
+    candidates: Sequence[GridCandidate],
+    *,
+    grid_order: str,
+    grid_rng_seed: int,
+) -> list[GridCandidate]:
+    """Return candidates in the requested deterministic order without changing member ids."""
+
+    ordered = list(candidates)
+    if grid_order == GRID_ORDER_LEXICOGRAPHIC:
+        return sorted(ordered, key=lambda candidate: candidate.member_id)
+    if grid_order == GRID_ORDER_CENTER_OUT:
+        return sorted(
+            ordered,
+            key=lambda candidate: (candidate.center_distance, candidate.member_id),
+        )
+    if grid_order == GRID_ORDER_RANDOM:
+        rng = random.Random(int(grid_rng_seed))
+        rng.shuffle(ordered)
+        return ordered
+    raise ValueError(f"Unsupported grid order: {grid_order}")
+
+
 def run_grid_smm(args: argparse.Namespace, *, repo_root: Path | None = None) -> dict[str, object]:
     """Run or dry-run the restartable grid SMM workflow."""
 
@@ -278,7 +343,11 @@ def run_grid_smm(args: argparse.Namespace, *, repo_root: Path | None = None) -> 
         raise RuntimeError(f"Missing source version config: {source_config_path}")
     source_parameters = parse_config_parameters(source_config_path.read_text(encoding="utf-8"))
 
-    candidates = build_grid_candidates(args.grid_profile)
+    candidates = order_grid_candidates(
+        build_grid_candidates(args.grid_profile),
+        grid_order=args.grid_order,
+        grid_rng_seed=args.grid_rng_seed,
+    )
     if args.max_candidates is not None:
         candidates = candidates[: args.max_candidates]
     parameter_sets = [candidate.parameters for candidate in candidates]
@@ -347,23 +416,25 @@ def run_grid_smm(args: argparse.Namespace, *, repo_root: Path | None = None) -> 
         validation_window_end=args.validation_window_end,
     )
     grouped_seed_results = group_seed_run_results_by_member(seed_run_results)
-    member_results = [
-        build_member_validation_result(
-            version=version,
-            iteration=0,
-            member_id=candidate.member_id,
-            parameters=candidate.parameters,
-            seed_results=grouped_seed_results[candidate.member_id],
-            seeds=seeds,
-            validation_profile=validation_profile,
-            observations=observations,
-            source_parameters=source_parameters,
-            specs=SMM_PARAMETER_SPECS,
-            validation_window_start=args.validation_window_start,
-            validation_window_end=args.validation_window_end,
+    specs = ORIGINAL_SMM_PARAMETER_SPECS if args.grid_profile == GRID_PROFILE_CARRO_FULL else SMM_PARAMETER_SPECS
+    member_results = []
+    for evaluation_index, candidate in enumerate(candidates):
+        member_results.append(
+            build_member_validation_result(
+                version=version,
+                iteration=0,
+                member_id=candidate.member_id,
+                parameters=candidate.parameters,
+                seed_results=grouped_seed_results[evaluation_index],
+                seeds=seeds,
+                validation_profile=validation_profile,
+                observations=observations,
+                source_parameters=source_parameters,
+                specs=specs,
+                validation_window_start=args.validation_window_start,
+                validation_window_end=args.validation_window_end,
+            )
         )
-        for candidate in candidates
-    ]
     baseline_member = member_results[0]
     best_member = min(member_results, key=overall_composite_loss)
     cached_seed_run_count = sum(1 for result in seed_run_results if bool(getattr(result, "cached", False)))
@@ -401,6 +472,8 @@ def build_grid_candidates(grid_profile: str) -> list[GridCandidate]:
 
     if grid_profile == GRID_PROFILE_CARRO_THREE_LEVEL:
         return build_carro_three_level_candidates()
+    if grid_profile == GRID_PROFILE_CARRO_FULL:
+        return build_carro_full_candidates()
     raise ValueError(f"Unsupported grid profile: {grid_profile}")
 
 
@@ -441,6 +514,8 @@ def build_reproduce_command(args: argparse.Namespace) -> str:
         f"--seeds {args.seeds}",
         f"--workers {args.workers}",
         f"--grid-profile {args.grid_profile}",
+        f"--grid-order {args.grid_order}",
+        f"--grid-rng-seed {args.grid_rng_seed}",
         f"--max-candidates {args.max_candidates}" if args.max_candidates is not None else None,
         f"--validation-window-start {args.validation_window_start}",
         f"--validation-window-end {args.validation_window_end}",
@@ -496,6 +571,7 @@ def _build_metadata(
     output_root: Path,
     evidence_dir: Path,
 ) -> dict[str, object]:
+    specs = ORIGINAL_SMM_PARAMETER_SPECS if args.grid_profile == GRID_PROFILE_CARRO_FULL else SMM_PARAMETER_SPECS
     return {
         "workflow": WORKFLOW_NAME,
         "sourceVersion": version,
@@ -508,8 +584,11 @@ def _build_metadata(
         "rankingObjective": args.validation_objective,
         "validationLossErrorStd": args.validation_loss_error_std,
         "gridProfile": args.grid_profile,
-        "gridValues": {key: list(values) for key, values in CARRO_THREE_LEVEL_VALUES.items()},
-        "gridOrdering": "center-out by Manhattan distance from the original Carro selected parameter vector",
+        "gridValues": parameter_values_payload(ORIGINAL_SMM_GRID_VALUES)
+        if args.grid_profile == GRID_PROFILE_CARRO_FULL
+        else {key: list(values) for key, values in CARRO_THREE_LEVEL_VALUES.items()},
+        "gridOrdering": args.grid_order,
+        "gridRngSeed": args.grid_rng_seed,
         "candidateCount": len(candidates),
         "maxCandidates": args.max_candidates,
         "restartable": True,
@@ -526,7 +605,7 @@ def _build_metadata(
         },
         "deleteCsvAfterMetrics": args.delete_csv_after_metrics,
         "forceRerun": args.force_rerun,
-        "parameterSpecs": [asdict(spec) for spec in SMM_PARAMETER_SPECS],
+        "parameterSpecs": [asdict(spec) for spec in specs],
         "observations": [asdict(observation) for observation in observations],
         "outputRoot": str(output_root),
         "evidenceDir": str(evidence_dir),
