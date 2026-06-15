@@ -6,12 +6,17 @@
 from __future__ import annotations
 
 import csv
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from scripts.python.calibration.output.convergence import (
+    _write_live_convergence_plot,
     build_best_so_far_rows,
+    configure_matplotlib_environment,
+    ensure_noninteractive_matplotlib_backend,
     run_convergence_export,
 )
 
@@ -70,6 +75,105 @@ class TestOutputCalibrationConvergence(unittest.TestCase):
             self.assertEqual(len(rows), 6)
             self.assertEqual(rows[0]["method"], "TuRBO")
             self.assertEqual(rows[-1]["method"], "SMM grid")
+
+    def test_plotting_uses_noninteractive_backend_for_threaded_long_runs(self) -> None:
+        backend = ensure_noninteractive_matplotlib_backend()
+
+        self.assertEqual(backend.lower(), "agg")
+
+    def test_matplotlib_environment_defaults_are_safe_for_terminal_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            with mock.patch.dict(os.environ, {}, clear=True):
+                config_dir = configure_matplotlib_environment(default_config_root=Path(tmp_dir))
+
+                self.assertEqual(os.environ["MPLBACKEND"], "Agg")
+                self.assertEqual(Path(os.environ["MPLCONFIGDIR"]), config_dir)
+                self.assertTrue(config_dir.exists())
+
+    def test_live_plot_options_add_minor_locators_and_dotted_reference_lines(self) -> None:
+        import matplotlib.pyplot as plt
+        from matplotlib.colors import to_hex
+        from matplotlib.ticker import MultipleLocator
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            plot_path = Path(tmp_dir) / "method_convergence_live.png"
+            rows = [
+                {
+                    "method": "SMM random grid",
+                    "evaluation": 1,
+                    "medianBestSoFarLoss": 0.62,
+                    "p25BestSoFarLoss": 0.61,
+                    "p75BestSoFarLoss": 0.63,
+                },
+                {
+                    "method": "SMM random grid",
+                    "evaluation": 10,
+                    "medianBestSoFarLoss": 0.58,
+                    "p25BestSoFarLoss": 0.57,
+                    "p75BestSoFarLoss": 0.59,
+                },
+                {
+                    "method": "TuRBO",
+                    "evaluation": 1,
+                    "medianBestSoFarLoss": 0.6,
+                    "p25BestSoFarLoss": 0.59,
+                    "p75BestSoFarLoss": 0.61,
+                },
+                {
+                    "method": "TuRBO",
+                    "evaluation": 10,
+                    "medianBestSoFarLoss": 0.56,
+                    "p25BestSoFarLoss": 0.55,
+                    "p75BestSoFarLoss": 0.57,
+                },
+            ]
+
+            with mock.patch.object(plt, "close"):
+                try:
+                    _write_live_convergence_plot(
+                        plot_path,
+                        rows,
+                        x_minor_step=5.0,
+                        y_minor_step=0.004,
+                        reference_x=40.0,
+                        reference_x_label="TuRBO exploratory Sobol period ends",
+                        reference_y_loss=0.5652252115924438,
+                        reference_y_label="v0 2011 validation loss",
+                    )
+                except TypeError as exc:
+                    self.fail(f"live plot options should be accepted: {exc}")
+
+            axes = plt.gcf().axes[0]
+            self.assertIsInstance(axes.xaxis.get_minor_locator(), MultipleLocator)
+            self.assertIsInstance(axes.yaxis.get_minor_locator(), MultipleLocator)
+            self.assertEqual(
+                list(axes.xaxis.get_minor_locator().tick_values(0.0, 10.0)),
+                [-5.0, 0.0, 5.0, 10.0, 15.0],
+            )
+            self.assertEqual(
+                [round(value, 3) for value in axes.yaxis.get_minor_locator().tick_values(0.56, 0.568)],
+                [0.556, 0.56, 0.564, 0.568, 0.572],
+            )
+            lines_by_label = {line.get_label(): line for line in axes.lines}
+            x_reference = lines_by_label["TuRBO exploratory Sobol period ends"]
+            y_reference = lines_by_label["v0 2011 validation loss"]
+            method_colors = {
+                to_hex(lines_by_label["SMM random grid"].get_color()).lower(),
+                to_hex(lines_by_label["TuRBO"].get_color()).lower(),
+            }
+            reference_colors = {
+                to_hex(x_reference.get_color()).lower(),
+                to_hex(y_reference.get_color()).lower(),
+            }
+
+            self.assertEqual(x_reference.get_linestyle(), ":")
+            self.assertEqual(y_reference.get_linestyle(), ":")
+            self.assertNotEqual(to_hex(x_reference.get_color()).lower(), to_hex(y_reference.get_color()).lower())
+            self.assertTrue(reference_colors.isdisjoint(method_colors))
+            self.assertLessEqual(float(x_reference.get_alpha()), 0.5)
+            self.assertLessEqual(float(y_reference.get_alpha()), 0.5)
+            self.assertTrue(plot_path.exists())
+            plt.close("all")
 
     def _write_member_csv(self, path: Path, losses: list[float]) -> None:
         with path.open("w", encoding="utf-8", newline="") as handle:
