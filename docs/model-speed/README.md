@@ -130,6 +130,25 @@ bash scripts/model/run-speed-benchmark.sh \
 
 The population ladder records one measured pass each at `5k` and `10k`. These points are diagnostics, not baseline identities.
 
+Diagnostic cache-candidate comparisons can use the seed-1 paired cache benchmark when the question is whether a cache-on source root is measurably faster than a cache-off source root under the same canonical 20k scenario:
+
+```bash
+bash scripts/model/run-cache-paired-benchmark.sh \
+  --snapshot v0 \
+  --mode core-minimal-20k-s1 \
+  --seed 1 \
+  --repeat 40 \
+  --warmup-pairs 3 \
+  --cache-off-root path/to/cache-off-worktree \
+  --cache-on-root path/to/cache-on-worktree \
+  --ordering-seed 20260603 \
+  --pin-cpu 0 \
+  --active-processor-count 1 \
+  --output-root tmp/model-speed/cache-paired
+```
+
+This paired cache benchmark is diagnostic and does not replace the canonical 10-repeat 20k speed gate. See [`seed-1-paired-cache-benchmark.md`](/home/max/dev/uni/project/models/uk-housing-model-individual-project/docs/model-speed/seed-1-paired-cache-benchmark.md).
+
 ### 3. Profile Second
 Canonical JFR profile command:
 

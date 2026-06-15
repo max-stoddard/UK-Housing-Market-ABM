@@ -10,6 +10,19 @@ This changelog is dedicated only to the model-speed improvement programme.
 - Benchmark and regression impact
 - Required follow-up
 
+## 2026-06-05 - Seed-1 Paired Cache Benchmark Harness
+- Added a diagnostic paired cache benchmark harness for cache-on/cache-off source-root comparisons under `v0 / core-minimal-20k-s1`.
+- The harness keeps `SEED = 1`, runs 3 balanced warm-up pairs, then runs 40 measured adjacent cache pairs with deterministic randomized pair and variant order.
+- It preserves the docs/model-speed benchmark style: snapshot-local configs, `/usr/bin/time -v`, GC summaries, output manifests, run-plan TSV, measured-runs TSV, and paired summary JSON.
+
+Benchmark and regression impact:
+- No Java model source or runtime resources changed.
+- The harness runs `./mvnw -q test` and the three-run exact `e2e-default-5k-s1` regression gate in both source roots before timing.
+- Paired cache-on/off output manifest mismatches fail the benchmark report.
+
+Required follow-up:
+- Treat this as cache-candidate diagnostic evidence only. Do not replace the canonical 10-repeat 20k gate unless a later benchmark-strategy change explicitly promotes it.
+
 ## 2026-05-07 - True JDK 25 vs JDK 8 Runtime Diagnostic
 - Re-ran the Java toolchain comparison as actual runtimes, with JDK 25 first and JDK 8 second, using fresh disposable clones and the current `v0 / core-minimal-20k-s1` 20k x 10 policy.
 - Kept JDK 8 changes benchmark-only: Java 8 bytecode, JDK 8-compatible GC logging, and JDK 8 GC pause parsing in the disposable clone.

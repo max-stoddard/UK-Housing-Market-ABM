@@ -14,6 +14,7 @@ import hashlib
 import html
 import json
 import math
+import random
 import re
 import statistics
 import subprocess
@@ -111,6 +112,18 @@ class ResultsSummarySeries:
     file_name: str
     scale: float
     output_column: str | None = None
+
+
+@dataclass(frozen=True)
+class CachePairedRunEntry:
+    """One planned seed-1 paired cache benchmark run."""
+
+    phase: str
+    run_order_index: int
+    pair_index: int
+    seed: int
+    variant: str
+    run_id: str
 
 
 RESULTS_SUMMARY_SERIES: tuple[ResultsSummarySeries, ...] = (
@@ -1077,6 +1090,307 @@ def benchmark_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def build_cache_paired_run_plan(
+    *,
+    seed: int,
+    repeat: int,
+    warmup_pairs: int,
+    ordering_seed: int,
+) -> list[CachePairedRunEntry]:
+    if seed <= 0:
+        raise ValueError("seed must be a positive integer.")
+    if repeat <= 0:
+        raise ValueError("repeat must be a positive integer.")
+    if warmup_pairs < 0:
+        raise ValueError("warmup_pairs must be a non-negative integer.")
+
+    rng = random.Random(ordering_seed)
+    entries: list[CachePairedRunEntry] = []
+
+    def append_pair(phase: str, pair_index: int) -> None:
+        variants = ["cache-off", "cache-on"]
+        rng.shuffle(variants)
+        for variant in variants:
+            entries.append(
+                CachePairedRunEntry(
+                    phase=phase,
+                    run_order_index=len(entries) + 1,
+                    pair_index=pair_index,
+                    seed=seed,
+                    variant=variant,
+                    run_id=f"{phase}-{pair_index:03d}-{variant}",
+                )
+            )
+
+    for pair_index in range(1, warmup_pairs + 1):
+        append_pair("warmup", pair_index)
+
+    measured_pair_indices = list(range(1, repeat + 1))
+    rng.shuffle(measured_pair_indices)
+    for pair_index in measured_pair_indices:
+        append_pair("measured", pair_index)
+
+    return entries
+
+
+def write_cache_paired_run_plan(entries: list[CachePairedRunEntry], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=["phase", "run_order_index", "pair_index", "seed", "variant", "run_id"],
+            delimiter="\t",
+            lineterminator="\n",
+        )
+        writer.writeheader()
+        for entry in entries:
+            writer.writerow(
+                {
+                    "phase": entry.phase,
+                    "run_order_index": entry.run_order_index,
+                    "pair_index": entry.pair_index,
+                    "seed": entry.seed,
+                    "variant": entry.variant,
+                    "run_id": entry.run_id,
+                }
+            )
+
+
+def cache_paired_plan(args: argparse.Namespace) -> int:
+    entries = build_cache_paired_run_plan(
+        seed=args.seed,
+        repeat=args.repeat,
+        warmup_pairs=args.warmup_pairs,
+        ordering_seed=args.ordering_seed,
+    )
+    write_cache_paired_run_plan(entries, Path(args.output))
+    return 0
+
+
+def read_cache_paired_runs_tsv(path: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        for row in reader:
+            parsed: dict[str, object] = dict(row)
+            for key in ("pair_index", "run_order_index", "seed"):
+                parsed[key] = int(float(str(parsed[key])))
+            for key in BENCHMARK_NUMERIC_KEYS:
+                value = parsed.get(key, "")
+                if value in ("", None):
+                    parsed[key] = None
+                elif key in ("output_bytes", "max_rss_kb", "gc_pause_count"):
+                    parsed[key] = int(float(str(value)))
+                else:
+                    parsed[key] = float(str(value))
+            rows.append(parsed)
+    return rows
+
+
+def normalize_cache_paired_row(row: dict[str, object]) -> dict[str, object]:
+    normalized = dict(row)
+    normalized["phase"] = str(row.get("phase", "measured") or "measured")
+    normalized["variant"] = str(row["variant"])
+    normalized["pair_index"] = int(row["pair_index"])
+    normalized["run_order_index"] = int(row["run_order_index"])
+    normalized["seed"] = int(row["seed"])
+    normalized["run_id"] = str(row["run_id"])
+    for key in BENCHMARK_NUMERIC_KEYS:
+        value = row.get(key)
+        if value is None or value == "":
+            normalized[key] = None
+        elif key in ("output_bytes", "max_rss_kb", "gc_pause_count"):
+            normalized[key] = int(float(str(value)))
+        else:
+            normalized[key] = float(str(value))
+    for key in ("config_path", "output_dir", "stdout_log", "time_file", "manifest_path"):
+        normalized[key] = str(row.get(key, ""))
+    return normalized
+
+
+def cache_paired_speedup_summary(log_values: list[float]) -> dict[str, object]:
+    if not log_values:
+        return {
+            "count": 0,
+            "geometric_mean": None,
+            "lower_95_ci": None,
+            "upper_95_ci": None,
+            "log_mean": None,
+            "log_stdev": None,
+            "log_sem": None,
+            "log_ci95_half_width": None,
+        }
+    count = len(log_values)
+    mean_log = statistics.mean(log_values)
+    estimate = math.exp(mean_log)
+    if count == 1:
+        return {
+            "count": count,
+            "geometric_mean": estimate,
+            "lower_95_ci": None,
+            "upper_95_ci": None,
+            "log_mean": mean_log,
+            "log_stdev": 0.0,
+            "log_sem": 0.0,
+            "log_ci95_half_width": None,
+        }
+    stdev = statistics.stdev(log_values)
+    sem = stdev / math.sqrt(count)
+    half_width = t_critical_95_two_sided(count - 1) * sem
+    return {
+        "count": count,
+        "geometric_mean": estimate,
+        "lower_95_ci": math.exp(mean_log - half_width),
+        "upper_95_ci": math.exp(mean_log + half_width),
+        "log_mean": mean_log,
+        "log_stdev": stdev,
+        "log_sem": sem,
+        "log_ci95_half_width": half_width,
+    }
+
+
+def compare_cache_pair_manifests(cache_off_path: str, cache_on_path: str) -> dict[str, object]:
+    off_path = Path(cache_off_path)
+    on_path = Path(cache_on_path)
+    if not off_path.exists() or not on_path.exists():
+        return {
+            "status": "FAIL",
+            "cache_off_manifest": cache_off_path,
+            "cache_on_manifest": cache_on_path,
+            "missing_manifest_paths": [
+                str(path)
+                for path in (off_path, on_path)
+                if not path.exists()
+            ],
+            "missing_files": [],
+            "extra_files": [],
+            "mismatched_files": [],
+        }
+    missing, extra, mismatched = manifest_differences(load_manifest(off_path), load_manifest(on_path))
+    return {
+        "status": "PASS" if not (missing or extra or mismatched) else "FAIL",
+        "cache_off_manifest": cache_off_path,
+        "cache_on_manifest": cache_on_path,
+        "missing_manifest_paths": [],
+        "missing_files": missing,
+        "extra_files": extra,
+        "mismatched_files": mismatched,
+    }
+
+
+def analyze_cache_paired_runs(rows: list[dict[str, object]]) -> dict[str, object]:
+    normalized_rows = [normalize_cache_paired_row(row) for row in rows]
+    warmup_rows = [row for row in normalized_rows if row["phase"] != "measured"]
+    measured_rows = [row for row in normalized_rows if row["phase"] == "measured"]
+    grouped: dict[int, dict[str, list[dict[str, object]]]] = {}
+    for row in measured_rows:
+        grouped.setdefault(int(row["pair_index"]), {}).setdefault(str(row["variant"]), []).append(row)
+
+    pairs: list[dict[str, object]] = []
+    incomplete_pairs: list[dict[str, object]] = []
+    manifest_failures: list[dict[str, object]] = []
+    for pair_index, variants in sorted(grouped.items()):
+        cache_off_rows = variants.get("cache-off", [])
+        cache_on_rows = variants.get("cache-on", [])
+        if len(cache_off_rows) != 1 or len(cache_on_rows) != 1:
+            incomplete_pairs.append(
+                {
+                    "pair_index": pair_index,
+                    "cache_off_count": len(cache_off_rows),
+                    "cache_on_count": len(cache_on_rows),
+                }
+            )
+            continue
+        cache_off = cache_off_rows[0]
+        cache_on = cache_on_rows[0]
+        off_seconds = float(cache_off["wall_clock_seconds"])
+        on_seconds = float(cache_on["wall_clock_seconds"])
+        manifest_comparison = compare_cache_pair_manifests(
+            str(cache_off["manifest_path"]),
+            str(cache_on["manifest_path"]),
+        )
+        pair = {
+            "pair_index": pair_index,
+            "seed": int(cache_off["seed"]),
+            "cache_off_run_id": cache_off["run_id"],
+            "cache_on_run_id": cache_on["run_id"],
+            "cache_off_run_order_index": cache_off["run_order_index"],
+            "cache_on_run_order_index": cache_on["run_order_index"],
+            "cache_off_seconds": off_seconds,
+            "cache_on_seconds": on_seconds,
+            "raw_speedup": off_seconds / on_seconds,
+            "log_speedup": math.log(off_seconds / on_seconds),
+            "output_hash_status": manifest_comparison["status"],
+        }
+        pairs.append(pair)
+        if manifest_comparison["status"] != "PASS":
+            manifest_failures.append({"pair_index": pair_index, **manifest_comparison})
+
+    metric_summary_by_variant: dict[str, dict[str, dict[str, object]]] = {}
+    for variant in ("cache-off", "cache-on"):
+        variant_rows = [row for row in measured_rows if row["variant"] == variant]
+        metric_summary_by_variant[variant] = {
+            key: metric_stats([float(row[key]) for row in variant_rows if row[key] is not None])
+            for key in BENCHMARK_NUMERIC_KEYS
+        }
+
+    paired_delta_summary = {
+        key: metric_stats(
+            [
+                float(grouped_pair["cache-on"][0][key]) - float(grouped_pair["cache-off"][0][key])
+                for grouped_pair in grouped.values()
+                if len(grouped_pair.get("cache-off", [])) == 1
+                and len(grouped_pair.get("cache-on", [])) == 1
+                and grouped_pair["cache-off"][0][key] is not None
+                and grouped_pair["cache-on"][0][key] is not None
+            ]
+        )
+        for key in BENCHMARK_NUMERIC_KEYS
+    }
+
+    status = "PASS" if not incomplete_pairs and not manifest_failures else "FAIL"
+    return {
+        "schema_version": 1,
+        "status": status,
+        "run_count": len(measured_rows),
+        "warmup_rows_ignored": len(warmup_rows),
+        "complete_pair_count": len(pairs),
+        "incomplete_pair_count": len(incomplete_pairs),
+        "speedup": cache_paired_speedup_summary([float(pair["log_speedup"]) for pair in pairs]),
+        "metric_summary_by_variant": metric_summary_by_variant,
+        "paired_cache_on_minus_cache_off_metric_summary": paired_delta_summary,
+        "pairs": pairs,
+        "incomplete_pairs": incomplete_pairs,
+        "output_hash_comparison": {
+            "status": "PASS" if not manifest_failures else "FAIL",
+            "mismatched_pair_count": len(manifest_failures),
+            "mismatches": manifest_failures,
+        },
+    }
+
+
+def cache_paired_summary(args: argparse.Namespace) -> int:
+    rows = read_cache_paired_runs_tsv(Path(args.runs_tsv))
+    summary = analyze_cache_paired_runs(rows)
+    validation_failures: list[str] = []
+    if args.expected_repeat is not None and summary["complete_pair_count"] != args.expected_repeat:
+        validation_failures.append(
+            f"Expected {args.expected_repeat} complete measured pairs, found {summary['complete_pair_count']}."
+        )
+    if args.expected_seed is not None:
+        seeds = sorted({int(row["seed"]) for row in rows if str(row.get("phase", "measured")) == "measured"})
+        if seeds != [args.expected_seed]:
+            validation_failures.append(f"Expected measured seed [{args.expected_seed}], found {seeds}.")
+    if validation_failures:
+        summary["status"] = "FAIL"
+    summary["validation_failures"] = validation_failures
+
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    return 0 if summary["status"] == "PASS" else 1
+
+
 def load_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
@@ -1384,6 +1698,24 @@ def build_parser() -> argparse.ArgumentParser:
     summary.add_argument("--cooldown-count", type=int, default=0)
     summary.add_argument("--jfr-captured", type=int, choices=(0, 1), default=0)
     summary.set_defaults(func=benchmark_summary)
+
+    cache_plan = subparsers.add_parser("cache-paired-plan", help="Write a seed-1 paired cache benchmark run plan.")
+    cache_plan.add_argument("--seed", type=int, required=True)
+    cache_plan.add_argument("--repeat", type=int, required=True)
+    cache_plan.add_argument("--warmup-pairs", type=int, required=True)
+    cache_plan.add_argument("--ordering-seed", type=int, required=True)
+    cache_plan.add_argument("--output", required=True)
+    cache_plan.set_defaults(func=cache_paired_plan)
+
+    cache_summary = subparsers.add_parser(
+        "cache-paired-summary",
+        help="Summarise paired cache benchmark TSV rows and compare paired output manifests.",
+    )
+    cache_summary.add_argument("--runs-tsv", required=True)
+    cache_summary.add_argument("--output", required=True)
+    cache_summary.add_argument("--expected-repeat", type=int)
+    cache_summary.add_argument("--expected-seed", type=int)
+    cache_summary.set_defaults(func=cache_paired_summary)
 
     snapshot = subparsers.add_parser("baseline-snapshot", help="Create a tracked benchmark baseline summary.")
     snapshot.add_argument("--summary", required=True)
