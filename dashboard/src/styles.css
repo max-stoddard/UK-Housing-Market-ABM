@@ -2099,32 +2099,6 @@ code {
   background: #ffe3e3;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.9rem;
-}
-
-.stats-grid article {
-  background: var(--panel);
-  border-radius: 0.9rem;
-  padding: 1rem;
-  border: 1px solid rgba(17, 32, 24, 0.08);
-}
-
-.stats-grid p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-}
-
-.stat-title {
-  display: flex;
-  align-items: center;
-  gap: 0.42rem;
-  flex-wrap: wrap;
-}
-
 .status-pill-fix {
   display: inline-flex;
   align-items: center;
@@ -2168,52 +2142,6 @@ code {
   border: 1px solid rgba(201, 42, 42, 0.25);
   border-radius: 999px;
   padding: 0.12rem 0.5rem;
-}
-
-.stats-grid strong {
-  margin-top: 0.5rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 1.55rem;
-  line-height: 1;
-}
-
-.stat-value {
-  display: inline-block;
-  line-height: 1;
-}
-
-.stat-delta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.78rem;
-  font-weight: 700;
-  line-height: 1;
-  white-space: nowrap;
-  color: #2b8a3e;
-  background: #ebfbee;
-  border: 1px solid rgba(43, 138, 62, 0.18);
-  border-radius: 999px;
-  padding: 0.16rem 0.48rem;
-}
-
-.stat-delta.negative {
-  color: #c92a2a;
-  background: #fff5f5;
-  border-color: rgba(201, 42, 42, 0.2);
-}
-
-.stat-loading {
-  border-radius: 0.35rem;
-  color: transparent !important;
-  min-width: 4rem;
-}
-
-.stat-delta.stat-loading {
-  border-color: transparent;
-  min-width: 6rem;
 }
 
 .compare-layout {
@@ -2743,13 +2671,6 @@ code {
   font-weight: 700;
 }
 
-.snapshot-value {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex-wrap: wrap;
-}
-
 .change-pill.updated {
   background: #e3fafc;
   color: #0b7285;
@@ -3078,10 +2999,6 @@ code {
 
   .desktop-folder-actions {
     justify-content: flex-start;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr;
   }
 
   .card-meta dl {

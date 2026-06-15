@@ -4,7 +4,6 @@ import type { EChartsOption } from 'echarts';
 import type { HomePreviewItem } from '../../shared/types';
 import {
   API_RETRY_DELAY_MS,
-  fetchCatalog,
   fetchHomePreview,
   fetchVersions,
   isRetryableApiError
@@ -120,27 +119,17 @@ function buildPreviewOption(item: HomePreviewItem): EChartsOption {
 }
 
 export function HomePage() {
-  const [versionsCount, setVersionsCount] = useState<number>(0);
-  const [inProgressVersions, setInProgressVersions] = useState<string[]>([]);
-  const [latestVersion, setLatestVersion] = useState<string>('...');
-  const [cardsCount, setCardsCount] = useState<number>(0);
   const [previewItems, setPreviewItems] = useState<HomePreviewItem[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number>(0);
   const [isPreviewPaused, setIsPreviewPaused] = useState<boolean>(false);
   const [loadState, setLoadState] = useState<HomeLoadState>('loading');
   const [loadError, setLoadError] = useState<string>('');
 
-  const formatCount = (value: number) => value.toLocaleString('en-GB');
-
   useEffect(() => {
     let cancelled = false;
     let retryTimer: number | undefined;
 
     const resetHomeStats = () => {
-      setVersionsCount(0);
-      setInProgressVersions([]);
-      setLatestVersion('n/a');
-      setCardsCount(0);
       setPreviewItems([]);
     };
 
@@ -149,17 +138,13 @@ export function HomePage() {
       setLoadError('');
 
       try {
-        const [versionsPayload, cards] = await Promise.all([fetchVersions(), fetchCatalog()]);
+        const versionsPayload = await fetchVersions();
 
         if (cancelled) {
           return;
         }
 
         const versions = versionsPayload.versions;
-        setVersionsCount(versions.length);
-        setInProgressVersions(versionsPayload.inProgressVersions);
-        setLatestVersion(versions[versions.length - 1] ?? 'n/a');
-        setCardsCount(cards.length);
 
         const latest = versions[versions.length - 1] ?? '';
         if (latest) {
@@ -226,7 +211,6 @@ export function HomePage() {
   }, [previewItems.length, isPreviewPaused]);
 
   const previewItem = previewItems[previewIndex];
-  const latestIsInProgress = inProgressVersions.includes(latestVersion);
 
   return (
     <section className="home-layout">
@@ -327,32 +311,6 @@ export function HomePage() {
         <Link to="/compare" className="primary-button">
           Open Calibration Versions
         </Link>
-      </div>
-
-      <div className="stats-grid fade-up-delay">
-        <article>
-          <p>Updates to Calibration Parameters</p>
-          <strong className={loadState !== 'ready' ? 'stat-loading loading-skeleton loading-skeleton-line' : ''}>
-            {loadState !== 'ready' ? '\u00A0' : formatCount(versionsCount)}
-          </strong>
-        </article>
-        <article>
-          <p>Calibration Parameters Visualised</p>
-          <strong className={loadState !== 'ready' ? 'stat-loading loading-skeleton loading-skeleton-line' : ''}>
-            {loadState !== 'ready' ? '\u00A0' : formatCount(cardsCount)}
-          </strong>
-        </article>
-        <article>
-          <p>Latest Calibration Parameter Update</p>
-          <strong className={`snapshot-value${loadState !== 'ready' ? ' stat-loading loading-skeleton loading-skeleton-line' : ''}`}>
-            {loadState !== 'ready' ? '\u00A0' : (
-              <>
-                <span>{latestVersion}</span>
-                {latestIsInProgress && <span className="status-pill-in-progress">In progress</span>}
-              </>
-            )}
-          </strong>
-        </article>
       </div>
     </section>
   );

@@ -8110,6 +8110,16 @@ assert.ok(
   !homePageSource.includes('Lines of Code Written'),
   'Home page should no longer render git stats cards'
 );
+for (const removedHomeStatLabel of [
+  'Updates to Calibration Parameters',
+  'Calibration Parameters Visualised',
+  'Latest Calibration Parameter Update'
+]) {
+  assert.ok(
+    !homePageSource.includes(removedHomeStatLabel),
+    `Home page should no longer render the ${removedHomeStatLabel} stat card`
+  );
+}
 
 const serverIndexSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/index.ts'), 'utf-8');
 const dashboardServerSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/dashboardServer.ts'), 'utf-8');
