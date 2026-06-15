@@ -1884,20 +1884,6 @@ code {
   padding: 0.2rem 0.55rem;
 }
 
-.tag-pill {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.66rem;
-  font-weight: 700;
-  padding: 0.22rem 0.56rem;
-  background: #fff4e6;
-  color: #d9480f;
-  border: 1px solid rgba(217, 72, 15, 0.2);
-}
-
 .summary-card {
   background: var(--panel);
   border-radius: 1rem;

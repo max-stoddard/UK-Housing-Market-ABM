@@ -8120,6 +8120,10 @@ for (const removedHomeStatLabel of [
     `Home page should no longer render the ${removedHomeStatLabel} stat card`
   );
 }
+assert.ok(
+  !homePageSource.includes('Just Launched'),
+  'Home page should no longer render the launch badge'
+);
 
 const serverIndexSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/index.ts'), 'utf-8');
 const dashboardServerSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/dashboardServer.ts'), 'utf-8');

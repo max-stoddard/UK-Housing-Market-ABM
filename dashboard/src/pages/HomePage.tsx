@@ -274,7 +274,6 @@ export function HomePage() {
       <div className="hero-card fade-up">
         <div className="hero-label-row">
           <p className="eyebrow">Interactive ABM Workspace</p>
-          <span className="tag-pill">Just Launched</span>
         </div>
         <h2>Visualize and track calibrated UK housing model parameters</h2>
         {previewItem ? (
