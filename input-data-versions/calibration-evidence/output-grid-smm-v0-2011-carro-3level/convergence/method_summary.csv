@@ -1,0 +1,3 @@
+method,evaluations,bestLoss,bestEvaluation,bestIteration,bestMemberId,finalBestLoss,firstEvaluationBeatingBaseline,beatsBaseline,firstEvaluationBeatingTarget,beatsTarget
+TuRBO,186,0.5126924824655866,4,1,2,0.5126924824655866,1,True,4,True
+SMM grid,243,0.5219897395553517,80,0,79,0.5219897395553517,1,True,,False

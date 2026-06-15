@@ -1,0 +1,34 @@
+{
+  "baselineLabel": "Original model",
+  "baselineLoss": 0.5652252115924438,
+  "targetLabel": "TuRBO Optimised Model selected loss",
+  "targetLoss": 0.5211689956810397,
+  "methods": [
+    {
+      "method": "TuRBO",
+      "evaluations": 186,
+      "bestLoss": 0.5126924824655866,
+      "bestEvaluation": 4,
+      "bestIteration": 1,
+      "bestMemberId": 2,
+      "finalBestLoss": 0.5126924824655866,
+      "firstEvaluationBeatingBaseline": 1,
+      "beatsBaseline": true,
+      "firstEvaluationBeatingTarget": 4,
+      "beatsTarget": true
+    },
+    {
+      "method": "SMM grid",
+      "evaluations": 243,
+      "bestLoss": 0.5219897395553517,
+      "bestEvaluation": 80,
+      "bestIteration": 0,
+      "bestMemberId": 79,
+      "finalBestLoss": 0.5219897395553517,
+      "firstEvaluationBeatingBaseline": 1,
+      "beatsBaseline": true,
+      "firstEvaluationBeatingTarget": null,
+      "beatsTarget": false
+    }
+  ]
+}

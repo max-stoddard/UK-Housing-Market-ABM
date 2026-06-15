@@ -1,0 +1,379 @@
+{
+  "workflow": "grid-smm",
+  "sourceVersion": "v0",
+  "runId": "v0-smm-grid-2011-carro-3level",
+  "parameters": [
+    "PSYCHOLOGICAL_COST_OF_RENTING",
+    "SENSITIVITY_RENT_OR_PURCHASE",
+    "BTL_PROBABILITY_MULTIPLIER",
+    "BTL_CHOICE_INTENSITY",
+    "MARKET_AVERAGE_PRICE_DECAY"
+  ],
+  "sourceParameters": {
+    "PSYCHOLOGICAL_COST_OF_RENTING": 0.4,
+    "SENSITIVITY_RENT_OR_PURCHASE": 0.001,
+    "BTL_PROBABILITY_MULTIPLIER": 1.76,
+    "BTL_CHOICE_INTENSITY": 100.0,
+    "MARKET_AVERAGE_PRICE_DECAY": 0.5
+  },
+  "validationProfile": {
+    "profileId": "validation-reference-v0-2011",
+    "validationTargetYear": 2011,
+    "wasDataset": "W3",
+    "metricCount": 20,
+    "requiredMetricCount": 20
+  },
+  "validationLossHandling": "Grid SMM evaluates a deterministic three-level sub-grid of the original Carro et al. five-parameter grid against the same family-aware validation loss used by the v0o7 TuRBO campaign. No output version is promoted by this workflow; the evidence is method-comparison only.",
+  "validationObjective": "family_aware_metric_loss",
+  "rankingObjective": "family_aware_metric_loss",
+  "validationLossErrorStd": 1.0,
+  "gridProfile": "carro-three-level",
+  "gridValues": {
+    "PSYCHOLOGICAL_COST_OF_RENTING": [
+      0.3,
+      0.4,
+      0.5
+    ],
+    "SENSITIVITY_RENT_OR_PURCHASE": [
+      0.0003162,
+      0.001,
+      0.003162
+    ],
+    "BTL_PROBABILITY_MULTIPLIER": [
+      1.72,
+      1.76,
+      1.8
+    ],
+    "BTL_CHOICE_INTENSITY": [
+      31.62,
+      100.0,
+      316.2
+    ],
+    "MARKET_AVERAGE_PRICE_DECAY": [
+      0.3,
+      0.5,
+      0.7
+    ]
+  },
+  "gridOrdering": "center-out by Manhattan distance from the original Carro selected parameter vector",
+  "candidateCount": 243,
+  "maxCandidates": null,
+  "restartable": true,
+  "restartSemantics": "Per-seed metric JSON files are keyed by run id, member id, seed, config hash, validation profile, and metric ids. Rerun the same command without --force-rerun to skip completed seed runs.",
+  "seeds": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "workers": 20,
+  "nSteps": 3500,
+  "validationWindow": {
+    "startIndex": 500,
+    "endIndex": 3500
+  },
+  "deleteCsvAfterMetrics": true,
+  "forceRerun": false,
+  "parameterSpecs": [
+    {
+      "name": "PSYCHOLOGICAL_COST_OF_RENTING",
+      "lower": 0.0,
+      "upper": 0.5,
+      "prior_lower": 0.3,
+      "prior_upper": 0.5,
+      "transform": "bounded_logit",
+      "final_snap": null,
+      "final_sigfigs": null
+    },
+    {
+      "name": "SENSITIVITY_RENT_OR_PURCHASE",
+      "lower": 1e-05,
+      "upper": 0.1,
+      "prior_lower": 0.0003162,
+      "prior_upper": 0.003162,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": null
+    },
+    {
+      "name": "BTL_PROBABILITY_MULTIPLIER",
+      "lower": 1.6,
+      "upper": 1.8,
+      "prior_lower": 1.72,
+      "prior_upper": 1.8,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": null
+    },
+    {
+      "name": "BTL_CHOICE_INTENSITY",
+      "lower": 0.1,
+      "upper": 1000.0,
+      "prior_lower": 31.62,
+      "prior_upper": 316.2,
+      "transform": "log10",
+      "final_snap": null,
+      "final_sigfigs": null
+    },
+    {
+      "name": "MARKET_AVERAGE_PRICE_DECAY",
+      "lower": 0.1,
+      "upper": 0.9,
+      "prior_lower": 0.3,
+      "prior_upper": 0.7,
+      "transform": "bounded_logit",
+      "final_snap": null,
+      "final_sigfigs": null
+    }
+  ],
+  "observations": [
+    {
+      "metric_id": "core_mortgageApprovals",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 42.883,
+      "target_upper": 52.93
+    },
+    {
+      "metric_id": "core_housingTransactions",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 68.68,
+      "target_upper": 77.16
+    },
+    {
+      "metric_id": "core_advancesToFTB",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 15.279,
+      "target_upper": 16.888
+    },
+    {
+      "metric_id": "core_advancesToHM",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 25.056,
+      "target_upper": 27.694
+    },
+    {
+      "metric_id": "core_advancesToBTL",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 6.65,
+      "target_upper": 7.35
+    },
+    {
+      "metric_id": "core_debtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 161.8704279215477,
+      "target_upper": 164.2259943729304
+    },
+    {
+      "metric_id": "core_priceToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 4.225101341813285,
+      "target_upper": 4.268301630303742
+    },
+    {
+      "metric_id": "core_housePriceGrowth",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": -0.9449694274597076,
+      "target_upper": 0.1702610669693572
+    },
+    {
+      "metric_id": "core_hpiMean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.9426697530864196,
+      "target_upper": 1.0418981481481482
+    },
+    {
+      "metric_id": "core_hpiStd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.2628366847658644,
+      "target_upper": 0.2905037042149028
+    },
+    {
+      "metric_id": "core_hpiCyclePeriod",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 162.76666666666668,
+      "target_upper": 179.9
+    },
+    {
+      "metric_id": "rpi_mean",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 1.0,
+      "target_upper": 1.024436208035
+    },
+    {
+      "metric_id": "household_owning_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 65.5,
+      "target_upper": 66.5
+    },
+    {
+      "metric_id": "household_renting_share",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 16.5,
+      "target_upper": 17.5
+    },
+    {
+      "metric_id": "core_ooDebtToIncome",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 98.61909294397614,
+      "target_upper": 99.75341253849653
+    },
+    {
+      "metric_id": "core_rentalYield",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 5.794999999999999,
+      "target_upper": 6.405
+    },
+    {
+      "metric_id": "core_interestRateSpread",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 2.3975732465696207,
+      "target_upper": 2.626824733041048
+    },
+    {
+      "metric_id": "income_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "housing_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    },
+    {
+      "metric_id": "financial_wealth_distribution_jsd",
+      "validation_objective": "family_aware_metric_loss",
+      "assimilation_transform": "schema4_metric_loss",
+      "observed_value": 0.0,
+      "loss_scale": 1.0,
+      "loss_scale_basis": "not_applicable",
+      "normalized_observed_value": 0.0,
+      "normalized_error_std": 1.0,
+      "target_lower": 0.0,
+      "target_upper": 0.12
+    }
+  ],
+  "outputRoot": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/tmp/output-calibration/v0-smm-grid-2011-carro-3level/grid-smm",
+  "evidenceDir": "/home/max/dev/uni/project/models/uk-housing-model-individual-project/input-data-versions/calibration-evidence/output-grid-smm-v0-2011-carro-3level"
+}

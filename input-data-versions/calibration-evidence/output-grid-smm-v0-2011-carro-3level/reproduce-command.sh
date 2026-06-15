@@ -1,0 +1,15 @@
+python3 -m scripts.python.calibration.output.grid_smm \
+  --version v0 \
+  --run-id v0-smm-grid-2011-carro-3level \
+  --validation-year 2011 \
+  --validation-objective family_aware_metric_loss \
+  --validation-loss-error-std 1.0 \
+  --seeds 1,2,3,4,5,6,7,8,9,10 \
+  --workers 20 \
+  --grid-profile carro-three-level \
+  --validation-window-start 500 \
+  --validation-window-end 3500 \
+  --output-root tmp/output-calibration \
+  --n-steps 3500 \
+  --evidence-dir input-data-versions/calibration-evidence/output-grid-smm-v0-2011-carro-3level \
+  --delete-csv-after-metrics

@@ -1,0 +1,44 @@
+% file: data/tables/calibration/smm-vs-turbo.tex
+
+\begin{table}[!htbp]
+
+\centering
+\begin{threeparttable}
+
+\begin{tabular}{lcccc}
+
+\toprule
+
+\textbf{Evaluation} &
+\textbf{\makecell{SMM \\ loss\tnote{a} $\pm$ SD}} &
+\textbf{\makecell{TuRBO \\ loss\tnote{a} $\pm$ SD}} &
+\textbf{\makecell{TuRBO \\ loss delta (\%)\tnote{b}}} &
+\textbf{\makecell{TuRBO \\ advantage\tnote{c}}}
+\\
+
+\midrule
+
+40 & 0.5390 $\pm$ 0.0109 & 0.5275 $\pm$ 0.0122 & -2.1\% & 6.0\% \\
+60 & 0.5327 $\pm$ 0.0131 & 0.5147 $\pm$ 0.0066 & -3.4\% & 9.3\% \\
+80 & 0.5262 $\pm$ 0.0058 & 0.5146 $\pm$ 0.0066 & -2.2\% & 6.0\% \\
+100 & 0.5262 $\pm$ 0.0058 & 0.5144 $\pm$ 0.0066 & -2.3\% & 6.1\% \\
+120 & 0.5262 $\pm$ 0.0058 & 0.5121 $\pm$ 0.0071 & -2.7\% & 7.3\% \\
+140 & 0.5262 $\pm$ 0.0058 & 0.5115 $\pm$ 0.0059 & -2.8\% & 7.6\% \\
+
+\bottomrule
+
+\end{tabular}
+
+\begin{tablenotes}[flushleft]
+\footnotesize
+\item[a] Loss is best-so-far across the five replications.
+\item[b] Loss delta is the difference in mean best-so-far loss across replications.
+\item[c] Advantage is defined as the loss delta as a share of the full observed candidate-loss range across all evaluated parameter settings.
+\end{tablenotes}
+
+\end{threeparttable}
+
+\caption{Comparison of best-so-far model calibrations, based on validation loss, using both the SMM and TuRBO methods across five replications each}
+\label{tab:turbo-smm-convergence}
+
+\end{table}
