@@ -186,7 +186,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/results/runs/:runId/series', (req, res) => {
+  app.get('/api/results/runs/:runId/series', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -202,9 +202,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
 
     try {
       if (context.remoteExecution) {
-        res.status(400).json({
-          error: 'Remote manual result series parsing is not available in the lightweight AWS API; use the S3 run artifact for local analysis.'
-        });
+        const payload = await context.remoteExecution.getRemoteManualResultSeries(runId, indicator, smoothWindow);
+        res.json(payload);
         return;
       }
       const payload = getResultsSeries(context.runtimePaths, runId, indicator, smoothWindow);
@@ -214,7 +213,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
   });
 
-  app.get('/api/results/compare', (req, res) => {
+  app.get('/api/results/compare', async (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
@@ -232,9 +231,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
 
     try {
       if (context.remoteExecution) {
-        res.status(400).json({
-          error: 'Remote manual result comparison is not available in the lightweight AWS API; use the S3 run artifacts for local analysis.'
-        });
+        const payload = await context.remoteExecution.getRemoteManualResultCompare(runIds, indicatorIds, window, smoothWindow);
+        res.json(payload);
         return;
       }
       const payload = getResultsCompare(context.runtimePaths, runIds, indicatorIds, window, smoothWindow);

@@ -72,7 +72,7 @@ interface RunDiagnostics {
   manifest: ResultsFileManifestEntry[];
 }
 
-const OUTPUT_FILE_NAME = 'Output-run1.csv';
+export const OUTPUT_FILE_NAME = 'Output-run1.csv';
 const PROTECTED_RESULTS_RUN_IDS = new Set(['v0-output', 'v4.0-output']);
 
 const CORE_INDICATORS: IndicatorDefinition[] = [
@@ -304,6 +304,7 @@ const REQUIRED_OUTPUT_COLUMNS = new Set(
   OUTPUT_INDICATORS.map((indicator) => indicator.outputColumn as string)
 );
 const REQUIRED_PARSE_TARGET_COUNT = REQUIRED_CORE_FILES.size + 1;
+export const REQUIRED_RESULTS_PARSE_FILE_NAMES = [OUTPUT_FILE_NAME, ...REQUIRED_CORE_FILES];
 const EXPECTED_FULL_OUTPUT_ROW_COUNT = 2001;
 
 const TRANSACTION_FILES = new Set([
@@ -662,7 +663,7 @@ function toIndicatorMeta(indicator: IndicatorDefinition): ResultsIndicatorMeta {
   };
 }
 
-function resolveFileType(fileName: string): ResultsFileType {
+export function resolveResultsFileType(fileName: string): ResultsFileType {
   if (fileName === OUTPUT_FILE_NAME) {
     return 'output';
   }
@@ -786,7 +787,7 @@ function buildManifest(paths: RuntimePaths, runPath: string): ResultsFileManifes
     .map((entry) => {
       const filePath = path.join(runPath, entry.name);
       const stats = fs.statSync(filePath);
-      const fileType = resolveFileType(entry.name);
+      const fileType = resolveResultsFileType(entry.name);
       const coverage = resolveFileCoverage(runPath, entry.name, fileType, stats.size);
       return {
         fileName: entry.name,

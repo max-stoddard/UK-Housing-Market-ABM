@@ -1,4 +1,7 @@
 // Author: Max Stoddard
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   DescribeInstancesCommand,
   EC2Client,
@@ -35,11 +38,12 @@ import type {
   ModelRunSubmitResponse,
   ModelRunWarning,
   RemoteExecutionStatus,
+  ResultsComparePayload,
   ResultsFileManifestEntry,
   ResultsFileType,
   ResultsRunDetail,
-  ResultsRunStatus,
   ResultsRunSummary,
+  ResultsSeriesPayload,
   SensitivityExperimentChartsPayload,
   SensitivityExperimentCreateRequest,
   SensitivityExperimentDetailPayload,
@@ -52,7 +56,14 @@ import type {
   ExperimentProgressSnapshot
 } from '../../shared/types';
 import { prepareModelRunSubmission } from './modelRuns';
-import { getResultsIndicatorCatalog } from './results';
+import {
+  getResultsCompare,
+  getResultsRunDetail,
+  getResultsRunFiles,
+  getResultsSeries,
+  REQUIRED_RESULTS_PARSE_FILE_NAMES,
+  resolveResultsFileType
+} from './results';
 import {
   prepareSensitivityExperimentSubmission,
   type PreparedSensitivityExperimentSubmission
@@ -61,7 +72,7 @@ import {
   createRemoteResultArchive,
   type ResultArchive
 } from './resultDownloads';
-import type { RuntimePathInput } from './runtimePaths';
+import type { RuntimePaths, RuntimePathInput } from './runtimePaths';
 
 const INDEX_KEY = 'experiments/remote-job-index/index.json';
 const SOURCE_MANIFEST_KEY = 'tmp/github-actions/source/current-deploy.json';
@@ -827,27 +838,18 @@ REMOTE_RUNNER_SCRIPT
 `;
 }
 
-function remoteResultsFileType(fileName: string): ResultsFileType {
-  if (fileName === 'Output-run1.csv') {
-    return 'output';
-  }
-  if (fileName.startsWith('coreIndicator-') && fileName.endsWith('.csv')) {
-    return 'core_indicator';
-  }
-  if (fileName === 'config.properties') {
-    return 'config';
-  }
-  if (fileName.endsWith('.csv')) {
-    return 'other';
-  }
-  return 'other';
+interface RemoteRunObject {
+  key: string;
+  relativeName: string;
+  sizeBytes: number;
+  modifiedAt: string | null;
+  fileType: ResultsFileType;
 }
 
-function remoteResultsStatus(job: RemoteJobRecord, fileCount: number): ResultsRunStatus {
-  if (job.status !== 'succeeded') {
-    return 'invalid';
-  }
-  return fileCount > 0 ? 'partial' : 'invalid';
+interface RemoteResultsWorkspace {
+  tempRoot: string;
+  runtimePaths: RuntimePaths;
+  objectsByRunId: Map<string, RemoteRunObject[]>;
 }
 
 export class RemoteExecutionManager {
@@ -1046,36 +1048,70 @@ export class RemoteExecutionManager {
 
   async getRemoteManualResultDetail(runId: string): Promise<ResultsRunDetail> {
     const job = await this.findManualJobByRunId(runId);
-    const summary = await this.toRemoteResultsSummary(job);
-    const unavailableNote = 'Remote artifact metadata only; download the S3 run artifact for local chart parsing.';
-    const indicators = getResultsIndicatorCatalog().map((indicator) => ({
-      ...indicator,
-      available: false,
-      coverageStatus: 'unsupported' as const,
-      note: unavailableNote
-    }));
-    return {
-      ...summary,
-      indicators,
-      kpiSummary: indicators.map((indicator) => ({
-        indicatorId: indicator.id,
-        title: indicator.title,
-        units: indicator.units,
-        windowType: 'tail_120' as const,
-        mean: null,
-        cv: null,
-        annualisedTrend: null,
-        range: null
-      }))
-    };
+    const workspace = await this.createRemoteResultsWorkspace([job]);
+    try {
+      const detail = getResultsRunDetail(workspace.runtimePaths, job.runId ?? job.id);
+      const summary = this.mergeRemoteSummary(job, workspace.objectsByRunId.get(job.runId ?? job.id) ?? [], detail);
+      return {
+        ...detail,
+        ...summary
+      };
+    } finally {
+      this.removeRemoteResultsWorkspace(workspace);
+    }
   }
 
   async getRemoteManualResultFiles(runId: string): Promise<{ runId: string; files: ResultsFileManifestEntry[] }> {
     const job = await this.findManualJobByRunId(runId);
-    return {
-      runId,
-      files: await this.listRemoteRunFiles(job)
-    };
+    const workspace = await this.createRemoteResultsWorkspace([job]);
+    try {
+      const normalizedRunId = job.runId ?? job.id;
+      return {
+        runId,
+        files: this.mergeRemoteManifest(
+          job,
+          workspace.objectsByRunId.get(normalizedRunId) ?? [],
+          getResultsRunFiles(workspace.runtimePaths, normalizedRunId)
+        )
+      };
+    } finally {
+      this.removeRemoteResultsWorkspace(workspace);
+    }
+  }
+
+  async getRemoteManualResultSeries(
+    runId: string,
+    indicatorId: string,
+    smoothWindow: number | undefined
+  ): Promise<ResultsSeriesPayload> {
+    const job = await this.findManualJobByRunId(runId);
+    const workspace = await this.createRemoteResultsWorkspace([job]);
+    try {
+      return getResultsSeries(workspace.runtimePaths, job.runId ?? job.id, indicatorId, smoothWindow);
+    } finally {
+      this.removeRemoteResultsWorkspace(workspace);
+    }
+  }
+
+  async getRemoteManualResultCompare(
+    runIds: string[],
+    indicatorIds: string[],
+    window: string | undefined,
+    smoothWindow: number | undefined
+  ): Promise<ResultsComparePayload> {
+    const jobs = await Promise.all(runIds.map((runId) => this.findManualJobByRunId(runId)));
+    const workspace = await this.createRemoteResultsWorkspace(jobs);
+    try {
+      return getResultsCompare(
+        workspace.runtimePaths,
+        jobs.map((job) => job.runId ?? job.id),
+        indicatorIds,
+        window,
+        smoothWindow
+      );
+    } finally {
+      this.removeRemoteResultsWorkspace(workspace);
+    }
   }
 
   async getRemoteManualResultArchive(runId: string): Promise<ResultArchive> {
@@ -1406,52 +1442,137 @@ export class RemoteExecutionManager {
     return `${job.artifactS3Prefix}Results/${job.runId ?? job.id}/`;
   }
 
-  private async listRemoteRunFiles(job: RemoteJobRecord): Promise<ResultsFileManifestEntry[]> {
+  private async listRemoteRunObjects(job: RemoteJobRecord): Promise<RemoteRunObject[]> {
     const prefix = this.remoteRunResultsPrefix(job);
     const objects = await this.adapter.listObjects(this.config.artifactsBucket, prefix);
-    const files: ResultsFileManifestEntry[] = [];
+    const files: RemoteRunObject[] = [];
     for (const object of objects) {
       const relativeName = object.key.slice(prefix.length);
       if (!relativeName || relativeName.includes('/')) {
         continue;
       }
-      const fileType = remoteResultsFileType(relativeName);
+      const fileType = resolveResultsFileType(relativeName);
       files.push({
-        fileName: relativeName,
+        key: object.key,
+        relativeName,
+        sizeBytes: object.sizeBytes,
+        modifiedAt: object.modifiedAt,
+        fileType
+      });
+    }
+    return files.sort((left, right) => left.relativeName.localeCompare(right.relativeName));
+  }
+
+  private async createRemoteResultsWorkspace(jobs: RemoteJobRecord[]): Promise<RemoteResultsWorkspace> {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'dashboard-remote-results-'));
+    const resultsRoot = path.join(tempRoot, 'Results');
+    fs.mkdirSync(resultsRoot, { recursive: true });
+    const runtimePaths: RuntimePaths = {
+      mode: 'development',
+      repoRoot: tempRoot,
+      dataRoot: path.join(tempRoot, 'input-data-versions'),
+      resultsRoot,
+      tempRoot: path.join(tempRoot, 'tmp'),
+      logsRoot: path.join(tempRoot, 'logs')
+    };
+    const parseFileNames = new Set(REQUIRED_RESULTS_PARSE_FILE_NAMES);
+    const objectsByRunId = new Map<string, RemoteRunObject[]>();
+
+    try {
+      for (const job of jobs) {
+        const runId = job.runId ?? job.id;
+        const runPath = path.join(resultsRoot, runId);
+        fs.mkdirSync(runPath, { recursive: true });
+        const objects = await this.listRemoteRunObjects(job);
+        objectsByRunId.set(runId, objects);
+        for (const object of objects) {
+          if (!parseFileNames.has(object.relativeName)) {
+            continue;
+          }
+          const bytes = await this.adapter.getBytes(this.config.artifactsBucket, object.key);
+          if (!bytes) {
+            continue;
+          }
+          fs.writeFileSync(path.join(runPath, object.relativeName), bytes);
+        }
+      }
+      return { tempRoot, runtimePaths, objectsByRunId };
+    } catch (error) {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  private removeRemoteResultsWorkspace(workspace: RemoteResultsWorkspace): void {
+    fs.rmSync(workspace.tempRoot, { recursive: true, force: true });
+  }
+
+  private mergeRemoteManifest(
+    job: RemoteJobRecord,
+    objects: RemoteRunObject[],
+    parsedManifest: ResultsFileManifestEntry[]
+  ): ResultsFileManifestEntry[] {
+    const parsedByFileName = new Map(parsedManifest.map((file) => [file.fileName, file]));
+    return objects.map((object) => {
+      const parsed = parsedByFileName.get(object.relativeName);
+      const coverage = parsed
+        ? { coverageStatus: parsed.coverageStatus, note: parsed.note }
+        : this.resolveRemoteManifestOnlyCoverage(object);
+      return {
+        fileName: object.relativeName,
         filePath: `s3://${this.config.artifactsBucket}/${object.key}`,
         sizeBytes: object.sizeBytes,
         modifiedAt: object.modifiedAt ?? job.endedAt ?? job.startedAt ?? job.createdAt,
-        fileType,
-        coverageStatus: object.sizeBytes === 0 ? 'empty' : 'unsupported',
-        note: fileType === 'config' ? undefined : 'Remote artifact manifest only.'
-      });
-    }
-    return files.sort((left, right) => left.fileName.localeCompare(right.fileName));
+        fileType: object.fileType,
+        coverageStatus: coverage.coverageStatus,
+        note: coverage.note
+      };
+    }).sort((left, right) => left.fileName.localeCompare(right.fileName));
   }
 
-  private async toRemoteResultsSummary(job: RemoteJobRecord): Promise<ResultsRunSummary> {
-    const files = await this.listRemoteRunFiles(job);
-    const sizeBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
-    const modifiedAt = files
-      .map((file) => Date.parse(file.modifiedAt))
+  private resolveRemoteManifestOnlyCoverage(
+    object: RemoteRunObject
+  ): Pick<ResultsFileManifestEntry, 'coverageStatus' | 'note'> {
+    if (object.sizeBytes === 0) {
+      return { coverageStatus: 'empty', note: 'File is empty.' };
+    }
+    if (object.fileType === 'transaction' || object.fileType === 'micro_snapshot') {
+      return { coverageStatus: 'unsupported', note: 'Manifest only (not charted).' };
+    }
+    return { coverageStatus: 'unsupported' };
+  }
+
+  private mergeRemoteSummary(
+    job: RemoteJobRecord,
+    objects: RemoteRunObject[],
+    parsedSummary: ResultsRunSummary
+  ): ResultsRunSummary {
+    const modifiedAt = objects
+      .map((file) => Date.parse(file.modifiedAt ?? ''))
       .filter(Number.isFinite)
       .sort((left, right) => right - left)[0];
     return {
+      ...parsedSummary,
       runId: job.runId ?? job.id,
       path: `s3://${this.config.artifactsBucket}/${this.remoteRunResultsPrefix(job)}`,
       modifiedAt: Number.isFinite(modifiedAt) ? new Date(modifiedAt).toISOString() : (job.endedAt ?? job.startedAt ?? job.createdAt),
       createdAt: job.createdAt,
-      sizeBytes,
-      fileCount: files.length,
-      status: remoteResultsStatus(job, files.length),
-      configAvailable: files.some((file) => file.fileName === 'config.properties'),
-      parseCoverage: {
-        requiredCount: 0,
-        supportedCount: 0,
-        emptyCount: files.filter((file) => file.coverageStatus === 'empty').length,
-        errorCount: 0
-      }
+      sizeBytes: objects.reduce((sum, file) => sum + file.sizeBytes, 0),
+      fileCount: objects.length,
+      status: job.status === 'succeeded' ? parsedSummary.status : 'invalid',
+      configAvailable: objects.some((file) => file.relativeName === 'config.properties')
     };
+  }
+
+  private async toRemoteResultsSummary(job: RemoteJobRecord): Promise<ResultsRunSummary> {
+    const workspace = await this.createRemoteResultsWorkspace([job]);
+    try {
+      const runId = job.runId ?? job.id;
+      const parsedSummary = getResultsRunDetail(workspace.runtimePaths, runId);
+      return this.mergeRemoteSummary(job, workspace.objectsByRunId.get(runId) ?? [], parsedSummary);
+    } finally {
+      this.removeRemoteResultsWorkspace(workspace);
+    }
   }
 
   private toModelRunJob(job: RemoteJobRecord): ModelRunJob {

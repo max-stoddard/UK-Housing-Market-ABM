@@ -1903,6 +1903,52 @@ class FakeRemoteAwsAdapter implements RemoteAwsAdapter {
   }
 }
 
+function uploadCompleteRemoteManualResult(
+  adapter: FakeRemoteAwsAdapter,
+  bucket: string,
+  runPrefix: string,
+  options: {
+    outputOffset?: number;
+    includeExtraArtifact?: boolean;
+  } = {}
+): void {
+  const outputOffset = options.outputOffset ?? 0;
+  const outputCsv = buildOutputCsv(RESULTS_ROW_COUNT)
+    .split('\n')
+    .map((line, index) => {
+      if (index === 0 || line.trim().length === 0 || outputOffset === 0) {
+        return line;
+      }
+      const tokens = line.split(';');
+      return tokens
+        .map((token, tokenIndex) => {
+          if (tokenIndex === 0) {
+            return token;
+          }
+          const numeric = Number.parseFloat(token);
+          return Number.isFinite(numeric) ? String(numeric + outputOffset) : token;
+        })
+        .join(';');
+    })
+    .join('\n');
+
+  adapter.objects.set(`${bucket}/${runPrefix}/Output-run1.csv`, Buffer.from(outputCsv, 'utf-8'));
+  adapter.objects.set(`${bucket}/${runPrefix}/config.properties`, Buffer.from('SEED=1\n', 'utf-8'));
+  for (let index = 0; index < RESULTS_CORE_FILE_NAMES.length; index += 1) {
+    const fileName = RESULTS_CORE_FILE_NAMES[index];
+    adapter.objects.set(
+      `${bucket}/${runPrefix}/${fileName}`,
+      Buffer.from(buildCoreCsv((index + 1) * 100 + outputOffset, RESULTS_ROW_COUNT), 'utf-8')
+    );
+  }
+  if (options.includeExtraArtifact) {
+    adapter.objects.set(
+      `${bucket}/${runPrefix}/RentalTransactions-run1.csv`,
+      Buffer.from('modelTime;price\n0;1000\n', 'utf-8')
+    );
+  }
+}
+
 const remoteFixtureRoot = createModelRunFixtureRepo('dashboard-remote-execution-smoke-');
 try {
   const remoteConfig: RemoteExecutionConfig = {
@@ -2145,25 +2191,105 @@ try {
   remoteAdapter.commandStatuses.set(manualCommand?.commandId ?? '', 'Success');
   const remoteRunPrefix = manualSubmit.job?.outputPath.replace('s3://fixture-bucket/', '') ?? '';
   const remoteManualBinaryFixture = Buffer.from([0x00, 0xff, 0xfe, 0x80, 0x61, 0xc3, 0x28, 0x0a]);
-  remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/config.properties`, Buffer.from('SEED=1\n', 'utf-8'));
-  remoteAdapter.objects.set(
-    `fixture-bucket/${remoteRunPrefix}/Output-run1.csv`,
-    Buffer.from('Model time; nHomeless\n0; 1\n', 'utf-8')
-  );
+  uploadCompleteRemoteManualResult(remoteAdapter, 'fixture-bucket', remoteRunPrefix, { includeExtraArtifact: true });
   remoteAdapter.objects.set(`fixture-bucket/${remoteRunPrefix}/binary-output.bin`, remoteManualBinaryFixture);
   const manualJobs = await remoteManager.listModelRunJobs();
   assert.equal(manualJobs.jobs[0]?.status, 'succeeded', 'Expected SSM Success to refresh remote manual job status');
+
+  const comparisonRunId = 'remote-comparison-output';
+  const comparisonArtifactPrefix = 'experiments/manual/2099-01-01/remote-comparison/';
+  const comparisonRunPrefix = `${comparisonArtifactPrefix}Results/${comparisonRunId}`;
+  uploadCompleteRemoteManualResult(remoteAdapter, 'fixture-bucket', comparisonRunPrefix, { outputOffset: 25 });
+  const remoteIndex = JSON.parse(
+    remoteAdapter.objects.get('fixture-bucket/experiments/remote-job-index/index.json')?.toString('utf-8') ?? '{}'
+  ) as { jobs: Array<Record<string, unknown>>; updatedAt: string };
+  const comparisonJob = {
+    ...(remoteIndex.jobs[0] ?? {}),
+    jobRef: `manual:${comparisonRunId}`,
+    type: 'manual',
+    id: comparisonRunId,
+    title: 'remote comparison fixture',
+    status: 'succeeded',
+    createdAt: '2026-05-11T00:01:00.000Z',
+    startedAt: '2026-05-11T00:01:01.000Z',
+    endedAt: '2026-05-11T00:01:02.000Z',
+    runId: comparisonRunId,
+    outputPath: `s3://fixture-bucket/${comparisonRunPrefix}`,
+    configPath: `s3://fixture-bucket/${comparisonRunPrefix}/config.properties`,
+    artifactS3Prefix: comparisonArtifactPrefix,
+    requestKey: `${comparisonArtifactPrefix}request.json`
+  };
+  remoteIndex.jobs.push(comparisonJob);
+  remoteIndex.updatedAt = '2026-05-11T00:01:02.000Z';
+  remoteAdapter.objects.set(
+    'fixture-bucket/experiments/remote-job-index/index.json',
+    Buffer.from(JSON.stringify(remoteIndex), 'utf-8')
+  );
+
   const remoteManualResults = await remoteManager.listRemoteManualResultRuns();
   assert.equal(
     remoteManualResults.runs.some((run) => run.runId === manualSubmit.job?.runId && run.path.startsWith('s3://fixture-bucket/')),
     true,
     'Expected remote manual results list to expose S3-backed run artifacts'
   );
+  const remoteManualSummary = remoteManualResults.runs.find((run) => run.runId === manualSubmit.job?.runId);
+  assert.equal(remoteManualSummary?.status, 'complete', 'Expected complete remote manual artifacts to parse as complete');
+  assert.deepEqual(
+    remoteManualSummary?.parseCoverage,
+    {
+      requiredCount: 16,
+      supportedCount: 16,
+      emptyCount: 0,
+      errorCount: 0
+    },
+    'Expected remote manual results list to expose parsed coverage for S3 artifacts'
+  );
   const remoteManualFiles = await remoteManager.getRemoteManualResultFiles(manualSubmit.job?.runId ?? '');
   assert.equal(
     remoteManualFiles.files.some((file) => file.fileName === 'Output-run1.csv' && file.filePath.startsWith('s3://fixture-bucket/')),
     true,
     'Expected remote manual result files endpoint to expose S3 object paths'
+  );
+  assert.equal(
+    remoteManualFiles.files.find((file) => file.fileName === 'Output-run1.csv')?.coverageStatus,
+    'supported',
+    'Expected remote Output-run1.csv to be parsed as supported'
+  );
+  assert.equal(
+    remoteManualFiles.files.find((file) => file.fileName === 'coreIndicator-btlLTV.csv')?.coverageStatus,
+    'supported',
+    'Expected remote core indicators to be parsed as supported'
+  );
+  assert.equal(
+    remoteManualFiles.files.find((file) => file.fileName === 'RentalTransactions-run1.csv')?.coverageStatus,
+    'unsupported',
+    'Expected remote non-charted CSV artifacts to remain unsupported'
+  );
+  const remoteManualDetail = await remoteManager.getRemoteManualResultDetail(manualSubmit.job?.runId ?? '');
+  assert.equal(
+    remoteManualDetail.indicators.find((indicator) => indicator.id === 'core_btlLTV')?.available,
+    true,
+    'Expected parsed remote core indicators to be available for visualization'
+  );
+  assert.ok(
+    (remoteManualDetail.kpiSummary.find((kpi) => kpi.indicatorId === 'core_btlLTV')?.mean ?? null) !== null,
+    'Expected parsed remote results to expose KPI summaries'
+  );
+  const remoteCoreSeries = await remoteManager.getRemoteManualResultSeries(manualSubmit.job?.runId ?? '', 'core_btlLTV', 0);
+  assert.equal(remoteCoreSeries.points.length, RESULTS_ROW_COUNT, 'Expected remote core series to expose parsed points');
+  const remoteOutputSeries = await remoteManager.getRemoteManualResultSeries(manualSubmit.job?.runId ?? '', 'output_nHomeless', 0);
+  assert.equal(remoteOutputSeries.points[0]?.value, 90, 'Expected remote output series to parse Output-run1.csv values');
+  const remoteCompare = await remoteManager.getRemoteManualResultCompare(
+    [manualSubmit.job?.runId ?? '', comparisonRunId],
+    ['core_btlLTV'],
+    'tail120',
+    0
+  );
+  assert.equal(remoteCompare.indicators[0]?.seriesByRun.length, 2, 'Expected remote compare to include both S3-backed runs');
+  assert.equal(
+    remoteCompare.indicators[0]?.seriesByRun[0]?.points.length,
+    120,
+    'Expected remote compare to apply the requested result window'
   );
   const remoteManualArchiveText = await readArchiveText(
     (await remoteManager.getRemoteManualResultArchive(manualSubmit.job?.runId ?? '')).stream
