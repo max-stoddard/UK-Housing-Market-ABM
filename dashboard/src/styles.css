@@ -1905,6 +1905,43 @@ code {
   max-width: 78ch;
 }
 
+.contribution-highlights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem 1rem;
+  margin-top: 0.95rem;
+  max-width: 78ch;
+}
+
+.contribution-highlight {
+  display: grid;
+  align-content: start;
+  gap: 0.22rem;
+  min-width: 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid rgba(11, 114, 133, 0.42);
+}
+
+.contribution-highlight-label {
+  color: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.contribution-highlight strong {
+  color: var(--text);
+  font-size: 0.98rem;
+  line-height: 1.25;
+}
+
+.contribution-highlight p {
+  margin-top: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
 .summary-links {
   display: flex;
   flex-wrap: wrap;

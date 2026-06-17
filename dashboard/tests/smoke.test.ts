@@ -8124,6 +8124,15 @@ assert.ok(
   !homePageSource.includes('Just Launched'),
   'Home page should no longer render the launch badge'
 );
+assert.ok(
+  homePageSource.includes('className="contribution-highlights"') &&
+    homePageSource.includes('Common loss function') &&
+    homePageSource.includes('Trust Region Bayesian Optimisation') &&
+    homePageSource.includes('6.13x throughput') &&
+    homePageSource.includes('59 / 75 parameters recalibrated') &&
+    homePageSource.includes('Desktop and cloud dashboard'),
+  'Home page should render contribution highlights for validation, calibration, runtime, recalibration, and access'
+);
 
 const serverIndexSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/index.ts'), 'utf-8');
 const dashboardServerSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/dashboardServer.ts'), 'utf-8');

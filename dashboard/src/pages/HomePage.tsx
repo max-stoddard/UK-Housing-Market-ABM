@@ -221,7 +221,7 @@ export function HomePage() {
 
       <div className="summary-card fade-up">
         <p className="eyebrow">Project Summary</p>
-        <h2>Purpose and Model Context</h2>
+        <h2>Purpose and Context</h2>
         <p>
           I&apos;m Max Stoddard, and this website is the primary interface for my Imperial College London BEng Individual
           project: improving the UK Housing Market ABM based on the ABM developed by the Bank of England.
@@ -231,9 +231,43 @@ export function HomePage() {
           strengthening validation against real-world patterns, and improving interpretability through clearer visual tools.
         </p>
         <p>
-          The aim of this website is to make the model genuinely interactive: a place where anyone can explore the UK housing
+          The aim of this website is to make the model interactive and a place where anyone can explore the UK housing
           market dynamics, run and compare scenarios, and see key outputs in a clear, visual form.
         </p>
+        <p>The main contributions of this project are:</p>
+        <div className="contribution-highlights" aria-label="Main project contributions">
+          <article className="contribution-highlight">
+            <span className="contribution-highlight-label">Validation</span>
+            <strong>Common loss function</strong>
+            <p>Scores 20 heterogeneous housing and mortgage market targets on a comparable dimensionless scale.</p>
+          </article>
+          <article className="contribution-highlight">
+            <span className="contribution-highlight-label">Calibration</span>
+            <strong>Trust Region Bayesian Optimisation</strong>
+            <p>
+              Searches the output-calibrated parameter space continuously, reducing validation loss by 7.79% while using
+              99.3% fewer model runs than the original calibration.
+            </p>
+          </article>
+          <article className="contribution-highlight">
+            <span className="contribution-highlight-label">Runtime</span>
+            <strong>6.13x throughput</strong>
+            <p>Caching and parallel batch execution reduce realistic experimental workload runtime by 83.7%.</p>
+          </article>
+          <article className="contribution-highlight">
+            <span className="contribution-highlight-label">2024 update</span>
+            <strong>59 / 75 parameters recalibrated</strong>
+            <p>Updates every calibrated parameter with suitable accessible public data to a 2024 target year.</p>
+          </article>
+          <article className="contribution-highlight">
+            <span className="contribution-highlight-label">Access</span>
+            <strong>Desktop and cloud dashboard</strong>
+            <p>
+              Lets users visualise parameters, compare model versions, run experiments, and analyse results without
+              command-line execution or bespoke post-processing scripts.
+            </p>
+          </article>
+        </div>
         <div className="summary-links">
           <a href="https://github.com/max-stoddard/UK-Housing-Market-ABM" target="_blank" rel="noreferrer">
             <span className="summary-link-icon" aria-hidden="true">
