@@ -8098,6 +8098,7 @@ assert.ok(
 );
 
 const homePageSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/pages/HomePage.tsx'), 'utf-8');
+const stylesSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/src/styles.css'), 'utf-8');
 assert.ok(
   !homePageSource.includes('fetchGitStats'),
   'Home page should no longer fetch git stats'
@@ -8132,6 +8133,26 @@ assert.ok(
     homePageSource.includes('59 / 75 parameters recalibrated') &&
     homePageSource.includes('Desktop and cloud dashboard'),
   'Home page should render contribution highlights for validation, calibration, runtime, recalibration, and access'
+);
+{
+  const purposeCardIndex = homePageSource.indexOf('<div className="summary-card fade-up">');
+  const contributionsCardIndex = homePageSource.indexOf('<div className="summary-card contributions-card fade-up">');
+  const heroCardIndex = homePageSource.indexOf('<div className="hero-card fade-up">');
+  assert.ok(
+    purposeCardIndex !== -1 &&
+      contributionsCardIndex !== -1 &&
+      heroCardIndex !== -1 &&
+      purposeCardIndex < contributionsCardIndex &&
+      contributionsCardIndex < heroCardIndex,
+    'Home page should render contribution highlights in their own card between the purpose summary and hero preview'
+  );
+}
+assert.ok(
+  stylesSource.includes('.contribution-highlights {\n  display: grid;') &&
+    stylesSource.includes('grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));') &&
+    stylesSource.includes('width: 100%;') &&
+    !stylesSource.includes('.contribution-highlights {\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));\n  gap: 0.75rem 1rem;\n  margin-top: 0.95rem;\n  max-width: 78ch;'),
+  'Contribution highlights should spread across the full summary card width'
 );
 
 const serverIndexSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/index.ts'), 'utf-8');
