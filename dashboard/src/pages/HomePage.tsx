@@ -27,6 +27,7 @@ const PREVIEW_PARAMETER_IDS = [
   'btl_probability_bins'
 ];
 const BUY_QUAD_CURVE_LAYOUT_OVERRIDES = { gridLeft: 108, gridRight: 30, yAxisNameGap: 76 };
+const PROJECT_REPORT_URL = 'https://github.com/max-stoddard/UK-Housing-Market-ABM/blob/master/docs/beng-project/Project%20Final%20Report.pdf';
 
 type HomeLoadState = 'loading' | 'waiting' | 'ready' | 'error';
 
@@ -306,6 +307,19 @@ export function HomePage() {
               command-line execution or bespoke post-processing scripts.
             </p>
           </article>
+        </div>
+        <div className="summary-links contribution-links">
+          <a href={PROJECT_REPORT_URL} target="_blank" rel="noreferrer" aria-label="Open project final report">
+            <span className="summary-link-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" role="img" focusable="false">
+                <path
+                  fill="currentColor"
+                  d="M6 2.75A2.75 2.75 0 018.75 0h5.63c.73 0 1.43.29 1.94.8l3.88 3.88c.51.51.8 1.21.8 1.94v11.63A2.75 2.75 0 0118.25 21H8.75A2.75 2.75 0 016 18.25V2.75zm2.75-.75a.75.75 0 00-.75.75v15.5c0 .41.34.75.75.75h9.5c.41 0 .75-.34.75-.75V7h-3.25A2.75 2.75 0 0113 4.25V2H8.75zM15 2.41v1.84c0 .41.34.75.75.75h1.84L15 2.41zM10 10h7v2h-7v-2zm0 4h7v2h-7v-2z"
+                />
+              </svg>
+            </span>
+            <span>Report</span>
+          </a>
         </div>
       </div>
 

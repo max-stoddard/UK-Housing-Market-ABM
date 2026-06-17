@@ -8154,6 +8154,15 @@ assert.ok(
     !stylesSource.includes('.contribution-highlights {\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));\n  gap: 0.75rem 1rem;\n  margin-top: 0.95rem;\n  max-width: 78ch;'),
   'Contribution highlights should spread across the full summary card width'
 );
+assert.ok(
+  homePageSource.includes(
+    "const PROJECT_REPORT_URL = 'https://github.com/max-stoddard/UK-Housing-Market-ABM/blob/master/docs/beng-project/Project%20Final%20Report.pdf';"
+  ) &&
+    homePageSource.includes('href={PROJECT_REPORT_URL}') &&
+    homePageSource.includes('aria-label="Open project final report"') &&
+    homePageSource.includes('<span>Report</span>'),
+  'Contribution card should link to the project final report on GitHub'
+);
 
 const serverIndexSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/index.ts'), 'utf-8');
 const dashboardServerSource = fs.readFileSync(path.resolve(repoRoot, 'dashboard/server/dashboardServer.ts'), 'utf-8');
