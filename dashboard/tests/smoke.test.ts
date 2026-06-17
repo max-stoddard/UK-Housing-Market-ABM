@@ -1074,6 +1074,17 @@ assert.deepEqual(
   ['core_btlLTV'],
   'Expected compare query params to encode indicators as repeated values.'
 );
+const post500CompareSearchParams = buildResultsCompareSearchParams(
+  ['fixture-complete-output'],
+  ['core_btlLTV'],
+  'post500',
+  0
+);
+assert.equal(
+  post500CompareSearchParams.get('window'),
+  'post500',
+  'Expected compare query params to encode the post500 window.'
+);
 assert.deepEqual(
   parseResultsCompareQueryValues({ runId: commaContainingManualRunId }, 'runId', 'runIds'),
   [commaContainingManualRunId],
@@ -4968,6 +4979,78 @@ try {
   assert.ok(
     postSpinUpSeries?.points.every((point) => point.modelTime >= 200),
     'Expected post200 compare window to exclude pre-spin-up ticks'
+  );
+
+  const post500Compare = getResultsCompare(
+    fixture.root,
+    [fixture.runIds.complete, fixture.runIds.commaName],
+    ['core_mortgageApprovals'],
+    'post500',
+    0
+  );
+  const post500Series = post500Compare.indicators[0]?.seriesByRun.find(
+    (series) => series.runId === fixture.runIds.complete
+  );
+  assert.ok(post500Series, 'Expected post500 compare series for complete run');
+  assert.ok(
+    post500Series?.points.every((point) => point.modelTime >= 500),
+    'Expected post500 compare window to exclude the first 500 model ticks'
+  );
+  assert.equal(
+    post500Compare.kpiSummaryByRun.length,
+    2,
+    'Expected compare payload to include KPI summaries for each selected run'
+  );
+  const post500Kpi = post500Compare.kpiSummaryByRun
+    .find((entry) => entry.runId === fixture.runIds.complete)
+    ?.kpiSummary.find((kpi) => kpi.indicatorId === 'core_mortgageApprovals');
+  assert.equal(post500Kpi?.windowType, 'post_500', 'Expected post500 compare KPIs to identify their window');
+  assert.ok(post500Kpi?.mean !== null, 'Expected post500 compare KPI mean to be populated');
+
+  const fullCompare = getResultsCompare(
+    fixture.root,
+    [fixture.runIds.complete],
+    ['core_mortgageApprovals'],
+    'full',
+    0
+  );
+  const post200Kpi = postSpinUpCompare.kpiSummaryByRun
+    .find((entry) => entry.runId === fixture.runIds.complete)
+    ?.kpiSummary.find((kpi) => kpi.indicatorId === 'core_mortgageApprovals');
+  const tail120Kpi = overlayCompare.kpiSummaryByRun
+    .find((entry) => entry.runId === fixture.runIds.complete)
+    ?.kpiSummary.find((kpi) => kpi.indicatorId === 'core_mortgageApprovals');
+  const fullKpi = fullCompare.kpiSummaryByRun
+    .find((entry) => entry.runId === fixture.runIds.complete)
+    ?.kpiSummary.find((kpi) => kpi.indicatorId === 'core_mortgageApprovals');
+  assert.notEqual(post500Kpi?.mean, post200Kpi?.mean, 'Expected post500 and post200 KPI means to differ');
+  assert.notEqual(post500Kpi?.mean, tail120Kpi?.mean, 'Expected post500 and tail120 KPI means to differ');
+  assert.notEqual(post500Kpi?.mean, fullKpi?.mean, 'Expected post500 and full KPI means to differ');
+
+  const smoothedPost500Compare = getResultsCompare(
+    fixture.root,
+    [fixture.runIds.complete],
+    ['core_mortgageApprovals'],
+    'post500',
+    12
+  );
+  const smoothedPost500Kpi = smoothedPost500Compare.kpiSummaryByRun
+    .find((entry) => entry.runId === fixture.runIds.complete)
+    ?.kpiSummary.find((kpi) => kpi.indicatorId === 'core_mortgageApprovals');
+  assert.deepEqual(
+    {
+      mean: smoothedPost500Kpi?.mean,
+      cv: smoothedPost500Kpi?.cv,
+      annualisedTrend: smoothedPost500Kpi?.annualisedTrend,
+      range: smoothedPost500Kpi?.range
+    },
+    {
+      mean: post500Kpi?.mean,
+      cv: post500Kpi?.cv,
+      annualisedTrend: post500Kpi?.annualisedTrend,
+      range: post500Kpi?.range
+    },
+    'Expected smoothing to leave aggregate KPI values unchanged'
   );
 
   assert.throws(

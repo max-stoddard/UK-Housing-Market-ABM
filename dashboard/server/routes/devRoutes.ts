@@ -282,7 +282,7 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     }
     const runIds = parseResultsCompareQueryValues(req.query, 'runId', 'runIds');
     const indicatorIds = parseResultsCompareQueryValues(req.query, 'indicatorId', 'indicatorIds');
-    const window = String(req.query.window ?? 'post200');
+    const window = String(req.query.window ?? 'post500');
     const rawSmoothWindow = Number.parseInt(String(req.query.smoothWindow ?? '0'), 10);
     const smoothWindow = Number.isFinite(rawSmoothWindow) ? rawSmoothWindow : 0;
 

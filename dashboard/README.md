@@ -121,9 +121,9 @@ Experiments route:
 - `type=manual|sensitivity` and `mode=run|view` drive setup/results combinations.
 - optional focus params: `jobRef` (run mode queue/log), `runId` (manual view), `experimentId` (sensitivity view).
 
-KPI definitions (tail-120 window; experiment UI surfaces Mean, CV, and Range):
+KPI definitions (manual results use the selected Window setting; sensitivity results use the configured experiment window):
 
-- `Mean`: arithmetic mean of the tail-120 monthly values.
+- `Mean`: arithmetic mean of the monthly values in the selected window.
 - `CV`: `stdev / abs(mean)`; returns `null` when `abs(mean)` is near zero.
 - `Annualised Trend`: OLS monthly slope multiplied by `12`; retained in backend payloads for compatibility, but not offered as an experiment KPI basis.
 - `Range`: `P95 - P5` using linear percentile interpolation.

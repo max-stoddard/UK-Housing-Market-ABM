@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type {
+  KpiMetricWindowType,
   KpiMetricSummary,
+  ResultsCompareWindow,
   ResultsCompareIndicator,
   ResultsComparePayload,
   ResultsCoverageStatus,
@@ -25,8 +27,9 @@ import {
 } from './runtimePaths';
 import { isDashboardManagedRun } from './runOwnership';
 
-type CompareWindow = 'post200' | 'tail120' | 'full';
+type CompareWindow = ResultsCompareWindow;
 type SmoothWindow = 0 | 3 | 12;
+const POST_500_CUTOFF_TICKS = 500;
 const SPIN_UP_CUTOFF_TICKS = 200;
 
 interface IndicatorDefinition {
@@ -439,13 +442,19 @@ function normalizeSmoothWindow(rawWindow: number | undefined): SmoothWindow {
 }
 
 function normalizeWindow(rawWindow: string | undefined): CompareWindow {
+  if (rawWindow === 'post500') {
+    return 'post500';
+  }
   if (rawWindow === 'full') {
     return 'full';
   }
   if (rawWindow === 'tail120') {
     return 'tail120';
   }
-  return 'post200';
+  if (rawWindow === 'post200') {
+    return 'post200';
+  }
+  return 'post500';
 }
 
 function parseCoreIndicatorFile(filePath: string): ParsedCoreIndicatorFile {
@@ -938,8 +947,34 @@ function isPointSeriesAvailable(points: ResultsSeriesPoint[]): boolean {
   return points.some((point) => point.value !== null);
 }
 
-function computeKpi(points: ResultsSeriesPoint[], indicator: IndicatorDefinition): KpiMetricSummary {
-  const windowPoints = points.slice(Math.max(0, points.length - 120));
+function toKpiWindowType(window: CompareWindow): KpiMetricWindowType {
+  switch (window) {
+    case 'post500':
+      return 'post_500';
+    case 'post200':
+      return 'post_200';
+    case 'tail120':
+      return 'tail_120';
+    default:
+      return 'full';
+  }
+}
+
+function emptyKpi(indicator: IndicatorDefinition, window: CompareWindow): KpiMetricSummary {
+  return {
+    indicatorId: indicator.id,
+    title: indicator.title,
+    units: indicator.units,
+    windowType: toKpiWindowType(window),
+    mean: null,
+    cv: null,
+    annualisedTrend: null,
+    range: null
+  };
+}
+
+function computeKpi(points: ResultsSeriesPoint[], indicator: IndicatorDefinition, window: CompareWindow): KpiMetricSummary {
+  const windowPoints = applyCompareWindow(points, window);
   const windowValues = windowPoints
     .map((point) => point.value)
     .filter((value): value is number => value !== null);
@@ -949,7 +984,7 @@ function computeKpi(points: ResultsSeriesPoint[], indicator: IndicatorDefinition
     indicatorId: indicator.id,
     title: indicator.title,
     units: indicator.units,
-    windowType: 'tail_120',
+    windowType: toKpiWindowType(window),
     mean: kpi.mean,
     cv: kpi.cv,
     annualisedTrend: kpi.annualisedTrend,
@@ -960,6 +995,9 @@ function computeKpi(points: ResultsSeriesPoint[], indicator: IndicatorDefinition
 function applyCompareWindow(points: ResultsSeriesPoint[], window: CompareWindow): ResultsSeriesPoint[] {
   if (window === 'full') {
     return points;
+  }
+  if (window === 'post500') {
+    return points.filter((point) => point.modelTime >= POST_500_CUTOFF_TICKS);
   }
   if (window === 'post200') {
     return points.filter((point) => point.modelTime >= SPIN_UP_CUTOFF_TICKS);
@@ -1011,18 +1049,9 @@ function buildRunDiagnostics(pathsInput: RuntimePathInput, runId: string): RunDi
   const kpiSummary: KpiMetricSummary[] = ALL_INDICATORS.map((indicator) => {
     const series = getRawSeriesForIndicator(runPath, indicator.id);
     if (series.coverageStatus !== 'supported') {
-      return {
-        indicatorId: indicator.id,
-        title: indicator.title,
-        units: indicator.units,
-        windowType: 'tail_120',
-        mean: null,
-        cv: null,
-        annualisedTrend: null,
-        range: null
-      };
+      return emptyKpi(indicator, 'tail120');
     }
-    return computeKpi(series.points, indicator);
+    return computeKpi(series.points, indicator, 'tail120');
   });
 
   const summary: ResultsRunSummary = {
@@ -1132,6 +1161,7 @@ export function getResultsCompare(
     indicatorIds.length > 0 ? indicatorIds : ALL_INDICATORS.map((indicator) => indicator.id);
 
   const resultsRoot = resolveResultsRoot(pathsInput);
+  const runPaths = new Map(runIds.map((runId) => [runId, ensureRunExists(resultsRoot, runId)]));
   const indicatorPayloads: ResultsCompareIndicator[] = selectedIndicators.map((indicatorId) => {
     const indicatorDefinition = INDICATOR_BY_ID.get(indicatorId);
     if (!indicatorDefinition) {
@@ -1139,7 +1169,7 @@ export function getResultsCompare(
     }
 
     const perRun = runIds.map((runId) => {
-      const runPath = ensureRunExists(resultsRoot, runId);
+      const runPath = runPaths.get(runId) as string;
       const rawSeries = getRawSeriesForIndicator(runPath, indicatorId);
       if (rawSeries.coverageStatus !== 'supported') {
         return { runId, points: [] as ResultsSeriesPoint[] };
@@ -1154,12 +1184,26 @@ export function getResultsCompare(
       seriesByRun: alignSeriesByModelTime(perRun)
     };
   });
+  const kpiSummaryByRun = runIds.map((runId) => {
+    const runPath = runPaths.get(runId) as string;
+    return {
+      runId,
+      kpiSummary: ALL_INDICATORS.map((indicator) => {
+        const rawSeries = getRawSeriesForIndicator(runPath, indicator.id);
+        if (rawSeries.coverageStatus !== 'supported') {
+          return emptyKpi(indicator, window);
+        }
+        return computeKpi(rawSeries.points, indicator, window);
+      })
+    };
+  });
 
   return {
     runIds,
     indicatorIds: selectedIndicators,
     smoothWindow,
     window,
-    indicators: indicatorPayloads
+    indicators: indicatorPayloads,
+    kpiSummaryByRun
   };
 }

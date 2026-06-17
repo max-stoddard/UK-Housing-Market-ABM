@@ -394,6 +394,8 @@ export interface ResultsIndicatorMeta {
 }
 
 export type KpiMetricKey = 'mean' | 'cv' | 'annualisedTrend' | 'range';
+export type KpiMetricWindowType = 'post_500' | 'post_200' | 'tail_120' | 'full';
+export type ResultsCompareWindow = 'post500' | 'post200' | 'tail120' | 'full';
 
 export interface KpiMetricValues {
   mean: number | null;
@@ -406,7 +408,7 @@ export interface KpiMetricSummary {
   indicatorId: string;
   title: string;
   units: string;
-  windowType: 'tail_120';
+  windowType: KpiMetricWindowType;
   mean: number | null;
   cv: number | null;
   annualisedTrend: number | null;
@@ -484,12 +486,18 @@ export interface ResultsCompareIndicator {
   seriesByRun: ResultsCompareSeries[];
 }
 
+export interface ResultsCompareKpiSummary {
+  runId: string;
+  kpiSummary: KpiMetricSummary[];
+}
+
 export interface ResultsComparePayload {
   runIds: string[];
   indicatorIds: string[];
   smoothWindow: 0 | 3 | 12;
-  window: 'post200' | 'tail120' | 'full';
+  window: ResultsCompareWindow;
   indicators: ResultsCompareIndicator[];
+  kpiSummaryByRun: ResultsCompareKpiSummary[];
 }
 
 export interface ResultsStorageSummary {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type {
+  ResultsCompareWindow,
   ResultsComparePayload,
   ResultsFileManifestEntry,
   ResultsRunDetail,
@@ -44,7 +45,7 @@ import { DEFAULT_EXPERIMENT_ROUTE_STATE } from '../types';
 
 const PROTECTED_RESULTS_RUN_IDS = new Set(['v0-output', 'v4.0-output']);
 
-type CompareWindow = 'post200' | 'tail120' | 'full';
+type CompareWindow = ResultsCompareWindow;
 type SmoothWindow = 0 | 3 | 12;
 type ManifestTarget = 'baseline' | 'comparison';
 type ManualResultsMode = 'single' | 'compare';
@@ -129,13 +130,12 @@ export function ManualResultsView({
 }: ManualResultsViewProps) {
   const [runs, setRuns] = useState<ResultsRunSummary[]>([]);
   const [baselineDetail, setBaselineDetail] = useState<ResultsRunDetail | null>(null);
-  const [comparisonDetail, setComparisonDetail] = useState<ResultsRunDetail | null>(null);
   const [manifest, setManifest] = useState<ResultsFileManifestEntry[]>([]);
   const [selectedIndicatorIds, setSelectedIndicatorIds] = useState<string[]>([]);
   const [activeIndicatorId, setActiveIndicatorId] = useState<string>('');
   const [showAllKpiDetails, setShowAllKpiDetails] = useState<boolean>(false);
   const [comparePayload, setComparePayload] = useState<ResultsComparePayload | null>(null);
-  const [compareWindow, setCompareWindow] = useState<CompareWindow>('post200');
+  const [compareWindow, setCompareWindow] = useState<CompareWindow>('post500');
   const [smoothWindow, setSmoothWindow] = useState<SmoothWindow>(12);
   const [loadError, setLoadError] = useState<string>('');
   const [compareError, setCompareError] = useState<string>('');
@@ -278,7 +278,6 @@ export function ManualResultsView({
   useEffect(() => {
     if (!baselineRunId) {
       setBaselineDetail(null);
-      setComparisonDetail(null);
       return;
     }
 
@@ -286,16 +285,12 @@ export function ManualResultsView({
     setIsLoadingDetail(true);
     setLoadError('');
 
-    void Promise.all([
-      fetchResultsRunDetail(baselineRunId),
-      comparisonRunId ? fetchResultsRunDetail(comparisonRunId) : Promise.resolve(null)
-    ])
-      .then(([baselinePayload, comparisonPayload]) => {
+    void fetchResultsRunDetail(baselineRunId)
+      .then((baselinePayload) => {
         if (cancelled) {
           return;
         }
         setBaselineDetail(baselinePayload);
-        setComparisonDetail(comparisonPayload);
       })
       .catch((error) => {
         if (cancelled) {
@@ -312,7 +307,7 @@ export function ManualResultsView({
     return () => {
       cancelled = true;
     };
-  }, [baselineRunId, comparisonRunId]);
+  }, [baselineRunId]);
 
   useEffect(() => {
     if (!manifestRunId) {
@@ -356,7 +351,7 @@ export function ManualResultsView({
   }, [baselineDetail]);
 
   useEffect(() => {
-    if (selectedRunIds.length === 0 || selectedIndicatorIds.length === 0) {
+    if (selectedRunIds.length === 0) {
       setComparePayload(null);
       setCompareError('');
       return;
@@ -393,10 +388,18 @@ export function ManualResultsView({
   const baselineSummary = baselineRunId ? runById.get(baselineRunId) ?? null : null;
   const comparisonSummary = comparisonRunId ? runById.get(comparisonRunId) ?? null : null;
   const availableIndicators = useMemo(() => baselineDetail?.indicators ?? [], [baselineDetail]);
-  const sortedKpis = useMemo(() => sortKpis(baselineDetail?.kpiSummary ?? []), [baselineDetail]);
+  const baselineCompareKpis = useMemo(
+    () => comparePayload?.kpiSummaryByRun.find((entry) => entry.runId === baselineRunId)?.kpiSummary ?? [],
+    [baselineRunId, comparePayload]
+  );
+  const comparisonCompareKpis = useMemo(
+    () => comparePayload?.kpiSummaryByRun.find((entry) => entry.runId === comparisonRunId)?.kpiSummary ?? [],
+    [comparisonRunId, comparePayload]
+  );
+  const sortedKpis = useMemo(() => sortKpis(baselineCompareKpis), [baselineCompareKpis]);
   const comparisonKpiById = useMemo(
-    () => new Map((comparisonDetail?.kpiSummary ?? []).map((kpi) => [kpi.indicatorId, kpi])),
-    [comparisonDetail]
+    () => new Map(comparisonCompareKpis.map((kpi) => [kpi.indicatorId, kpi])),
+    [comparisonCompareKpis]
   );
   const groupedIndicatorSections = useMemo(
     () =>
@@ -436,8 +439,8 @@ export function ManualResultsView({
   const showRunsRefreshing = isLoadingRuns && runs.length > 0;
   const showIndicatorsSkeleton = isLoadingDetail && availableIndicators.length === 0;
   const showIndicatorsRefreshing = isLoadingDetail && availableIndicators.length > 0;
-  const showKpiSkeleton = isLoadingDetail && sortedKpis.length === 0;
-  const showKpiRefreshing = isLoadingDetail && sortedKpis.length > 0;
+  const showKpiSkeleton = (isLoadingDetail || isLoadingCompare) && sortedKpis.length === 0;
+  const showKpiRefreshing = (isLoadingDetail || isLoadingCompare) && sortedKpis.length > 0;
   const showOverlaySkeleton = isLoadingCompare && overlayIndicators.length === 0 && selectedIndicatorIds.length > 0;
   const showOverlayRefreshing = isLoadingCompare && overlayIndicators.length > 0;
   const showManifestSkeleton = isLoadingManifest && manifest.length === 0;
@@ -671,12 +674,13 @@ export function ManualResultsView({
               <label>
                 <InlineInfoTip
                   label="Window"
-                  description="post200 shows all months after the spin-up cutoff at month 200. tail120 shows only the latest 120 months. full shows the entire run including spin-up."
+                  description="post500 shows months after the main analysis cutoff at month 500. post200 shows all months after the spin-up cutoff at month 200. tail120 shows only the latest 120 months. full shows the entire run including spin-up."
                 />
                 <select
                   value={compareWindow}
                   onChange={(event) => setCompareWindow(event.target.value as CompareWindow)}
                 >
+                  <option value="post500">post500</option>
                   <option value="post200">post200</option>
                   <option value="tail120">tail120</option>
                   <option value="full">full</option>

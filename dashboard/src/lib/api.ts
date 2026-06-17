@@ -18,6 +18,7 @@ import type {
   ModelRunSubmitResponse,
   ParameterCardMeta,
   ResultsComparePayload,
+  ResultsCompareWindow,
   ResultsFileManifestEntry,
   ResultsRunDeleteResponse,
   ResultsRunDetail,
@@ -354,7 +355,7 @@ export async function fetchResultsSeries(
 export async function fetchResultsCompare(
   runIds: string[],
   indicatorIds: string[],
-  window: 'post200' | 'tail120' | 'full',
+  window: ResultsCompareWindow,
   smoothWindow: 0 | 3 | 12
 ): Promise<ResultsComparePayload> {
   const params = buildResultsCompareSearchParams(runIds, indicatorIds, window, smoothWindow);
@@ -367,7 +368,7 @@ export async function fetchResultsCompare(
 export function buildResultsCompareSearchParams(
   runIds: string[],
   indicatorIds: string[],
-  window: 'post200' | 'tail120' | 'full',
+  window: ResultsCompareWindow,
   smoothWindow: 0 | 3 | 12
 ): URLSearchParams {
   const params = new URLSearchParams({
