@@ -61,6 +61,7 @@ import {
 } from '../server/lib/modelLauncher.js';
 import { startDashboardServer } from '../server/dashboardServer.js';
 import { cancelExperimentJob, deleteExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../server/lib/experimentJobs.js';
+import { resolveLocalResultsReadRunId } from '../server/routes/devRoutes.js';
 import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFilePath } from '../server/lib/io.js';
 import {
   assertDesktopWritablePathsOutsideResources,
@@ -122,6 +123,7 @@ import {
   getKpiDeltaLabel,
   groupIndicatorsBySource,
   resolveActiveIndicatorId,
+  resolveActiveIndicatorPayload,
   resolveManualRunSelection,
   resolveSelectedIndicatorIds
 } from '../src/lib/manualResultsView.js';
@@ -519,6 +521,38 @@ assert.equal(
   resolveActiveIndicatorId([], [], ''),
   '',
   'Expected active overlay selection to return an empty value when no indicators are selectable'
+);
+
+const staleActiveOverlayPayload = resolveActiveIndicatorPayload(
+  [
+    {
+      indicator: {
+        id: 'core-price',
+        title: 'Core price',
+        units: 'GBP',
+        description: '',
+        source: 'core_indicator'
+      },
+      seriesByRun: []
+    },
+    {
+      indicator: {
+        id: 'output-sales',
+        title: 'Output sales',
+        units: 'count',
+        description: '',
+        source: 'output'
+      },
+      seriesByRun: []
+    }
+  ],
+  ['core-price', 'output-sales'],
+  'stale-indicator'
+);
+assert.equal(
+  staleActiveOverlayPayload?.indicator.id,
+  'core-price',
+  'Expected overlay payload resolution to fall back when the active indicator state is stale'
 );
 
 const manualSelectionRuns = [
@@ -954,6 +988,31 @@ assert.deepEqual(
   'Expected manual view state to drop duplicate comparison ids and incompatible params.'
 );
 
+const defaultManualViewState = parseExperimentRouteState(
+  new URLSearchParams('type=manual&mode=view&baselineRunId=default&comparisonRunId=default')
+);
+assert.deepEqual(
+  defaultManualViewState,
+  {
+    type: 'manual',
+    mode: 'view',
+    baselineRunId: '',
+    comparisonRunId: '',
+    experimentId: '',
+    jobRef: ''
+  },
+  'Expected legacy default manual run ids to normalize to an unset manual selection.'
+);
+
+const legacyDefaultManualRunState = parseExperimentRouteState(
+  new URLSearchParams('type=manual&mode=view&runId=default')
+);
+assert.equal(
+  legacyDefaultManualRunState.baselineRunId,
+  '',
+  'Expected legacy runId=default manual links not to preserve default as a real run id.'
+);
+
 const encodedExperimentQuery = buildExperimentSearchParams(cleanedViewState).toString();
 assert.equal(
   encodedExperimentQuery,
@@ -973,6 +1032,20 @@ assert.equal(
   encodedManualExperimentQuery,
   'type=manual&mode=view&baselineRunId=v0-output&comparisonRunId=v4.0-output',
   'Expected deterministic encoding for manual baseline/comparison deep links.'
+);
+
+const encodedDefaultManualExperimentQuery = buildExperimentSearchParams({
+  type: 'manual',
+  mode: 'view',
+  baselineRunId: 'default',
+  comparisonRunId: '',
+  experimentId: '',
+  jobRef: ''
+}).toString();
+assert.equal(
+  encodedDefaultManualExperimentQuery,
+  'type=manual&mode=view',
+  'Expected regenerated manual links to omit legacy default run ids.'
 );
 
 function writeSizedFile(filePath: string, sizeBytes: number): void {
@@ -2232,6 +2305,29 @@ try {
     true,
     'Expected remote manual results list to expose S3-backed run artifacts'
   );
+  const defaultRemoteRunId = remoteManualResults.runs[0]?.runId ?? '';
+  const remoteDefaultDetail = await remoteManager.getRemoteManualResultDetail('default');
+  assert.equal(
+    remoteDefaultDetail.runId,
+    defaultRemoteRunId,
+    'Expected remote default manual detail reads to resolve to the first listed manual result'
+  );
+  const remoteDefaultCompare = await remoteManager.getRemoteManualResultCompare(
+    ['default'],
+    ['core_btlLTV'],
+    'tail120',
+    0
+  );
+  assert.equal(
+    remoteDefaultCompare.runIds[0],
+    defaultRemoteRunId,
+    'Expected remote default manual compare reads to resolve to the first listed manual result'
+  );
+  assert.equal(
+    remoteDefaultCompare.indicators[0]?.seriesByRun[0]?.points.length,
+    120,
+    'Expected remote default manual compare reads to expose overlay points'
+  );
   const remoteManualSummary = remoteManualResults.runs.find((run) => run.runId === manualSubmit.job?.runId);
   assert.equal(remoteManualSummary?.status, 'complete', 'Expected complete remote manual artifacts to parse as complete');
   assert.deepEqual(
@@ -2307,6 +2403,11 @@ try {
     remoteManualBinaryArchiveEntry?.[1],
     remoteManualBinaryFixture,
     'Expected remote manual result archive to preserve binary S3 artifact bytes'
+  );
+  await assert.rejects(
+    () => remoteManager.deleteRemoteManualResultRun('default'),
+    /Unknown remote manual result run: default/,
+    'Expected remote manual delete to keep rejecting default instead of deleting the latest run'
   );
   remoteAdapter.objects.set(
     `fixture-bucket/${manualArtifactPrefix}logs/remote-runner.log`,
@@ -4492,6 +4593,34 @@ try {
     const current = Date.parse(resultsRuns[index]?.modifiedAt ?? '');
     assert.ok(prev >= current, 'Expected runs to be sorted by modifiedAt descending');
   }
+  const defaultLocalRunId = resolveLocalResultsReadRunId(fixture.root, 'default');
+  assert.equal(
+    defaultLocalRunId,
+    resultsRuns[0]?.runId,
+    'Expected local default manual reads to resolve to the first listed results run'
+  );
+  assert.equal(
+    getResultsRunDetail(fixture.root, defaultLocalRunId).runId,
+    resultsRuns[0]?.runId,
+    'Expected local default manual detail reads to reach a real results run'
+  );
+  const localDefaultCompare = getResultsCompare(
+    fixture.root,
+    [defaultLocalRunId],
+    ['core_mortgageApprovals'],
+    'tail120',
+    0
+  );
+  assert.equal(
+    localDefaultCompare.indicators[0]?.seriesByRun[0]?.points.length,
+    120,
+    'Expected local default manual compare reads to expose overlay points'
+  );
+  assert.equal(
+    resolveLocalResultsReadRunId(fixture.root, fixture.runIds.complete),
+    fixture.runIds.complete,
+    'Expected local read run-id resolution to preserve explicit real run ids'
+  );
 
   const fullRun = resultsRuns.find((run) => run.runId === fixture.runIds.complete);
   assert.ok(fullRun, 'Expected complete fixture run in discovery results');

@@ -81,6 +81,7 @@ const SSM_DOCUMENT_NAME = 'AWS-RunShellScript';
 const REMOTE_LOG_GROUP = '/aws/ssm/uk-housing-market-abm-remote-experiments';
 const COMMAND_TIMEOUT_SECONDS = 24 * 60 * 60;
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed', 'canceled']);
+const DEFAULT_MANUAL_RESULT_RUN_ID = 'default';
 const REMOTE_JOB_INDEX_UNAVAILABLE_MESSAGE =
   'Remote experiment execution is temporarily unavailable because the remote job index cannot be read.';
 
@@ -223,6 +224,10 @@ function isoNow(): string {
 
 function isActive(status: RemoteJobStatus): boolean {
   return status === 'queued' || status === 'running';
+}
+
+function isDefaultManualResultRunId(runId: string): boolean {
+  return runId.trim().toLowerCase() === DEFAULT_MANUAL_RESULT_RUN_ID;
 }
 
 function sanitizeS3Segment(value: string): string {
@@ -1047,7 +1052,7 @@ export class RemoteExecutionManager {
   }
 
   async getRemoteManualResultDetail(runId: string): Promise<ResultsRunDetail> {
-    const job = await this.findManualJobByRunId(runId);
+    const job = await this.findManualJobForReadByRunId(runId);
     const workspace = await this.createRemoteResultsWorkspace([job]);
     try {
       const detail = getResultsRunDetail(workspace.runtimePaths, job.runId ?? job.id);
@@ -1062,12 +1067,12 @@ export class RemoteExecutionManager {
   }
 
   async getRemoteManualResultFiles(runId: string): Promise<{ runId: string; files: ResultsFileManifestEntry[] }> {
-    const job = await this.findManualJobByRunId(runId);
+    const job = await this.findManualJobForReadByRunId(runId);
     const workspace = await this.createRemoteResultsWorkspace([job]);
     try {
       const normalizedRunId = job.runId ?? job.id;
       return {
-        runId,
+        runId: normalizedRunId,
         files: this.mergeRemoteManifest(
           job,
           workspace.objectsByRunId.get(normalizedRunId) ?? [],
@@ -1084,7 +1089,7 @@ export class RemoteExecutionManager {
     indicatorId: string,
     smoothWindow: number | undefined
   ): Promise<ResultsSeriesPayload> {
-    const job = await this.findManualJobByRunId(runId);
+    const job = await this.findManualJobForReadByRunId(runId);
     const workspace = await this.createRemoteResultsWorkspace([job]);
     try {
       return getResultsSeries(workspace.runtimePaths, job.runId ?? job.id, indicatorId, smoothWindow);
@@ -1099,7 +1104,14 @@ export class RemoteExecutionManager {
     window: string | undefined,
     smoothWindow: number | undefined
   ): Promise<ResultsComparePayload> {
-    const jobs = await Promise.all(runIds.map((runId) => this.findManualJobByRunId(runId)));
+    const jobs: RemoteJobRecord[] = [];
+    for (const runId of runIds) {
+      const job = await this.findManualJobForReadByRunId(runId);
+      const resolvedRunId = job.runId ?? job.id;
+      if (!jobs.some((entry) => (entry.runId ?? entry.id) === resolvedRunId)) {
+        jobs.push(job);
+      }
+    }
     const workspace = await this.createRemoteResultsWorkspace(jobs);
     try {
       return getResultsCompare(
@@ -1436,6 +1448,19 @@ export class RemoteExecutionManager {
       throw new Error(`Unknown remote manual result run: ${runId}`);
     }
     return job;
+  }
+
+  private async findManualJobForReadByRunId(runId: string): Promise<RemoteJobRecord> {
+    if (!isDefaultManualResultRunId(runId)) {
+      return this.findManualJobByRunId(runId);
+    }
+
+    const runs = await this.listRemoteManualResultRuns();
+    const resolvedRunId = runs.runs[0]?.runId;
+    if (!resolvedRunId) {
+      throw new Error('No remote manual result runs are available.');
+    }
+    return this.findManualJobByRunId(resolvedRunId);
   }
 
   private remoteRunResultsPrefix(job: RemoteJobRecord): string {

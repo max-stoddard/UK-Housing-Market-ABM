@@ -54,6 +54,40 @@ async function sendResultArchive(res: express.Response, archive: ResultArchive):
   await pipeline(archive.stream, res);
 }
 
+function isDefaultResultsRunId(runId: string): boolean {
+  return runId.trim().toLowerCase() === 'default';
+}
+
+export function resolveLocalResultsReadRunId(
+  paths: Parameters<typeof getResultsRuns>[0],
+  runId: string
+): string {
+  const normalizedRunId = runId.trim();
+  if (!isDefaultResultsRunId(normalizedRunId)) {
+    return normalizedRunId;
+  }
+
+  const resolvedRunId = getResultsRuns(paths)[0]?.runId;
+  if (!resolvedRunId) {
+    throw new Error('No local manual result runs are available.');
+  }
+  return resolvedRunId;
+}
+
+function resolveLocalResultsReadRunIds(
+  paths: Parameters<typeof getResultsRuns>[0],
+  runIds: string[]
+): string[] {
+  const resolvedRunIds: string[] = [];
+  for (const runId of runIds) {
+    const resolvedRunId = resolveLocalResultsReadRunId(paths, runId);
+    if (!resolvedRunIds.includes(resolvedRunId)) {
+      resolvedRunIds.push(resolvedRunId);
+    }
+  }
+  return resolvedRunIds;
+}
+
 export function registerDevRoutes(app: express.Express, context: RouteContext): void {
   app.post('/api/auth/login', (req, res) => {
     if (!context.requireExperimentsFeature(req, res)) {
@@ -121,7 +155,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
         res.json(await context.remoteExecution.getRemoteManualResultDetail(String(req.params.runId ?? '')));
         return;
       }
-      const detail = getResultsRunDetail(context.runtimePaths, String(req.params.runId ?? ''));
+      const runId = resolveLocalResultsReadRunId(context.runtimePaths, String(req.params.runId ?? ''));
+      const detail = getResultsRunDetail(context.runtimePaths, runId);
       res.json(detail);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -137,8 +172,9 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
         res.json(await context.remoteExecution.getRemoteManualResultFiles(String(req.params.runId ?? '')));
         return;
       }
-      const files = getResultsRunFiles(context.runtimePaths, String(req.params.runId ?? ''));
-      res.json({ runId: String(req.params.runId ?? ''), files });
+      const runId = resolveLocalResultsReadRunId(context.runtimePaths, String(req.params.runId ?? ''));
+      const files = getResultsRunFiles(context.runtimePaths, runId);
+      res.json({ runId, files });
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
     }
@@ -206,7 +242,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
         res.json(payload);
         return;
       }
-      const payload = getResultsSeries(context.runtimePaths, runId, indicator, smoothWindow);
+      const resolvedRunId = resolveLocalResultsReadRunId(context.runtimePaths, runId);
+      const payload = getResultsSeries(context.runtimePaths, resolvedRunId, indicator, smoothWindow);
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });
@@ -235,7 +272,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
         res.json(payload);
         return;
       }
-      const payload = getResultsCompare(context.runtimePaths, runIds, indicatorIds, window, smoothWindow);
+      const resolvedRunIds = resolveLocalResultsReadRunIds(context.runtimePaths, runIds);
+      const payload = getResultsCompare(context.runtimePaths, resolvedRunIds, indicatorIds, window, smoothWindow);
       res.json(payload);
     } catch (error) {
       res.status(400).json({ error: (error as Error).message });

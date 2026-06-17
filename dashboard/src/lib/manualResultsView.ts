@@ -82,6 +82,20 @@ export function resolveActiveIndicatorId(
   return selectableIds[0];
 }
 
+export function resolveActiveIndicatorPayload(
+  compareIndicators: ResultsCompareIndicator[],
+  selectedIndicatorIds: string[],
+  current: string
+): ResultsCompareIndicator | null {
+  const resolvedIndicatorId = resolveActiveIndicatorId(selectedIndicatorIds, compareIndicators, current);
+  return (
+    compareIndicators.find((indicatorPayload) => indicatorPayload.indicator.id === current) ??
+    compareIndicators.find((indicatorPayload) => indicatorPayload.indicator.id === resolvedIndicatorId) ??
+    compareIndicators[0] ??
+    null
+  );
+}
+
 export function sortKpis(kpis: KpiMetricSummary[]): KpiMetricSummary[] {
   return [...kpis].sort((left, right) => left.title.localeCompare(right.title));
 }

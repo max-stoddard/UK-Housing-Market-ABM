@@ -29,6 +29,11 @@ function clean(value: string | null | undefined): string {
   return value?.trim() ?? '';
 }
 
+function cleanManualRunId(value: string | null | undefined): string {
+  const cleaned = clean(value);
+  return cleaned.toLowerCase() === 'default' ? '' : cleaned;
+}
+
 export function normaliseExperimentRouteState(
   partial: ExperimentRouteStateInput
 ): ExperimentRouteState {
@@ -39,8 +44,8 @@ export function normaliseExperimentRouteState(
     ? (clean(partial.mode) as ExperimentMode)
     : DEFAULT_EXPERIMENT_ROUTE_STATE.mode;
 
-  const baselineRunId = clean(partial.baselineRunId) || clean(partial.runId);
-  const comparisonRunIdRaw = clean(partial.comparisonRunId);
+  const baselineRunId = cleanManualRunId(partial.baselineRunId) || cleanManualRunId(partial.runId);
+  const comparisonRunIdRaw = cleanManualRunId(partial.comparisonRunId);
   const base: ExperimentRouteState = {
     type,
     mode,

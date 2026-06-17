@@ -32,6 +32,7 @@ import {
   getKpiDeltaLabel,
   groupIndicatorsBySource,
   resolveActiveIndicatorId,
+  resolveActiveIndicatorPayload,
   resolveManualRunSelection,
   resolveSelectedIndicatorIds,
   sortKpis
@@ -137,6 +138,7 @@ export function ManualResultsView({
   const [compareWindow, setCompareWindow] = useState<CompareWindow>('post200');
   const [smoothWindow, setSmoothWindow] = useState<SmoothWindow>(12);
   const [loadError, setLoadError] = useState<string>('');
+  const [compareError, setCompareError] = useState<string>('');
   const [isLoadingRuns, setIsLoadingRuns] = useState<boolean>(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState<boolean>(false);
   const [isLoadingCompare, setIsLoadingCompare] = useState<boolean>(false);
@@ -356,12 +358,13 @@ export function ManualResultsView({
   useEffect(() => {
     if (selectedRunIds.length === 0 || selectedIndicatorIds.length === 0) {
       setComparePayload(null);
+      setCompareError('');
       return;
     }
 
     let cancelled = false;
     setIsLoadingCompare(true);
-    setLoadError('');
+    setCompareError('');
 
     void fetchResultsCompare(selectedRunIds, selectedIndicatorIds, compareWindow, smoothWindow)
       .then((payload) => {
@@ -371,7 +374,8 @@ export function ManualResultsView({
       })
       .catch((error) => {
         if (!cancelled) {
-          setLoadError((error as Error).message);
+          setComparePayload(null);
+          setCompareError((error as Error).message);
         }
       })
       .finally(() => {
@@ -425,8 +429,8 @@ export function ManualResultsView({
     }));
   }, [availableIndicators, overlayIndicators, selectedIndicatorIds]);
   const activeIndicatorPayload = useMemo(
-    () => overlayIndicators.find((indicatorPayload) => indicatorPayload.indicator.id === activeIndicatorId) ?? null,
-    [activeIndicatorId, overlayIndicators]
+    () => resolveActiveIndicatorPayload(overlayIndicators, selectedIndicatorIds, activeIndicatorId),
+    [activeIndicatorId, overlayIndicators, selectedIndicatorIds]
   );
   const showRunsSkeleton = isLoadingRuns && runs.length === 0;
   const showRunsRefreshing = isLoadingRuns && runs.length > 0;
@@ -950,6 +954,8 @@ export function ManualResultsView({
                 itemClassName="loading-skeleton-card overlay-card-skeleton"
                 ariaLabel="Loading indicator overlays"
               />
+            ) : compareError ? (
+              <p className="error-banner">{compareError}</p>
             ) : !activeIndicatorPayload ? (
               <p className="info-banner">No overlay data is available for the current indicator selection yet.</p>
             ) : (
