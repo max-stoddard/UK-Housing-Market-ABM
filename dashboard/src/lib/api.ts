@@ -72,10 +72,13 @@ export class ApiRequestError extends Error {
 
 export const API_RETRY_DELAY_MS = 2000;
 
-const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
+const viteEnv = (import.meta as ImportMeta & {
+  env?: { DEV?: boolean; VITE_API_BASE_URL?: string };
+}).env;
+const apiBaseUrl = (viteEnv?.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '');
 let authToken: string | null = null;
 export type ApiViewMode = 'dev' | 'preview_desktop' | 'preview_cloud';
-let apiViewMode: ApiViewMode = import.meta.env.DEV ? 'dev' : 'preview_cloud';
+let apiViewMode: ApiViewMode = viteEnv?.DEV ? 'dev' : 'preview_cloud';
 
 function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
@@ -354,16 +357,30 @@ export async function fetchResultsCompare(
   window: 'post200' | 'tail120' | 'full',
   smoothWindow: 0 | 3 | 12
 ): Promise<ResultsComparePayload> {
-  const params = new URLSearchParams({
-    runIds: runIds.join(','),
-    indicatorIds: indicatorIds.join(','),
-    window,
-    smoothWindow: String(smoothWindow)
-  });
+  const params = buildResultsCompareSearchParams(runIds, indicatorIds, window, smoothWindow);
   return requestJson<ResultsComparePayload>(
     `${buildApiUrl('/api/results/compare')}?${params.toString()}`,
     'Failed to fetch results comparison'
   );
+}
+
+export function buildResultsCompareSearchParams(
+  runIds: string[],
+  indicatorIds: string[],
+  window: 'post200' | 'tail120' | 'full',
+  smoothWindow: 0 | 3 | 12
+): URLSearchParams {
+  const params = new URLSearchParams({
+    window,
+    smoothWindow: String(smoothWindow)
+  });
+  for (const runId of runIds) {
+    params.append('runId', runId);
+  }
+  for (const indicatorId of indicatorIds) {
+    params.append('indicatorId', indicatorId);
+  }
+  return params;
 }
 
 export async function fetchModelRunOptions(baseline?: string): Promise<ModelRunOptionsPayload> {

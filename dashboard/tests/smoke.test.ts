@@ -61,7 +61,10 @@ import {
 } from '../server/lib/modelLauncher.js';
 import { startDashboardServer } from '../server/dashboardServer.js';
 import { cancelExperimentJob, deleteExperimentJob, getExperimentJobLogs, listExperimentJobs } from '../server/lib/experimentJobs.js';
-import { resolveLocalResultsReadRunId } from '../server/routes/devRoutes.js';
+import {
+  parseResultsCompareQueryValues,
+  resolveLocalResultsReadRunId
+} from '../server/routes/devRoutes.js';
 import { getConfigPath, parseConfigFile, readNumericCsvRows, resolveConfigDataFilePath } from '../server/lib/io.js';
 import {
   assertDesktopWritablePathsOutsideResources,
@@ -141,6 +144,7 @@ import {
   formatExperimentModelOption,
   orderExperimentModelOptions
 } from '../src/lib/experimentVersionOptions.js';
+import { buildResultsCompareSearchParams } from '../src/lib/api.js';
 import { ManualRunSetupCard } from '../src/pages/run-experiments/ManualRunSetupCard.js';
 import { SensitivitySetupCard } from '../src/pages/run-experiments/SensitivitySetupCard.js';
 import { assertSettingHelpCopy } from '../src/pages/run-experiments/settingHelp.js';
@@ -1048,6 +1052,39 @@ assert.equal(
   'Expected regenerated manual links to omit legacy default run ids.'
 );
 
+const commaContainingManualRunId = 'Optimised 2011 model, default, 20-seed v0o7';
+const compareSearchParams = buildResultsCompareSearchParams(
+  [commaContainingManualRunId],
+  ['core_btlLTV'],
+  'tail120',
+  12
+);
+assert.deepEqual(
+  compareSearchParams.getAll('runId'),
+  [commaContainingManualRunId],
+  'Expected compare query params to preserve comma-containing run ids as repeated values.'
+);
+assert.equal(
+  compareSearchParams.has('runIds'),
+  false,
+  'Expected compare query params not to use legacy comma-delimited runIds.'
+);
+assert.deepEqual(
+  compareSearchParams.getAll('indicatorId'),
+  ['core_btlLTV'],
+  'Expected compare query params to encode indicators as repeated values.'
+);
+assert.deepEqual(
+  parseResultsCompareQueryValues({ runId: commaContainingManualRunId }, 'runId', 'runIds'),
+  [commaContainingManualRunId],
+  'Expected repeated compare query parsing to preserve commas inside run ids.'
+);
+assert.deepEqual(
+  parseResultsCompareQueryValues({ runIds: 'legacy-left,legacy-right' }, 'runId', 'runIds'),
+  ['legacy-left', 'legacy-right'],
+  'Expected legacy comma-delimited compare query parsing to remain supported.'
+);
+
 function writeSizedFile(filePath: string, sizeBytes: number): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, Buffer.alloc(sizeBytes, 0));
@@ -1448,6 +1485,7 @@ const RESULTS_OUTPUT_COLUMNS = [
 
 interface ResultsFixtureRunIds {
   complete: string;
+  commaName: string;
   emptyOutput: string;
   sparseCore: string;
   mixedNanCore: string;
@@ -1575,6 +1613,7 @@ function createResultsFixtureRepo(): ResultsFixtureContext {
 
   const runIds: ResultsFixtureRunIds = {
     complete: 'fixture-complete-output',
+    commaName: 'Optimised 2011 model, default, 20-seed v0o7',
     emptyOutput: 'fixture-empty-output',
     sparseCore: 'fixture-sparse-core-output',
     mixedNanCore: 'fixture-mixed-nan-core-output',
@@ -1595,6 +1634,13 @@ function createResultsFixtureRepo(): ResultsFixtureContext {
       'NonHousingConsumption-run2.csv'
     ],
     modifiedAtMs: baseTime + 4000
+  });
+  writeResultsFixtureRun(resultsRoot, {
+    runId: runIds.commaName,
+    outputMode: 'full',
+    includeConfig: true,
+    includeTransactionFile: false,
+    modifiedAtMs: baseTime + 3500
   });
   writeResultsFixtureRun(resultsRoot, {
     runId: runIds.noConfig,
@@ -4587,7 +4633,7 @@ assert.equal(nmgRight?.year, '2024', 'Expected v4.0 NMG year to be 2024 for rent
 const fixture = createResultsFixtureRepo();
 try {
   const resultsRuns = getResultsRuns(fixture.root);
-  assert.equal(resultsRuns.length, 7, 'Expected only synthetic fixture runs to be discovered');
+  assert.equal(resultsRuns.length, 8, 'Expected only synthetic fixture runs to be discovered');
   for (let index = 1; index < resultsRuns.length; index += 1) {
     const prev = Date.parse(resultsRuns[index - 1]?.modifiedAt ?? '');
     const current = Date.parse(resultsRuns[index]?.modifiedAt ?? '');
@@ -4620,6 +4666,23 @@ try {
     resolveLocalResultsReadRunId(fixture.root, fixture.runIds.complete),
     fixture.runIds.complete,
     'Expected local read run-id resolution to preserve explicit real run ids'
+  );
+  const commaNameCompare = getResultsCompare(
+    fixture.root,
+    [fixture.runIds.commaName],
+    ['core_mortgageApprovals'],
+    'tail120',
+    0
+  );
+  assert.equal(
+    commaNameCompare.runIds[0],
+    fixture.runIds.commaName,
+    'Expected local compare payloads to preserve run ids containing commas'
+  );
+  assert.equal(
+    commaNameCompare.indicators[0]?.seriesByRun[0]?.points.length,
+    120,
+    'Expected local compare to expose overlay points for run ids containing commas'
   );
 
   const fullRun = resultsRuns.find((run) => run.runId === fixture.runIds.complete);

@@ -58,6 +58,32 @@ function isDefaultResultsRunId(runId: string): boolean {
   return runId.trim().toLowerCase() === 'default';
 }
 
+function normalizeQueryValues(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => normalizeQueryValues(entry));
+  }
+  return [];
+}
+
+export function parseResultsCompareQueryValues(
+  query: express.Request['query'],
+  repeatedName: string,
+  legacyName: string
+): string[] {
+  const repeatedValues = normalizeQueryValues(query[repeatedName]);
+  if (repeatedValues.length > 0) {
+    return repeatedValues;
+  }
+  return normalizeQueryValues(query[legacyName])
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export function resolveLocalResultsReadRunId(
   paths: Parameters<typeof getResultsRuns>[0],
   runId: string
@@ -254,14 +280,8 @@ export function registerDevRoutes(app: express.Express, context: RouteContext): 
     if (!context.requireExperimentsFeature(req, res)) {
       return;
     }
-    const runIds = String(req.query.runIds ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-    const indicatorIds = String(req.query.indicatorIds ?? '')
-      .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
+    const runIds = parseResultsCompareQueryValues(req.query, 'runId', 'runIds');
+    const indicatorIds = parseResultsCompareQueryValues(req.query, 'indicatorId', 'indicatorIds');
     const window = String(req.query.window ?? 'post200');
     const rawSmoothWindow = Number.parseInt(String(req.query.smoothWindow ?? '0'), 10);
     const smoothWindow = Number.isFinite(rawSmoothWindow) ? rawSmoothWindow : 0;
