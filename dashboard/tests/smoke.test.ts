@@ -8699,7 +8699,7 @@ assert.ok(
   'Docker API image should no longer install Java'
 );
 assert.ok(
-  dockerfileSource.includes('FROM node:22-trixie-slim') &&
+  dockerfileSource.includes('FROM node:22-alpine') &&
     !dockerfileSource.includes('maven') &&
     !dockerfileSource.includes('git') &&
     !dockerfileSource.includes('private-datasets') &&
