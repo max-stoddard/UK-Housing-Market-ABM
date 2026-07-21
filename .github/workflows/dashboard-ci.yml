@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       deploy_target:
-        description: AWS dashboard surface to deploy from master.
+        description: AWS dashboard surface to deploy from master when cloud deployment is enabled.
         required: true
         default: all
         type: choice
@@ -14,6 +14,11 @@ on:
           - frontend
           - api
           - source
+      deploy_to_cloud:
+        description: Set to true only when intentionally releasing the selected surface to AWS.
+        required: true
+        default: false
+        type: boolean
   pull_request:
     branches:
       - master
@@ -270,7 +275,8 @@ jobs:
       - model-tests
     if: |
       always() &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_to_cloud == true &&
       github.ref == 'refs/heads/master' &&
       needs.classify-changes.outputs.frontend_changed == 'true' &&
       needs.dashboard-checks.result == 'success' &&
@@ -333,7 +339,8 @@ jobs:
       - model-tests
     if: |
       always() &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_to_cloud == true &&
       github.ref == 'refs/heads/master' &&
       needs.classify-changes.outputs.api_changed == 'true' &&
       needs.dashboard-checks.result == 'success' &&
@@ -461,7 +468,8 @@ jobs:
       - model-tests
     if: |
       always() &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_to_cloud == true &&
       github.ref == 'refs/heads/master' &&
       needs.classify-changes.outputs.source_bundle_changed == 'true' &&
       (needs.dashboard-checks.result == 'success' || needs.dashboard-checks.result == 'skipped') &&
@@ -549,7 +557,8 @@ jobs:
       - deploy-source-bundle
     if: |
       always() &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_to_cloud == true &&
       github.ref == 'refs/heads/master' &&
       (needs.dashboard-checks.result == 'success' || needs.dashboard-checks.result == 'skipped') &&
       (needs.model-tests.result == 'success' || needs.model-tests.result == 'skipped') &&

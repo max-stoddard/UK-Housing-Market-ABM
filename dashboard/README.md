@@ -193,7 +193,7 @@ The dashboard is deployed from GitHub Actions to the AWS v1 architecture describ
 The public AWS API is intentionally lightweight:
 
 - Dockerfile: `dashboard/Dockerfile.api`
-- base image: Node 22 slim, aligned with dashboard CI
+- base image: Node 22 Alpine, aligned with dashboard CI and the ECR scan gate
 - ships only the public dashboard server plus packaged `input-data-versions` snapshots `v0`, `v0o7`, `v4.26`, and `v5o3`; `v0o7` and `v5o3` are the packaged optimized 2011 and 2024 runtime snapshots respectively, while `v4.26` remains the source baseline for the current output calibration
 - does not include git, Java, Maven, or baseline `Results/` outputs
 - uses compiled server output (`dist-server`) instead of running through `tsx`
@@ -211,7 +211,7 @@ AWS production keeps Java/Maven out of the ECS API container. To enable website-
 Dashboard write credentials should be stored as SSM SecureString parameters and exposed to the ECS task as secrets for `DASHBOARD_WRITE_USERNAME` and `DASHBOARD_WRITE_PASSWORD`. If the runner is stopped or not SSM-ready, the API reports the backend as unavailable and the frontend disables run controls. The API does not start EC2 instances.
 Remote experiment deletion should use a separate SSM SecureString exposed as `DASHBOARD_DELETE_KEY`; do not reuse the write password for this key.
 
-Deploys are configured from `master` and gated by passing GitHub checks.
+Deploys are configured from `master`, gated by passing GitHub checks, and require an explicit manual GitHub Actions dispatch with **deploy_to_cloud** enabled. Pushes and pull requests validate code only and never access AWS.
 
 GitHub Actions validates:
 
@@ -221,9 +221,9 @@ GitHub Actions validates:
 - `npm run test:experiment-smoke`
 - `docker build -f dashboard/Dockerfile.api .` whenever API deployment inputs change (`dashboard/server/**`, `dashboard/shared/**`, `dashboard/Dockerfile.api`, `dashboard/tsconfig.server.json`, `input-data-versions/**`, `.dockerignore`, or dashboard package manifests)
 - `./mvnw test` whenever model or Maven inputs change (`src/**`, `pom.xml`, `mvnw`, `mvnw.cmd`, or `.mvn/**`)
-- a real cloud experiment smoke on `master` pushes and manual dispatches, using `v0o7` with `N_STEPS=1`, `N_SIMS=1`, and sensitivity `maxWorkers=2`; the smoke fails if the EC2 runner is not already running and SSM-online
+- a real cloud experiment smoke only for an explicitly enabled manual cloud deployment, using `v0o7` with `N_STEPS=1`, `N_SIMS=1`, and sensitivity `maxWorkers=2`; the smoke fails if the EC2 runner is not already running and SSM-online
 
-Pushes to `master` deploy only the changed AWS surfaces:
+Pushes to `master` run the applicable checks only. To deploy a changed AWS surface, manually run **Dashboard CI** from `master`, choose the target, and set **deploy_to_cloud** to `true`:
 
 - frontend changes sync `dashboard/dist` to the configured S3 bucket and invalidate CloudFront
 - API changes push a new ECR image and update the configured ECS service task definition
