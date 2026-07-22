@@ -1,12 +1,14 @@
-# Improving an Agent-Based Model of the UK Housing Market
-
-## Project Summary
+# An improved Agent-Based Model of the UK Housing Market
 
 This is an agent-based model (ABM) of the UK housing market improved by [Max Stoddard](https://www.linkedin.com/in/maxstoddard) at Imperial College London for his BEng Computing final-year project. This project was completed in collaboration with the Bank of England and was awarded First-Class Honours, the highest academic classification awarded in UK undergraduate studies. A full write-up of the project's details and methodology can be found in the [report](docs/beng-project/Project%20Final%20Report.pdf).
 
 The model is intended for use as a tool to inform central bank regulatory policy. The original ABM that this project improved was written by the Institute of New Economic Thinking at the University of Oxford, also in collaboration with the Bank of England ([GitHub](https://github.com/INET-Complexity/housing-model)).
 
-The model itself incorporates owner-occupiers, renters, buy-to-let investors, a housing market, a rental market, banks, a central bank and a government. A more detailed description of the original model can be found as a
+The model itself incorporates owner-occupiers, renters, buy-to-let investors, a housing market, a rental market, banks, a central bank and a government. The model itself is contained in [this folder](src/main/java) and a system architecture diagram is collected below.
+
+![ABM architecture diagram](docs/beng-project/abm%20diagram.png)
+
+A more detailed description of the original model can be found as a
 [Bank of England Working Paper](https://www.bankofengland.co.uk/working-paper/2016/macroprudential-policy-in-an-agent-based-model-of-the-uk-housing-market) and in the [Original Model Description](`docs/old-docs/ModelDescriptionFeb16.pdf`).
 
 ## Project Contributions and Impact
