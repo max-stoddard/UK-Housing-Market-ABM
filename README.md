@@ -60,6 +60,12 @@ Then open http://localhost:5421 and use the Experiments page. The startup script
 
 See the [dashboard documentation](dashboard/README.md) for development and runtime details.
 
+## AWS Architecture
+
+As part of this project, I also produced a full-stack application for remotely running experiments on a cloud-hosted version of this model. This version hosted on the cloud is currently offline due to lack of funding. Its deployment automation is defined in the [Dashboard CI workflow](.github/workflows/dashboard-ci.yml), and its API container is defined in the [API Dockerfile](dashboard/Dockerfile.api). The architecture for this system is presented below:
+
+![AWS architecture diagram](docs/beng-project/aws%20architecture%20diagram.png)
+
 
 <!-- ### Command line
 
@@ -72,5 +78,3 @@ First, verify the Java model builds successfully:
 ```
 
 Then select a model versions from the [model versions](input-data-versions) folder. -->
-
-
